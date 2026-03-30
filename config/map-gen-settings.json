@@ -1,0 +1,15 @@
+{
+  "_comment": "Flat map with resources, no enemies, for agent development",
+  "terrain_segmentation": 1,
+  "water": 1,
+  "width": 0,
+  "height": 0,
+  "starting_area": 1,
+  "peaceful_mode": true,
+  "autoplace_controls": {
+    "enemy-base": {"frequency": 0, "size": 0, "richness": 0}
+  },
+  "property_expression_names": {
+    "elevation": "0"
+  }
+}

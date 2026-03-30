@@ -1,0 +1,101 @@
+"""Unit tests for the FactorioBridge.
+
+Tests JSON parsing and error handling with a mock RCON client.
+"""
+
+import json
+import pytest
+
+from agent.bridge import FactorioBridge, ScriptError
+from agent.rcon import RCONClient
+
+
+class MockRCON:
+    """Mock RCON client that returns predefined responses."""
+
+    def __init__(self, responses: dict[str, str] | None = None):
+        self.responses = responses or {}
+        self.commands_sent: list[str] = []
+
+    def send_command(self, command: str) -> str:
+        self.commands_sent.append(command)
+        # Match by script name in the command
+        for key, response in self.responses.items():
+            if key in command:
+                return response
+        return '{"ok": true}'
+
+
+class TestBridgeCallScript:
+    """Test call_script JSON handling."""
+
+    def test_successful_call(self):
+        mock = MockRCON({"ping": '{"tick":0,"mod":"factorio-agent","status":"ok"}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.call_script("ping")
+
+        assert result["tick"] == 0
+        assert result["status"] == "ok"
+        assert bridge.call_count == 1
+
+    def test_script_error(self):
+        mock = MockRCON({"bad": '{"error":"unknown script: bad"}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        with pytest.raises(ScriptError, match="unknown script"):
+            bridge.call_script("bad")
+
+    def test_invalid_json(self):
+        mock = MockRCON({"broken": "not json"})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        with pytest.raises(json.JSONDecodeError):
+            bridge.call_script("broken")
+
+    def test_command_format(self):
+        mock = MockRCON({"inspect": '{"entities":[],"count":0}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        bridge.call_script("inspect", '{"radius": 5}')
+
+        assert len(mock.commands_sent) == 1
+        assert mock.commands_sent[0] == '/agent inspect {"radius": 5}'
+
+    def test_call_count_increments(self):
+        mock = MockRCON({})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        bridge.call_script("a")
+        bridge.call_script("b")
+        bridge.call_script("c")
+
+        assert bridge.call_count == 3
+
+
+class TestBridgeHelpers:
+    """Test convenience methods."""
+
+    def test_ping(self):
+        mock = MockRCON({"ping": '{"tick":100,"mod":"factorio-agent","status":"ok"}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.ping()
+        assert result["tick"] == 100
+
+    def test_inspect(self):
+        mock = MockRCON({"inspect": '{"entities":[],"count":0,"total":0,"tick":0}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.inspect(x=5, y=10, radius=20)
+        assert result["count"] == 0
+        # Verify args contain coordinates
+        assert '"x": 5' in mock.commands_sent[0]
+
+    def test_advance(self):
+        mock = MockRCON({"advance": '{"ticks_to_run":120,"tick_before":0}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.advance(ticks=120)
+        assert result["ticks_to_run"] == 120
+        assert "120" in mock.commands_sent[0]
