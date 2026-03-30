@@ -1,0 +1,35 @@
+{
+  "name": "factorio-agent-dev",
+  "description": "Factorio Agent development server",
+  "tags": [],
+
+  "_comment_visibility": "LAN only, no public listing",
+  "visibility": {"public": false, "lan": true},
+
+  "_comment_credentials": "No auth needed for local dev",
+  "username": "",
+  "password": "",
+  "token": "",
+
+  "game_password": "",
+  "require_user_verification": false,
+  "max_players": 0,
+
+  "_comment_auto_pause": "CRITICAL: must be false so RCON works with 0 players",
+  "auto_pause": false,
+
+  "only_admins_can_pause_the_game": true,
+  "autosave_interval": 0,
+  "autosave_slots": 1,
+  "afk_autokick_interval": 0,
+  "auto_pause_when_players_connect": false,
+  "max_upload_in_kilobytes_per_second": 0,
+  "max_upload_slots": 5,
+  "minimum_latency_in_ticks": 0,
+  "ignore_player_limit_for_returning_players": false,
+  "allow_commands": "admins-only",
+  "minimum_segment_size": 25,
+  "minimum_segment_size_peer_count": 20,
+  "maximum_segment_size": 100,
+  "maximum_segment_size_peer_count": 10
+}

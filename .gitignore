@@ -1,0 +1,17 @@
+# Factorio server runtime
+factorio-server/
+factorio-headless.tar.xz
+saves/
+factorio.pid
+factorio.log
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Environment
+.env
