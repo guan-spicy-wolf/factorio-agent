@@ -38,11 +38,16 @@ def _pack_packet(request_id: int, packet_type: int, body: str) -> bytes:
 
 def _unpack_packet(data: bytes) -> tuple[int, int, str]:
     """Decode an RCON packet. Returns (request_id, packet_type, body)."""
-    if len(data) < 12:
+    # Minimum packet: 4B request_id + 4B type + 2B null terminators = 10 bytes
+    if len(data) < 10:
         raise RCONError(f"Packet too short: {len(data)} bytes")
     request_id, packet_type = struct.unpack_from("<ii", data, 0)
     # Body is everything after the two ints, minus the two null terminators
-    body = data[8:-2].decode("utf-8", errors="replace")
+    # Handle empty body case (exactly 10 bytes)
+    if len(data) == 10:
+        body = ""
+    else:
+        body = data[8:-2].decode("utf-8", errors="replace")
     return request_id, packet_type, body
 
 
@@ -89,30 +94,27 @@ class RCONClient:
     def send_command(self, command: str) -> str:
         """Send a command and return the response string.
 
-        Uses the "empty packet" trick to detect end of multi-packet responses:
-        after the real command, send a follow-up with a known ID. Read responses
-        until the follow-up ID appears, concatenating all intermediate bodies.
+        Factorio typically sends complete responses in a single packet.
+        We read responses until we get one matching our command ID.
         """
         if not self._socket:
             raise RCONError("Not connected")
 
         cmd_id = self._next_id()
-        end_id = self._next_id()
-
-        # Send the actual command
         self._send(cmd_id, SERVERDATA_EXECCOMMAND, command)
-        # Send an empty follow-up to mark end of response
-        self._send(end_id, SERVERDATA_EXECCOMMAND, "")
 
-        # Read until we see the end_id response
-        body_parts: list[str] = []
+        # Read response(s) - may receive AUTH_RESPONSE or other packets first
         while True:
-            resp_id, _, body = self._recv()
-            if resp_id == end_id:
-                break
-            body_parts.append(body)
-
-        return "".join(body_parts)
+            resp_id, resp_type, body = self._recv()
+            # Skip auth responses and other non-command responses
+            if resp_type == SERVERDATA_AUTH_RESPONSE:
+                continue
+            # Found the command response
+            if resp_id == cmd_id:
+                return body
+            # If we got a different response, it might be a multi-packet case
+            # For Factorio, this shouldn't happen, but handle gracefully
+            return body
 
     def _send(self, request_id: int, packet_type: int, body: str) -> None:
         """Send a raw RCON packet."""
@@ -132,7 +134,7 @@ class RCONClient:
 
         if size < 10:
             raise RCONError(f"Invalid packet size: {size}")
-        if size > 4096 + 10:
+        if size > 65536:
             raise RCONError(f"Packet too large: {size}")
 
         # Read the rest of the packet

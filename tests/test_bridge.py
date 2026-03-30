@@ -92,10 +92,79 @@ class TestBridgeHelpers:
         # Verify args contain coordinates
         assert '"x": 5' in mock.commands_sent[0]
 
-    def test_advance(self):
+    def test_wait(self):
         mock = MockRCON({"advance": '{"ticks_to_run":120,"tick_before":0}'})
         bridge = FactorioBridge(mock)  # type: ignore[arg-type]
 
-        result = bridge.advance(ticks=120)
+        result = bridge.wait(ticks=120)
         assert result["ticks_to_run"] == 120
         assert "120" in mock.commands_sent[0]
+
+
+class TestAutoAdvance:
+    """Test automatic time advancement after action scripts."""
+
+    def test_place_auto_advances(self):
+        mock = MockRCON({
+            "place": '{"placed":true,"entity":{"name":"chest"},"tick":0}',
+            "advance": '{"ticks_to_run":60,"tick_before":0}',
+        })
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.call_script("place", '{"name":"chest"}')
+
+        # Should have sent place + advance commands
+        assert len(mock.commands_sent) == 2
+        assert "place" in mock.commands_sent[0]
+        assert "advance" in mock.commands_sent[1]
+        # Tick should be updated to post-advance value
+        assert result["tick"] == 60
+
+    def test_remove_auto_advances(self):
+        mock = MockRCON({
+            "remove": '{"removed":true,"entity":{"name":"chest"},"tick":0}',
+            "advance": '{"ticks_to_run":10,"tick_before":0}',
+        })
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.call_script("remove", '{"x":0}')
+
+        assert len(mock.commands_sent) == 2
+        assert "remove" in mock.commands_sent[0]
+        assert "advance" in mock.commands_sent[1]
+        assert result["tick"] == 10
+
+    def test_inspect_no_auto_advance(self):
+        mock = MockRCON({"inspect": '{"entities":[],"tick":0}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.call_script("inspect", '10')
+
+        # Should only send inspect, no advance
+        assert len(mock.commands_sent) == 1
+        assert "inspect" in mock.commands_sent[0]
+
+    def test_auto_advance_disabled(self):
+        mock = MockRCON({
+            "place": '{"placed":true,"entity":{"name":"chest"},"tick":0}',
+            "advance": '{"ticks_to_run":60,"tick_before":0}',
+        })
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+        bridge.auto_advance = False
+
+        result = bridge.call_script("place", '{"name":"chest"}')
+
+        # Should only send place, no auto-advance
+        assert len(mock.commands_sent) == 1
+
+    def test_error_no_auto_advance(self):
+        mock = MockRCON({
+            "place": '{"error":"cannot place"}',
+        })
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        with pytest.raises(ScriptError):
+            bridge.call_script("place", '{"name":"chest"}')
+
+        # Should only send place, no advance on error
+        assert len(mock.commands_sent) == 1

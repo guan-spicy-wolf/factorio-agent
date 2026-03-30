@@ -1,0 +1,40 @@
+[Unit]
+Description=Factorio Agent Server
+After=network.target
+
+[Service]
+Type=simple
+User=%USER%
+Group=%GROUP%
+WorkingDirectory=%PROJECT_DIR%
+
+# Environment
+Environment="RCON_PORT=27015"
+Environment="RCON_PASSWORD=changeme"
+
+# Start server
+ExecStart=%FACTORIO_DIR%/bin/x64/factorio \
+    --start-server %PROJECT_DIR%/saves/agent.zip \
+    --rcon-port 27015 \
+    --rcon-password changeme \
+    --server-settings %PROJECT_DIR%/config/server-settings.json
+
+# Graceful shutdown
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=30
+
+# Auto restart
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=append:%PROJECT_DIR%/factorio.log
+StandardError=inherit
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -19,31 +19,59 @@ from agent.tools import ToolRegistry, tool
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-You are a Factorio automation agent. You operate a Factorio headless server \
+You are a Factorio automation agent. You control a character in the game world \
 through pre-approved Lua scripts, and you can search Factorio API documentation \
 to learn how to write new scripts.
 
-## Available tools
+## IMPORTANT: Character Constraints
 
-- **call_script(name, args)**: Execute a Lua script in the Factorio mod via RCON. \
-Scripts available: inspect, place, remove, advance, ping. \
-Args are passed as a string (plain value or JSON).
-- **api_search(query)**: Search Factorio Lua API docs. Returns matching classes, \
-methods, attributes, events, prototypes.
-- **api_detail(name)**: Get full details for a specific API entry (parameters, \
-return values, description, examples).
-- **memory_read()**: Read your persistent memory file.
-- **memory_write(content)**: Overwrite your memory with new content.
-- **memory_append(note)**: Append a note to memory for future reference.
+You operate through a **character** that must be spawned first. The character has:
+- **Inventory**: Items must be in inventory to place entities. Check with `inventory()`.
+- **Reach distance**: You must be within ~10 tiles of target to place/remove. Use `move(x, y)` first.
+- **Position**: Use `inspect()` to see entities around you.
+
+## Workflow Pattern
+
+1. **Spawn**: Call `spawn()` or `spawn({items})` to create your character
+2. **Explore**: Use `inspect()` to see what's around you
+3. **Move**: Get close to target with `move(x, y)`
+4. **Check**: Use `check_item(name, count)` or `inventory()` to verify items
+5. **Act**: `place(name, x, y)` or `remove(x, y)` to interact with world
+6. **Wait**: Use `wait(ticks)` to let production run (60 ticks = 1 second)
+
+## Available Tools
+
+- **spawn(items)**: Create your character. Optional items dict. Do this FIRST.
+- **move(x, y)**: Teleport to position. Must be near target to place/remove.
+- **inventory()**: List all items in your inventory.
+- **check_item(name, count)**: Check if you have enough of an item.
+- **inspect(x, y, radius)**: See entities and resources in an area. \
+If no position given, shows area around your character.
+- **place(name, x, y, direction)**: Place entity from inventory. \
+Requires item in inventory AND being in range. direction: 0=N, 1=E, 2=S, 3=W.
+- **remove(x, y, name?)**: Remove entity, get item back. Must be in range.
+- **wait(ticks)**: Advance game time to see production progress.
+- **api_search(query)**: Search Factorio Lua API documentation.
+- **api_detail(name)**: Get detailed info about an API entry.
+- **memory_read/write/append**: Persistent memory across sessions.
+
+## Example Task Flow
+
+Task: "Place a mining drill on iron ore"
+1. spawn({"electric-mining-drill": 5})  # Create character with items
+2. inspect(radius=30)                    # Find iron ore nearby
+3. move(x=ore_x, y=ore_y - 5)            # Move close to ore
+4. place("electric-mining-drill", ore_x, ore_y, 0)  # Place it
+5. wait(60)                              # Let it run a bit
+6. inspect(radius=5)                     # Verify placement
 
 ## Guidelines
 
-1. Start by reading your memory to recall prior knowledge.
-2. Use inspect to understand the current game state before acting.
-3. Use api_search/api_detail to look up API details when writing or planning scripts.
-4. Use advance to progress game time after placing entities.
-5. Save important observations and learned patterns to memory.
-6. Be methodical: inspect → plan → act → verify → record.
+1. ALWAYS spawn first - without a character, you cannot interact with the world.
+2. Check inventory before placing - you need items to build.
+3. Move before acting - you must be close enough to place/remove.
+4. Be methodical: inspect → plan → move → act → verify.
+5. Save important learnings to memory.
 """
 
 
@@ -92,15 +120,81 @@ def build_tools(
     if bridge is not None:
 
         @tool
-        def call_script(name: str, args: str = "") -> dict:
-            """Execute a Lua script in the Factorio mod via RCON.
+        def spawn(items: dict | None = None) -> dict:
+            """Spawn the agent character with optional starting items.
 
-            Available scripts: ping, inspect, advance, place, remove.
-            Args are passed as a string — either a plain value or JSON.
+            Args:
+                items: Optional dict of {item_name: count} to give to agent.
+                       Example: {"iron-plate": 100, "electric-mining-drill": 5}
+
+            MUST be called first before other world interactions.
             """
-            return bridge.call_script(name, args)
+            return bridge.spawn(items)
 
-        registry.register(call_script)
+        @tool
+        def move(x: float, y: float) -> dict:
+            """Move agent to target position.
+
+            Must be within ~10 tiles of target to place/remove entities.
+            """
+            return bridge.move(x, y)
+
+        @tool
+        def inventory() -> dict:
+            """Query agent's inventory. Returns list of items with counts."""
+            return bridge.inventory()
+
+        @tool
+        def check_item(name: str, count: int = 1) -> dict:
+            """Check if agent has enough of an item in inventory.
+
+            Returns has_enough, have, need, and missing count.
+            """
+            return bridge.check_item(name, count)
+
+        @tool
+        def inspect(x: float = 0, y: float = 0, radius: float = 10) -> dict:
+            """Query entities and resources in an area.
+
+            If agent is spawned, defaults to area around agent position.
+            Returns entities, resources, and their positions.
+            """
+            return bridge.inspect(x, y, radius)
+
+        @tool
+        def place(name: str, x: float, y: float, direction: int = 0) -> dict:
+            """Place an entity at target position.
+
+            Args:
+                name: Entity name (e.g. "electric-mining-drill", "iron-chest").
+                x, y: Target position.
+                direction: 0=north, 1=east, 2=south, 3=west.
+
+            REQUIRES: Item in inventory AND agent within range (~10 tiles).
+            """
+            return bridge.place(name, x, y, direction)
+
+        @tool
+        def remove(x: float, y: float, name: str = "", radius: float = 1) -> dict:
+            """Remove an entity at target position.
+
+            REQUIRES: Agent within range (~10 tiles).
+            Item is returned to inventory.
+            """
+            return bridge.remove(x, y, name if name else None, radius)
+
+        @tool
+        def wait(ticks: int = 60) -> dict:
+            """Wait (advance time) without performing any action.
+
+            Use to observe production progress, belt movement, etc.
+            60 ticks = 1 second at normal game speed.
+            """
+            return bridge.wait(ticks)
+
+        # Register all tools
+        for fn in [spawn, move, inventory, check_item, inspect, place, remove, wait]:
+            registry.register(fn)
 
     return registry
 

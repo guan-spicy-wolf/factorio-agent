@@ -113,33 +113,34 @@ task_result:
 
 ### 第一步：Factorio 基础连通
 
-- [ ] Factorio headless server 安装和启动脚本
-- [ ] 最小 mod 骨架：control.lua 注册 `/agent` RCON 命令
-- [ ] Python RCON 客户端：连接、发送命令、解析返回
+- [x] Factorio headless server 安装和启动脚本 (`bin/install-factorio.sh`, `bin/start-server.sh`, `bin/stop-server.sh`)
+- [x] 最小 mod 骨架：control.lua 注册 `/agent` RCON 命令
+- [x] Python RCON 客户端：连接、发送命令、解析返回 (`agent/rcon.py`)
 - [ ] 验证：通过 Python → RCON → mod → Lua 链路执行一个查询并拿到结果
 
 ### 第二步：种子脚本
 
-- [ ] `scripts/inspect.lua` — 查询指定区域的实体和资源
-- [ ] `scripts/place.lua` — 在指定位置放置实体
-- [ ] `scripts/remove.lua` — 移除实体
-- [ ] `scripts/advance.lua` — 推进游戏时间
-- [ ] `scripts/lib/serialize.lua` — 游戏对象到 JSON 的序列化
+- [x] `scripts/inspect.lua` — 查询指定区域的实体和资源
+- [x] `scripts/place.lua` — 在指定位置放置实体（支持 auto_direction 自动朝向资源）
+- [x] `scripts/remove.lua` — 移除实体
+- [x] `scripts/advance.lua` — 推进游戏时间
+- [x] `scripts/ping.lua` — 验证连通性
+- [x] `scripts/lib/serialize.lua` — 游戏对象到 JSON 的序列化
 - [ ] 验证：通过 call_script 放置一个采矿机并查询确认
 
 ### 第三步：API 文档索引
 
-- [ ] 下载 Factorio Lua API 文档
-- [ ] 解析为结构化 JSON（类 → 属性/方法 → 签名/描述）
-- [ ] 实现关键词搜索和详情查询
-- [ ] 验证：搜索 "fluid" 能返回相关 API
+- [x] 下载 Factorio Lua API 文档 (`files/prototype-api.json`, `files/runtime-api.json`)
+- [x] 解析为结构化 JSON（类 → 属性/方法 → 签名/描述） (`agent/api_docs.py`)
+- [x] 实现关键词搜索和详情查询
+- [x] 验证：搜索 "fluid" 能返回相关 API
 
 ### 第四步：Agent 主循环
 
-- [ ] 最朴素的 agent loop：system prompt → LLM → tool call → 执行 → 循环
-- [ ] 工具注册：call_script、api_search、api_detail、git 操作
-- [ ] 任务输入格式：目标描述 + 成功指标
-- [ ] 指标收集：操作次数、tick 数、token 消耗
+- [x] 最朴素的 agent loop：system prompt → LLM → tool call → 执行 → 循环 (`agent/loop.py`)
+- [x] 工具注册：call_script、api_search、api_detail、memory 操作 (`agent/run.py`)
+- [x] 任务输入格式：目标描述 + 成功指标
+- [x] 指标收集：操作次数、tick 数、token 消耗 (Budget dataclass)
 - [ ] 验证：agent 自主完成"放置一个采矿机对准铁矿"
 
 ### 第五步：演化闭环
