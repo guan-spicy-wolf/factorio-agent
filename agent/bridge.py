@@ -196,3 +196,26 @@ class FactorioBridge:
         return self.call_script("examples.setup_mining", json.dumps({
             "ore_x": ore_x, "ore_y": ore_y
         }))
+
+    # ==================== Script Management ====================
+
+    def reload_script(self, name: str) -> dict:
+        """Reload a specific script to pick up changes.
+
+        Args:
+            name: Script name (e.g. "atomic.my_action")
+
+        Returns:
+            {"ok": true, "reloaded": name}
+        """
+        return self._raw_call("reload", name)
+
+    def reload_all(self) -> dict:
+        """Reload all scripts.
+
+        Clears the script cache, next call will load fresh.
+
+        Returns:
+            {"ok": true, "reloaded": "all"}
+        """
+        return self._raw_call("reload_all")

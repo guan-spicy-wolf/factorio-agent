@@ -168,3 +168,30 @@ class TestAutoAdvance:
 
         # Should only send place, no advance on error
         assert len(mock.commands_sent) == 1
+
+
+class TestReloadScript:
+    """Test reload_script and reload_all methods."""
+
+    def test_reload_script_calls_rcon(self):
+        """reload_script sends correct RCON command."""
+        mock = MockRCON({"reload": '{"ok": true, "reloaded": "atomic.test"}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.reload_script("atomic.test")
+
+        mock_rcon_cmd = mock.commands_sent[0]
+        assert "reload" in mock_rcon_cmd
+        assert "atomic.test" in mock_rcon_cmd
+        assert result["ok"] is True
+        assert result["reloaded"] == "atomic.test"
+
+    def test_reload_all_calls_rcon(self):
+        """reload_all sends reload_all command."""
+        mock = MockRCON({"reload_all": '{"ok": true, "reloaded": "all"}'})
+        bridge = FactorioBridge(mock)  # type: ignore[arg-type]
+
+        result = bridge.reload_all()
+
+        assert "reload_all" in mock.commands_sent[0]
+        assert result["reloaded"] == "all"
