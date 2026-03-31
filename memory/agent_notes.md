@@ -1,5 +1,38 @@
 # Agent Memory
 
+## 2026-03-31: 脚本热重载实现
+
+### 热重载机制
+已实现脚本热重载，Agent 写完脚本后立即可用，无需重启服务器。
+
+| 工具 | 功能 |
+|------|------|
+| `script_list()` | 列出所有可用脚本 |
+| `script_read(name)` | 读取脚本源码 |
+| `script_write(name, code)` | 写入新脚本，立即激活 |
+| `script_template(category, name)` | 获取脚本模板 |
+| `script_reload(name?)` | 强制重载脚本 |
+
+### 工作原理
+```
+1. script_write() 调用 bridge.register_script()
+2. register_script 通过 RCON 发送 /agent register name <<<code>>>
+3. mod/control.lua 将代码存入 dynamic_scripts 表
+4. 调用脚本时，load() 加载代码字符串，注入 serialize 函数
+5. 新脚本立即可调用，无需重启
+```
+
+### 脚本代码要求
+- 不能使用 require（Factorio 运行时禁止）
+- 使用 `serialize` 函数返回结果（已自动注入）
+- 可访问 game, storage, defines 等全局变量
+
+### 审核机制
+- ReviewManager 当前自动批准所有脚本
+- 后续可集成 GitHub PR + LLM 审核
+
+---
+
 ## 2026-03-30: 演进闭环实现
 
 ### 脚本管理工具
@@ -17,14 +50,9 @@
 1. script_list()        → 了解当前能力
 2. script_read("atomic.teleport") → 学习脚本模式
 3. script_template()    → 获取模板
-4. script_write()       → 创建新能力
-5. 重启服务器            → 新脚本可用
+4. script_write()       → 创建新能力，立即激活（热重载）
+5. 调用新脚本           → 立即可用
 ```
-
-### 限制
-- Factorio 的 require 是静态的，新脚本需要服务器重启
-- 暂无自动审核机制，依赖人工 review
-- 暂无 git commit/PR 自动化
 
 ---
 
