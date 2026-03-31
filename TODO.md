@@ -116,7 +116,7 @@ task_result:
 - [x] Factorio headless server 安装和启动脚本 (`bin/install-factorio.sh`, `bin/start-server.sh`, `bin/stop-server.sh`)
 - [x] 最小 mod 骨架：control.lua 注册 `/agent` RCON 命令
 - [x] Python RCON 客户端：连接、发送命令、解析返回 (`agent/rcon.py`)
-- [ ] 验证：通过 Python → RCON → mod → Lua 链路执行一个查询并拿到结果
+- [x] 验证：通过 Python → RCON → mod → Lua 链路执行一个查询并拿到结果
 
 ### 第二步：种子脚本
 
@@ -125,7 +125,7 @@ task_result:
 - [x] `scripts/remove.lua` — 移除实体
 - [x] `scripts/ping.lua` — 验证连通性
 - [x] `scripts/lib/serialize.lua` — 游戏对象到 JSON 的序列化
-- [ ] 验证：通过 call_script 放置一个采矿机并查询确认
+- [x] 验证：通过 call_script 放置一个采矿机并查询确认
 
 ### 第三步：API 文档索引
 
@@ -140,29 +140,31 @@ task_result:
 - [x] 工具注册：call_script、api_search、api_detail、memory 操作 (`agent/run.py`)
 - [x] 任务输入格式：目标描述 + 成功指标
 - [x] 指标收集：操作次数、tick 数、token 消耗 (Budget dataclass)
-- [ ] 验证：agent 自主完成"放置一个采矿机对准铁矿"
+- [x] 验证：agent 自主完成"放置一个采矿机对准铁矿"
 
 ### 第五步：演化闭环
 
 - [x] Agent 能读取 scripts 了解现有工具 (`script_list`, `script_read`)
 - [x] Agent 能写新脚本 (`script_write`)
 - [x] 脚本模板系统 (`script_template`)
-- [x] 验证：当前部署下新脚本写入后仍需重启或重载 mod 才能生效
+- [x] **脚本热重载：新脚本立即生效，无需重启服务器**
+- [x] 审核流程接口预留 (`ReviewManager`)
 - [ ] 人工审核 PR 机制
 - [ ] 第二次运行同一任务，agent 使用新工具
 - [ ] 对比两次运行的指标
 
 ### 待确认技术问题
 
-- [x] Factorio mod 热更新：当前部署下新增/修改脚本都需要重启或重载 mod
+- [x] ~~Factorio mod 热更新：当前部署下新增/修改脚本都需要重启或重载 mod~~ → **已解决：通过动态代码注册实现热重载**
 - [ ] RCON 返回值大小限制：大范围 inspect 的结果是否会被截断
-- [ ] mod 内 `require` 的路径解析规则确认
+- [x] mod 内 `require` 的路径解析规则确认 → **运行时禁止 require，使用代码注入替代**
 
 ### 已知问题与改进方向
 
 #### 地图感知
 - [ ] 当前 inspect 是局部搜索，缺乏完整地图意识
-- [ ] 改进方向：实现地图扫描脚本，记录资源分布；或持久化已探索区域
+- [x] 改进方向：实现地图扫描脚本 → **已实现 `atomic.find_ores`**
+- [ ] 持久化已探索区域
 
 #### 移动机制
 - [ ] 当前 teleport 是瞬移，可能嵌入物品内部

@@ -183,21 +183,71 @@ uv run pytest tests/ -v
 uv run python scripts/e2e_test.py
 ```
 
+## 脚本热重载
+
+Agent 写完脚本后**立即可用**，无需重启 Factorio 服务器。
+
+### 工作原理
+
+```
+Python: script_write(name, code)
+   → bridge.register_script(name, code)
+   → RCON: /agent register name <<<code>>>
+   → mod/control.lua: dynamic_scripts[name] = code
+   → 调用时: load(code) + 注入 serialize
+   → 新脚本立即可调用！
+```
+
+### 脚本代码要求
+
+- **不能使用 `require`**（Factorio 运行时禁止）
+- 使用 `serialize` 函数返回结果（已自动注入）
+- 可访问 `game`, `storage`, `defines` 等全局变量
+
+### 示例
+
+```python
+# 写一个搜索矿物的新脚本
+script_write("atomic.find_ores", '''
+return function(args_str)
+    local radius = tonumber(args_str) or 30
+    local surface = game.surfaces[1]
+    local resources = surface.find_entities_filtered{
+        area = {{-radius, -radius}, {radius, radius}},
+        type = "resource"
+    }
+    -- ... 统计资源
+    return serialize({ok = true, resources = result})
+end
+''')
+
+# 立即可调用！
+bridge.call_script("atomic.find_ores", "50")
+```
+
+### 审核机制
+
+- 当前：自动批准所有脚本（`ReviewManager` 占位实现）
+- 后续：集成 GitHub PR + LLM 审核
+
 ## 演化愿景
 
 Agent 的目标是演化自己的工具集：
 
-1. **MVP**: 使用种子脚本完成任务
-2. **演化**: 通过 API 文档学习，编写新脚本
-3. **提交**: 新脚本通过 PR 审核
-4. **复用**: 审核通过后，新脚本加入工具库
+1. **MVP**: 使用种子脚本完成任务 ✅
+2. **热重载**: 新脚本立即生效 ✅
+3. **演化**: 通过 API 文档学习，编写新脚本 ✅
+4. **审核**: 审核流程接口预留 ✅
+5. **复用**: 下次任务直接使用新脚本
 
 ```
-任务: "建造自动化采矿系统"
+任务: "搜索附近的铁矿"
       ↓
-Agent 查阅 API → 编写 scripts/auto_mining.lua → 提交 PR
+Agent 编写 atomic.find_ores.lua
       ↓
-下次任务直接使用新脚本，效率更高
+立即可用！无需重启
+      ↓
+下次任务直接调用 find_ores
 ```
 
 ## License
