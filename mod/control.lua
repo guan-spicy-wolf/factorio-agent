@@ -13,7 +13,12 @@ local serialize = require("scripts.lib.serialize")
 local scripts = {}
 
 -- Script cache for dynamic loading (hot-reload support)
+-- Stores loaded script functions by name
 local script_cache = {}
+
+-- Dynamic script registry: stores code strings for runtime loading
+-- This allows hot-reload by sending code via RCON instead of using loadfile
+local dynamic_scripts = {}
 
 -- Atomic operations (raw API)
 for _, name in ipairs({
@@ -57,36 +62,42 @@ script.on_init(function()
 end)
 
 -- Helper: load script with caching (for hot-reload support)
+-- Note: Factorio sandbox blocks loadfile/require at runtime.
+-- Instead, we use load() on code strings stored in dynamic_scripts.
+-- We wrap the loaded code to provide serialize in the closure.
+local serialize_fn = serialize  -- Capture at startup
+
 local function load_script(name)
     -- Check cache first
     if script_cache[name] then
         return script_cache[name]
     end
 
-    -- Parse name: atomic.teleport -> scripts/atomic/teleport.lua
-    local category, script_name = name:match("^(%w+)%.(%w+)$")
-    if not category or not script_name then
-        return nil, "invalid script name format: " .. name
+    -- Check dynamic scripts (code strings registered via RCON)
+    if dynamic_scripts[name] then
+        -- Wrap code with serialize injection
+        -- The code expects serialize to be available, so we inject it
+        local wrapped_code = "local serialize = ...; " .. dynamic_scripts[name]
+        local ok, fn = pcall(load, wrapped_code)
+        if ok and fn then
+            -- Call with serialize as argument, returns the actual script function
+            local script_fn = fn(serialize_fn)
+            if script_fn then
+                script_cache[name] = script_fn
+                return script_fn
+            end
+        end
     end
 
-    -- Try require first (for existing modules)
-    local path = "scripts." .. category .. "." .. script_name
-    local ok, mod = pcall(require, path)
-    if ok and mod then
-        script_cache[name] = mod
-        return mod
-    end
+    -- Fall back to pre-loaded scripts
+    return nil
+end
 
-    -- Try loadfile for newly written scripts
-    local file_path = "scripts/" .. category .. "/" .. script_name .. ".lua"
-    ok, mod = pcall(loadfile, file_path)
-    if ok and mod then
-        local result = mod()
-        script_cache[name] = result
-        return result
-    end
-
-    return nil, "script not found: " .. name
+-- Helper: register a dynamic script (code string)
+local function register_script(name, code)
+    dynamic_scripts[name] = code
+    script_cache[name] = nil  -- Clear cache to force reload
+    return {ok = true, registered = name}
 end
 
 -- Helper: clear script cache for reload
@@ -94,18 +105,10 @@ local function reload_script(name)
     if name then
         -- Clear specific script
         script_cache[name] = nil
-        -- Also clear package.loaded for require
-        local path = "scripts." .. name:gsub("%.", ".")
-        package.loaded[path] = nil
         return {ok = true, reloaded = name}
     else
         -- Clear all
         script_cache = {}
-        for k, _ in pairs(package.loaded) do
-            if k:match("^scripts%.") then
-                package.loaded[k] = nil
-            end
-        end
         return {ok = true, reloaded = "all"}
     end
 end
@@ -162,6 +165,22 @@ commands.add_command("agent", "Execute an agent script", function(command)
         local result = reload_script(nil)
         rcon.print(serialize(result))
         return
+    end
+
+    -- Handle register command (for hot-reload)
+    -- Format: /agent register atomic.my_script <<<code>>>
+    -- The code is wrapped in <<< >>> markers for simple parsing
+    if script_name == "register" then
+        -- Parse: register name <<<code>>>
+        local target, code_str = args_str:match("^%s*(%S+)%s*<<<(.*)>>>$")
+        if target and code_str then
+            local result = register_script(target, code_str)
+            rcon.print(serialize(result))
+            return
+        else
+            rcon.print(serialize({error = "register format: name <<<code>>>"}))
+            return
+        end
     end
 
     -- Try cache first, then fall back to pre-loaded scripts

@@ -199,6 +199,23 @@ class FactorioBridge:
 
     # ==================== Script Management ====================
 
+    def register_script(self, name: str, code: str) -> dict:
+        """Register a script dynamically by sending code string.
+
+        This is the real hot-reload mechanism: instead of trying to load
+        files at runtime (blocked by Factorio sandbox), we send the code
+        string via RCON and use load() in Lua.
+
+        Args:
+            name: Script name (e.g. "atomic.my_action")
+            code: Lua source code string
+
+        Returns:
+            {"ok": true, "registered": name}
+        """
+        # Use <<< >>> markers for simple parsing in Lua
+        return self._raw_call("register", f'{name} <<<{code}>>>')
+
     def reload_script(self, name: str) -> dict:
         """Reload a specific script to pick up changes.
 

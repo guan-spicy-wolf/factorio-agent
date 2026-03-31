@@ -177,13 +177,13 @@ def build_tools(
                 "pr_url": review_result.get("pr_url"),
             }
 
-        # Write with reload callback
-        def reload_callback(script_name: str) -> dict:
+        # Write with register callback (hot-reload via code string)
+        def register_callback(script_name: str) -> dict:
             if bridge is None:
                 return {"ok": False, "error": "no server connection"}
-            return bridge.reload_script(script_name)
+            return bridge.register_script(script_name, code)
 
-        return write_script(name, code, description, reload_callback=reload_callback)
+        return write_script(name, code, description, reload_callback=register_callback)
 
     @tool
     def script_template(category: str, name: str) -> str:
