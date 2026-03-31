@@ -53,7 +53,7 @@ scripts["inspect"] = scripts["actions.inspect"]
 
 -- Utility scripts
 scripts["ping"] = require("scripts.ping")
-scripts["advance"] = require("scripts.advance")
+-- scripts["advance"] = require("scripts.advance")  -- removed: tick manipulation
 
 -- Time control: pause ticks on init
 script.on_init(function()
