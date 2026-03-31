@@ -15,6 +15,7 @@ from agent.api_docs import ApiIndex
 from agent.loop import run, DEFAULT_MODEL, DEFAULT_MAX_ITERATIONS
 from agent.memory import init_memory, memory_read, memory_append, memory_write
 from agent.tools import ToolRegistry, tool
+from agent.review import get_review_manager
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,17 @@ Task: "Place a mining drill on iron ore"
 3. Move before acting - you must be close enough to place/remove.
 4. Be methodical: inspect → plan → move → act → verify.
 5. Save important learnings to memory.
+
+## Script Evolution (Advanced)
+
+You can create new scripts to extend your capabilities:
+- **script_list()**: See all available scripts (atomic, actions, examples).
+- **script_read(name)**: Read existing script source code to learn patterns.
+- **script_write(name, code)**: Write a new script - immediately usable!
+- **script_template(category, name)**: Get a template for a new script.
+- **script_reload(name?)**: Force reload script(s) if needed.
+
+Scripts are auto-approved and hot-reloaded, so new scripts work immediately.
 """
 
 
@@ -81,6 +93,7 @@ def build_tools(
 ) -> ToolRegistry:
     """Build the tool registry with all available tools."""
     registry = ToolRegistry()
+    review_manager = get_review_manager()
 
     # API documentation tools
     if api_index is None:
@@ -115,6 +128,101 @@ def build_tools(
     registry.register(memory_read)
     registry.register(memory_append)
     registry.register(memory_write)
+
+    # Script management tools
+    from agent.scripts import list_scripts, read_script, write_script, get_script_template
+
+    @tool
+    def script_list() -> dict:
+        """List all available Lua scripts.
+
+        Returns dict with categories: atomic, actions, examples, lib.
+        Use script_read to see source code, script_template for starters.
+        """
+        return list_scripts()
+
+    @tool
+    def script_read(name: str) -> dict:
+        """Read a Lua script's source code.
+
+        Args:
+            name: Script name like 'atomic.teleport' or 'actions.spawn'
+
+        Returns code, path, lines. Use to learn existing patterns.
+        """
+        return read_script(name)
+
+    @tool
+    def script_write(name: str, code: str, description: str = "") -> dict:
+        """Write a new Lua script or update an existing one.
+
+        The script will be saved and immediately activated (no restart needed).
+        Use script_read to learn existing patterns and script_template for starters.
+
+        Args:
+            name: Script name in format 'category.name' (e.g. 'atomic.my_action', 'actions.my_workflow')
+            code: Lua source code
+            description: Optional description for the script
+
+        Returns:
+            {"created": true, "activation": "immediate"} if successful
+        """
+        # Submit for review (current: auto-approve)
+        review_result = review_manager.submit(name, code)
+
+        if review_result["status"] != "approved":
+            return {
+                "status": "pending_review",
+                "name": name,
+                "pr_url": review_result.get("pr_url"),
+            }
+
+        # Write with reload callback
+        def reload_callback(script_name: str) -> dict:
+            if bridge is None:
+                return {"ok": False, "error": "no server connection"}
+            return bridge.reload_script(script_name)
+
+        return write_script(name, code, description, reload_callback=reload_callback)
+
+    @tool
+    def script_template(category: str, name: str) -> str:
+        """Get a template for a new script.
+
+        Args:
+            category: 'atomic', 'actions', 'examples', or 'lib'
+            name: Script name (without category prefix)
+
+        Returns template Lua code with placeholders.
+        """
+        return get_script_template(category, name)
+
+    @tool
+    def script_reload(name: str = "") -> dict:
+        """Reload a script or all scripts.
+
+        Usually called automatically after script_write.
+        Use this if you suspect the script cache is stale.
+
+        Args:
+            name: Script name to reload, or empty to reload all scripts.
+
+        Returns:
+            {"ok": true, "reloaded": name_or_all}
+        """
+        if bridge is None:
+            return {"error": "no server connection"}
+
+        if name:
+            return bridge.reload_script(name)
+        else:
+            return bridge.reload_all()
+
+    registry.register(script_list)
+    registry.register(script_read)
+    registry.register(script_write)
+    registry.register(script_template)
+    registry.register(script_reload)
 
     # Factorio bridge tools (only if server is available)
     if bridge is not None:
