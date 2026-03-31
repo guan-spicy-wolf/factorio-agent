@@ -9,8 +9,11 @@
 
 local serialize = require("scripts.lib.serialize")
 
--- Pre-load all scripts
+-- Pre-load all scripts (static, loaded at startup)
 local scripts = {}
+
+-- Script cache for dynamic loading (hot-reload support)
+local script_cache = {}
 
 -- Atomic operations (raw API)
 for _, name in ipairs({
@@ -53,6 +56,60 @@ script.on_init(function()
     storage.agent = nil
 end)
 
+-- Helper: load script with caching (for hot-reload support)
+local function load_script(name)
+    -- Check cache first
+    if script_cache[name] then
+        return script_cache[name]
+    end
+
+    -- Parse name: atomic.teleport -> scripts/atomic/teleport.lua
+    local category, script_name = name:match("^(%w+)%.(%w+)$")
+    if not category or not script_name then
+        return nil, "invalid script name format: " .. name
+    end
+
+    -- Try require first (for existing modules)
+    local path = "scripts." .. category .. "." .. script_name
+    local ok, mod = pcall(require, path)
+    if ok and mod then
+        script_cache[name] = mod
+        return mod
+    end
+
+    -- Try loadfile for newly written scripts
+    local file_path = "scripts/" .. category .. "/" .. script_name .. ".lua"
+    ok, mod = pcall(loadfile, file_path)
+    if ok and mod then
+        local result = mod()
+        script_cache[name] = result
+        return result
+    end
+
+    return nil, "script not found: " .. name
+end
+
+-- Helper: clear script cache for reload
+local function reload_script(name)
+    if name then
+        -- Clear specific script
+        script_cache[name] = nil
+        -- Also clear package.loaded for require
+        local path = "scripts." .. name:gsub("%.", ".")
+        package.loaded[path] = nil
+        return {ok = true, reloaded = name}
+    else
+        -- Clear all
+        script_cache = {}
+        for k, _ in pairs(package.loaded) do
+            if k:match("^scripts%.") then
+                package.loaded[k] = nil
+            end
+        end
+        return {ok = true, reloaded = "all"}
+    end
+end
+
 -- Helper: list available scripts
 local function list_scripts()
     local list = {
@@ -93,7 +150,26 @@ commands.add_command("agent", "Execute an agent script", function(command)
         return
     end
 
-    local script_fn = scripts[script_name]
+    -- Handle reload commands
+    if script_name == "reload" then
+        local target = args_str:match("^%s*(%S+)")
+        local result = reload_script(target)
+        rcon.print(serialize(result))
+        return
+    end
+
+    if script_name == "reload_all" then
+        local result = reload_script(nil)
+        rcon.print(serialize(result))
+        return
+    end
+
+    -- Try cache first, then fall back to pre-loaded scripts
+    local script_fn = load_script(script_name)
+    if not script_fn then
+        script_fn = scripts[script_name]
+    end
+
     if not script_fn then
         -- Suggest similar scripts
         local suggestions = {}
