@@ -5,6 +5,7 @@ description = "AI agent that autonomously completes tasks in Factorio and evolve
 requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.86.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]

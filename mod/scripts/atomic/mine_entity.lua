@@ -55,14 +55,17 @@ return function(args_str)
         return serialize({error = "no entity to mine at position"})
     end
 
+    local target_name = target.name
+    local target_position = {x = target.position.x, y = target.position.y}
+
     -- Use character's mine_entity (real mining, returns items to inventory)
     local mined = e.mine_entity(target, true)  -- force = true
 
     if mined then
         return serialize({
             mined = true,
-            entity = target.name,
-            position = {x = target.position.x, y = target.position.y},
+            entity = target_name,
+            position = target_position,
         })
     else
         return serialize({

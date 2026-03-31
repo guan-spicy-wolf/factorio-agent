@@ -8,15 +8,36 @@ local serialize = require("scripts.lib.serialize")
 local agent = require("scripts.lib.agent")
 
 return function(args_str)
+    local requested_items = {}
+    if args_str and args_str ~= "" then
+        local items_section = args_str:match('"items"%s*:%s*%{([^%}]*)%}')
+        if items_section then
+            for name, count in items_section:gmatch('"([^"]+)"%s*:%s*([%d]+)') do
+                requested_items[name] = tonumber(count)
+            end
+        end
+    end
+
     -- Check if already spawned
     local existing = agent.get()
     if existing then
         local pos = existing.position
         local inv = agent.get_inventory()
         local items = {}
+        local granted_items = {}
         if inv then
-            for _, item in pairs(inv.get_contents()) do
-                items[#items + 1] = {name = item.name, count = item.count}
+            for name, count in pairs(requested_items) do
+                local missing = count - inv.get_item_count(name)
+                if missing > 0 then
+                    local inserted = existing.insert{name = name, count = missing}
+                    if inserted > 0 then
+                        granted_items[name] = inserted
+                    end
+                end
+            end
+
+            for name, count in pairs(inv.get_contents()) do
+                items[#items + 1] = {name = name, count = count}
             end
         end
         return serialize({
@@ -24,6 +45,7 @@ return function(args_str)
             already_exists = true,
             position = {x = pos.x, y = pos.y},
             items = items,
+            granted_items = granted_items,
         })
     end
 
@@ -54,17 +76,11 @@ return function(args_str)
         spawned_tick = game.tick,
     }
 
-    -- Parse and insert items
     local items_inserted = {}
-    if args_str and args_str ~= "" then
-        local items_section = args_str:match('"items"%s*:%s*%{([^%}]*)%}')
-        if items_section then
-            for name, count in items_section:gmatch('"([^"]+)"%s*:%s*([%d]+)') do
-                local inserted = character.insert{name = name, count = tonumber(count)}
-                if inserted > 0 then
-                    items_inserted[name] = inserted
-                end
-            end
+    for name, count in pairs(requested_items) do
+        local inserted = character.insert{name = name, count = count}
+        if inserted > 0 then
+            items_inserted[name] = inserted
         end
     end
 

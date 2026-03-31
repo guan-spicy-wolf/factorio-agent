@@ -2,18 +2,42 @@
 
 Usage:
     uv run python -m agent.run "在空地图上放置一个采矿机对准铁矿"
+    uv run python -m agent.run --provider openai --base-url http://localhost:8000/v1 "测试任务"
     uv run python -m agent.run --no-server "测试 API 文档搜索功能"
 """
 
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
+# Load .env file if exists
+def load_env(env_path: str = "./.env") -> None:
+    """Load environment variables from .env file."""
+    env_file = Path(env_path)
+    if not env_file.exists():
+        return
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                # Don't override existing env vars
+                if key not in os.environ:
+                    os.environ[key] = value
+
+load_env()
+
 from agent.api_docs import ApiIndex
-from agent.loop import run, DEFAULT_MODEL, DEFAULT_MAX_ITERATIONS
+from agent.loop import run, DEFAULT_PROVIDER, DEFAULT_MODEL_ANTHROPIC, DEFAULT_MODEL_OPENAI, DEFAULT_MAX_ITERATIONS
 from agent.memory import init_memory, memory_read, memory_append, memory_write
+from agent.scripts import list_scripts, read_script, write_script, get_script_template
 from agent.tools import ToolRegistry, tool
 from agent.review import get_review_manager
 
@@ -30,6 +54,7 @@ You operate through a **character** that must be spawned first. The character ha
 - **Inventory**: Items must be in inventory to place entities. Check with `inventory()`.
 - **Reach distance**: You must be within ~10 tiles of target to place/remove. Use `move(x, y)` first.
 - **Position**: Use `inspect()` to see entities around you.
+- **Item acquisition**: Use `give_item(name, count)` to add items to inventory.
 
 ## Workflow Pattern
 
@@ -38,7 +63,6 @@ You operate through a **character** that must be spawned first. The character ha
 3. **Move**: Get close to target with `move(x, y)`
 4. **Check**: Use `check_item(name, count)` or `inventory()` to verify items
 5. **Act**: `place(name, x, y)` or `remove(x, y)` to interact with world
-6. **Wait**: Use `wait(ticks)` to let production run (60 ticks = 1 second)
 
 ## Available Tools
 
@@ -46,15 +70,35 @@ You operate through a **character** that must be spawned first. The character ha
 - **move(x, y)**: Teleport to position. Must be near target to place/remove.
 - **inventory()**: List all items in your inventory.
 - **check_item(name, count)**: Check if you have enough of an item.
+- **give_item(name, count)**: Add items to inventory (cheat mode).
 - **inspect(x, y, radius)**: See entities and resources in an area. \
 If no position given, shows area around your character.
 - **place(name, x, y, direction)**: Place entity from inventory. \
 Requires item in inventory AND being in range. direction: 0=N, 1=E, 2=S, 3=W.
 - **remove(x, y, name?)**: Remove entity, get item back. Must be in range.
-- **wait(ticks)**: Advance game time to see production progress.
 - **api_search(query)**: Search Factorio Lua API documentation.
 - **api_detail(name)**: Get detailed info about an API entry.
+- **script_list()**: List all available Lua scripts.
+- **script_read(name)**: Read a script's source code.
+- **script_write(name, code)**: Write a new script (extends your capabilities!).
+- **script_template(category, name)**: Get a template for new script.
 - **memory_read/write/append**: Persistent memory across sessions.
+
+## Script Evolution
+
+You can **extend your own capabilities** by writing new Lua scripts:
+
+1. Use `script_list()` to see existing scripts
+2. Use `script_read("atomic.teleport")` to learn the pattern
+3. Use `script_template("atomic", "my_action")` for a starter template
+4. Write your script with `script_write("atomic.my_action", code)`
+5. Writing a script only updates the repo copy. The running Factorio mod still
+   needs a save reload or server restart before the new script becomes callable.
+
+Script categories:
+- **atomic/**: Single API call (teleport, inventory_get, etc.)
+- **actions/**: Multi-step workflows (spawn, place, etc.)
+- **examples/**: Demonstration scripts for learning
 
 ## Example Task Flow
 
@@ -63,13 +107,12 @@ Task: "Place a mining drill on iron ore"
 2. inspect(radius=30)                    # Find iron ore nearby
 3. move(x=ore_x, y=ore_y - 5)            # Move close to ore
 4. place("electric-mining-drill", ore_x, ore_y, 0)  # Place it
-5. wait(60)                              # Let it run a bit
-6. inspect(radius=5)                     # Verify placement
+5. inspect(radius=5)                     # Verify placement
 
 ## Guidelines
 
 1. ALWAYS spawn first - without a character, you cannot interact with the world.
-2. Check inventory before placing - you need items to build.
+2. Check inventory before placing - use `give_item()` if missing items.
 3. Move before acting - you must be close enough to place/remove.
 4. Be methodical: inspect → plan → move → act → verify.
 5. Save important learnings to memory.
@@ -121,8 +164,64 @@ def build_tools(
             return {"error": f"not found: {name}"}
         return result
 
+    # Script management tools (for evolution)
+    @tool
+    def script_list() -> dict:
+        """List all available Lua scripts in the mod.
+
+        Returns scripts organized by category: atomic, actions, examples.
+        Use this to discover what capabilities the agent has.
+        """
+        return list_scripts()
+
+    @tool
+    def script_read(name: str) -> dict:
+        """Read a Lua script's source code.
+
+        Args:
+            name: Script name in format 'category.name' (e.g. 'atomic.teleport', 'actions.spawn')
+
+        Returns the script's code, path, and line count.
+        Use this to learn how existing scripts work.
+        """
+        return read_script(name)
+
+    @tool
+    def script_write(name: str, code: str, description: str = "") -> dict:
+        """Write a new Lua script or update an existing one.
+
+        Args:
+            name: Script name in format 'category.name' (e.g. 'atomic.my_action', 'actions.my_workflow')
+            code: Lua source code
+            description: Optional description for the script
+
+        The script will be saved to mod/scripts/{category}/{name}.lua.
+        The running Factorio mod still needs a save reload or restart before
+        the new or updated script becomes callable.
+
+        IMPORTANT: Scripts must return a function that takes args_str and returns JSON.
+        Use script_template() to get a starting template.
+        """
+        return write_script(name, code, description)
+
+    @tool
+    def script_template(category: str, name: str) -> str:
+        """Get a template for creating a new Lua script.
+
+        Args:
+            category: One of 'atomic', 'actions', 'examples', 'lib'
+            name: Script name (without .lua extension)
+
+        Returns a starter template with proper structure.
+        """
+        return get_script_template(category, name)
+
     registry.register(api_search)
     registry.register(api_detail)
+    registry.register(script_list)
+    registry.register(script_read)
+    registry.register(script_write)
+    registry.register(script_template)
 
     # Memory tools
     registry.register(memory_read)
@@ -283,25 +382,28 @@ def build_tools(
             return bridge.place(name, x, y, direction)
 
         @tool
-        def remove(x: float, y: float, name: str = "", radius: float = 1) -> dict:
+        def remove(x: float, y: float, name: str = "") -> dict:
             """Remove an entity at target position.
 
             REQUIRES: Agent within range (~10 tiles).
             Item is returned to inventory.
             """
-            return bridge.remove(x, y, name if name else None, radius)
+            return bridge.remove(x, y, name if name else None)
 
         @tool
-        def wait(ticks: int = 60) -> dict:
-            """Wait (advance time) without performing any action.
+        def give_item(name: str, count: int = 1) -> dict:
+            """Add items to agent's inventory (cheat mode).
 
-            Use to observe production progress, belt movement, etc.
-            60 ticks = 1 second at normal game speed.
+            Args:
+                name: Item name (e.g. "stone-furnace", "iron-plate").
+                count: Number of items to add.
+
+            Use this when you need items that you don't have.
             """
-            return bridge.wait(ticks)
+            return bridge.atomic_inventory_add(name, count)
 
         # Register all tools
-        for fn in [spawn, move, inventory, check_item, inspect, place, remove, wait]:
+        for fn in [spawn, move, inventory, check_item, inspect, place, remove, give_item]:
             registry.register(fn)
 
     return registry
@@ -310,7 +412,27 @@ def build_tools(
 def main():
     parser = argparse.ArgumentParser(description="Run the Factorio agent")
     parser.add_argument("task", help="Task description for the agent")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model ID")
+    parser.add_argument(
+        "--provider",
+        choices=["anthropic", "openai"],
+        default=os.environ.get("LLM_PROVIDER", DEFAULT_PROVIDER),
+        help="LLM provider (anthropic or openai)",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model ID (default based on provider)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("OPENAI_BASE_URL", None),
+        help="OpenAI-compatible base URL",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key (defaults to env: ANTHROPIC_API_KEY or OPENAI_API_KEY)",
+    )
     parser.add_argument(
         "--max-iterations",
         type=int,
@@ -335,6 +457,11 @@ def main():
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
+    # Set default model based on provider
+    model = args.model
+    if model is None:
+        model = DEFAULT_MODEL_ANTHROPIC if args.provider == "anthropic" else DEFAULT_MODEL_OPENAI
+
     # Initialize memory
     init_memory(args.memory_path)
 
@@ -343,7 +470,6 @@ def main():
     if not args.no_server:
         from agent.bridge import FactorioBridge
         from agent.rcon import RCONClient
-        import os
 
         rcon = RCONClient(
             host=os.environ.get("RCON_HOST", "127.0.0.1"),
@@ -365,9 +491,12 @@ def main():
         task=args.task,
         system_prompt=SYSTEM_PROMPT,
         tools=tools,
-        model=args.model,
+        provider=args.provider,
+        model=model,
         max_iterations=args.max_iterations,
         memory_context=memory_content if memory_content != "(memory is empty)" else None,
+        api_key=args.api_key,
+        base_url=args.base_url,
     )
 
     # Output

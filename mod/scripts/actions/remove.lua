@@ -30,6 +30,7 @@ return function(args_str)
     local position = {x = tonumber(x), y = tonumber(y)}
     local surface = e.surface
     local force = e.force
+    local inv = agent.get_inventory()
 
     -- Step 1: Check reach, auto-move if needed
     local dist = agent.distance(e.position, position)
@@ -60,15 +61,25 @@ return function(args_str)
         return serialize({error = "no entity at position"})
     end
 
+    local target_name = target.name
+    local target_position = {x = target.position.x, y = target.position.y}
+    local count_before = inv and inv.get_item_count(target_name) or 0
+
     -- Step 3: Mine entity (real mining)
     -- mine_entity returns items to inventory automatically
     local mined = e.mine_entity(target, true)
 
     if mined then
+        local count_after = inv and inv.get_item_count(target_name) or count_before
+        local recovered_count = math.max(0, count_after - count_before)
         return serialize({
             removed = true,
-            entity = target.name,
-            position = {x = target.position.x, y = target.position.y},
+            entity = target_name,
+            position = target_position,
+            recovered = recovered_count > 0 and {
+                name = target_name,
+                count = recovered_count,
+            } or nil,
         })
     else
         return serialize({

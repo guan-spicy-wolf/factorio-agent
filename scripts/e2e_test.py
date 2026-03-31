@@ -15,6 +15,23 @@ from agent.rcon import RCONClient
 from agent.bridge import FactorioBridge, ScriptError
 
 
+def ensure_items(bridge: FactorioBridge, required: dict[str, int]) -> None:
+    """Ensure the agent has the items needed for the test run."""
+    inventory = bridge.inventory()
+    counts = {item["name"]: item["count"] for item in inventory.get("items", [])}
+    added = {}
+
+    for name, need in required.items():
+        have = counts.get(name, 0)
+        missing = need - have
+        if missing > 0:
+            result = bridge.atomic_inventory_add(name, missing)
+            added[name] = result.get("inserted", 0)
+
+    if added:
+        print(f"✓ Added missing items: {added}")
+
+
 def test_ping(bridge: FactorioBridge) -> None:
     """Test ping script."""
     result = bridge.ping()
@@ -30,6 +47,11 @@ def test_spawn(bridge: FactorioBridge) -> None:
         "coal": 50,
     })
     assert result.get("spawned") or result.get("already_exists"), f"Spawn failed: {result}"
+    ensure_items(bridge, {
+        "iron-chest": 20,
+        "electric-mining-drill": 3,
+        "coal": 50,
+    })
     status = "spawned" if result.get("spawned") else "already exists"
     print(f"✓ Spawn: {status}")
 
@@ -81,15 +103,18 @@ def test_inventory_increases(bridge: FactorioBridge) -> None:
     print(f"✓ Inventory recovered: {chests} iron-chests")
 
 
-def test_place_too_far_rejected(bridge: FactorioBridge) -> None:
-    """Test that placing too far is rejected."""
-    bridge.move(0, 0)
+def test_place_collision_rejected(bridge: FactorioBridge) -> None:
+    """Test that placing on an occupied position is rejected."""
+    bridge.atomic_inventory_add("iron-chest", 1)
+    bridge.move(330, 330)
+    first = bridge.place("iron-chest", 331, 331)
+    assert first.get("placed"), f"Setup place failed: {first}"
     try:
-        result = bridge.place("iron-chest", 100, 100)
+        result = bridge.place("iron-chest", 331, 331)
         assert False, f"Should have raised error, got: {result}"
     except ScriptError as e:
-        assert "cannot reach" in str(e), f"Wrong error: {e}"
-        print(f"✓ Place too far: correctly rejected")
+        assert "cannot place" in str(e), f"Wrong error: {e}"
+        print(f"✓ Place collision: correctly rejected")
 
 
 def test_place_no_item_rejected(bridge: FactorioBridge) -> None:
@@ -101,13 +126,6 @@ def test_place_no_item_rejected(bridge: FactorioBridge) -> None:
     except ScriptError as e:
         assert "no item" in str(e), f"Wrong error: {e}"
         print(f"✓ Place no item: correctly rejected")
-
-
-def test_wait(bridge: FactorioBridge) -> None:
-    """Test wait."""
-    result = bridge.wait(120)
-    assert result.get("ticks_to_run") == 120
-    print(f"✓ Wait: 120 ticks")
 
 
 def main() -> int:
@@ -134,9 +152,8 @@ def main() -> int:
         test_inventory_decreases(bridge)
         test_remove_and_recover(bridge)
         test_inventory_increases(bridge)
-        test_place_too_far_rejected(bridge)
+        test_place_collision_rejected(bridge)
         test_place_no_item_rejected(bridge)
-        test_wait(bridge)
 
         print("\n=== All tests passed! ===")
         rcon.close()

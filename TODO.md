@@ -99,7 +99,7 @@ task_result:
 - 最小 mod（control.lua + 种子脚本）
 - RCON 客户端（Python）
 - Agent 主循环（LLM → tool call → 执行 → 循环）
-- 种子脚本：inspect、place、remove、advance_time
+- 种子脚本：inspect、place、remove、ping
 - API 文档索引 + 搜索
 - Git repo 存放脚本，手动审核 PR
 
@@ -123,7 +123,6 @@ task_result:
 - [x] `scripts/inspect.lua` — 查询指定区域的实体和资源
 - [x] `scripts/place.lua` — 在指定位置放置实体（支持 auto_direction 自动朝向资源）
 - [x] `scripts/remove.lua` — 移除实体
-- [x] `scripts/advance.lua` — 推进游戏时间
 - [x] `scripts/ping.lua` — 验证连通性
 - [x] `scripts/lib/serialize.lua` — 游戏对象到 JSON 的序列化
 - [ ] 验证：通过 call_script 放置一个采矿机并查询确认
@@ -145,14 +144,34 @@ task_result:
 
 ### 第五步：演化闭环
 
-- [ ] Agent 能读取 scripts repo 了解现有工具
-- [ ] Agent 能创建分支、写新脚本、提 PR
-- [ ] 人工审核 PR，合并后同步到 mod 目录
+- [x] Agent 能读取 scripts 了解现有工具 (`script_list`, `script_read`)
+- [x] Agent 能写新脚本 (`script_write`)
+- [x] 脚本模板系统 (`script_template`)
+- [x] 验证：当前部署下新脚本写入后仍需重启或重载 mod 才能生效
+- [ ] 人工审核 PR 机制
 - [ ] 第二次运行同一任务，agent 使用新工具
 - [ ] 对比两次运行的指标
 
 ### 待确认技术问题
 
-- [ ] Factorio mod 热更新：修改文件后 `require` 缓存如何清除，是否需要重载
+- [x] Factorio mod 热更新：当前部署下新增/修改脚本都需要重启或重载 mod
 - [ ] RCON 返回值大小限制：大范围 inspect 的结果是否会被截断
 - [ ] mod 内 `require` 的路径解析规则确认
+
+### 已知问题与改进方向
+
+#### 地图感知
+- [ ] 当前 inspect 是局部搜索，缺乏完整地图意识
+- [ ] 改进方向：实现地图扫描脚本，记录资源分布；或持久化已探索区域
+
+#### 移动机制
+- [ ] 当前 teleport 是瞬移，可能嵌入物品内部
+- [ ] 改进方向：实现基于寻路的 walk 移动；或在 teleport 前检查目标位置碰撞
+
+#### 制作能力
+- [x] Agent 无法 craft（character 无 player 关联）
+- [x] 当前方案：使用 `give_item(name, count)` 直接添加物品
+- [ ] 后期改进：添加合成限制（原料、科技等）
+
+#### 物品获取
+- [x] `inventory_add` 已实现，可直接添加物品到背包

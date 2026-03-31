@@ -1,15 +1,17 @@
 {
-  "_comment": "Flat map with resources, no enemies, for agent development",
+  "_comment": "Peaceful map for agent development",
   "terrain_segmentation": 1,
-  "water": 1,
+  "water": 0.5,
   "width": 0,
   "height": 0,
-  "starting_area": 1,
+  "starting_area": 3,
   "peaceful_mode": true,
   "autoplace_controls": {
+    "coal": {"frequency": 1, "size": 1, "richness": 2},
+    "copper-ore": {"frequency": 1, "size": 1, "richness": 2},
+    "iron-ore": {"frequency": 1, "size": 1, "richness": 2},
+    "stone": {"frequency": 1, "size": 1, "richness": 2},
+    "crude-oil": {"frequency": 1, "size": 1, "richness": 2},
     "enemy-base": {"frequency": 0, "size": 0, "richness": 0}
-  },
-  "property_expression_names": {
-    "elevation": "0"
   }
 }
