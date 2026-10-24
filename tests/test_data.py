@@ -65,7 +65,9 @@ def test_seed_loads(gd: GameData) -> None:
 def test_seed_has_provenance() -> None:
     from fgen.data.loader import _seed_raw
 
-    assert _seed_raw()["_provenance"] == "hand-written from memory; verify against --dump-data"
+    raw = _seed_raw()
+    assert "--dump-data" in raw["_provenance"]
+    assert raw["_version"].startswith("2.0.")
 
 
 def test_seed_type_specific_fields_present(gd: GameData) -> None:

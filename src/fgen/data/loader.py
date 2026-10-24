@@ -133,13 +133,19 @@ def _pipe_connections(fb: Mapping[str, Any] | None) -> FluidBox | None:
         return None
     conns = []
     for c in fb.get("pipe_connections", []):
-        if "position" not in c:
-            # Pre-2.0 style (``positions`` per direction) is not supported.
-            raise ValueError(f"pipe connection without 'position' (pre-2.0 format?): {c!r}")
+        if "position" in c:
+            position = _vec(c["position"])
+        elif "positions" in c:
+            # 2.0 still allows one position per direction (N, E, S, W), e.g. the
+            # pumpjack output. We keep the north-facing one; the geometry library
+            # rotates it with the entity. Seen in the 2.0.76 dump.
+            position = _vec(c["positions"][0])
+        else:
+            raise ValueError(f"pipe connection without 'position'/'positions': {c!r}")
         mud = c.get("max_underground_distance")
         conns.append(
             PipeConnection(
-                position=_vec(c["position"]),
+                position=position,
                 direction=_direction(c.get("direction", 0)),
                 connection_type=c.get("connection_type", "normal"),
                 flow_direction=c.get("flow_direction", "input-output"),

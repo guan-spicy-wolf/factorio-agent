@@ -6,35 +6,25 @@
 
 通用核对方法（下文简称 *dump 对比*）：在 headless 上执行 `factorio --dump-data`，用 `fgen.data.loader.load_dump(".../script-output/data-raw-dump.json")` 加载，与 `load_seed()` 按 `fields_used()` 列出的字段逐项对比（写个一次性脚本打印差异即可）。
 
-## 1. 种子数据（`src/fgen/data/seed/vanilla-2.0.json`，整份文件）
+## 1. 种子数据（`src/fgen/data/seed/vanilla-2.0.json`）
 
-| 条目 | 当前假设值 / 约定 | 所在文件 | 核对方法 | 把握 |
-| --- | --- | --- | --- | --- |
-| 整份种子文件 | `_provenance: "hand-written from memory; verify against --dump-data"` | seed json | dump 对比，全部字段 | — |
-| 种子版本号 | `_version: "2.0.0"`（占位，不知道具体补丁号） | seed json | 以实际 headless 版本替换 | 低 |
-| 带速 `speed` | 黄/红/蓝带、地下带、分流器 0.03125 / 0.0625 / 0.09375 格/tick | seed json | dump 对比 | 高 |
-| 地下带 `max_distance` | 5 / 7 / 9 | seed json | dump 对比；再实放一对地下带，测最远可配对距离 | 中 |
-| 带/地下带/分流器 `collision_box` | 带 ±0.4；分流器 x ±0.9、y ±0.4（2×1） | seed json | dump 对比 | 高 |
-| 爪子 `pickup_position` / `insert_position` | 普通类 (0,-1) / (0,1.2)；长臂 (0,-2) / (0,2.2) | seed json | dump 对比 | 中（1.1 如此；2.0 未确认） |
-| 爪子 `rotation_speed` / `extension_speed` | 烧煤 0.01/0.0214，普通 0.014/0.03，快速 0.04/0.07，长臂 0.02/0.0457，集装 0.04/0.07 | seed json | dump 对比（烧煤爪 2.0 可能调过） | 中/低 |
-| 爪子 `energy_per_movement` | 50kJ / 5kJ / 7kJ / 5kJ / 20kJ（未被计算使用） | seed json | dump 对比 | 低 |
-| 集装爪标志字段 | 字段名写作 `bulk: true`（未被计算使用） | seed json, `loader.py` | dump 中查看 bulk-inserter 原型的实际字段名 | 低 |
-| 电杆 `supply_area_distance` | 小 2.5，中 3.5，大 2，变电站 9 | seed json | dump 对比；实放电杆看蓝色覆盖框格数 | 中 |
-| 电杆 `maximum_wire_distance` | 小 7.5，中 9，大 30，变电站 18 | seed json | dump 对比；实放两杆逐格拉远看何时断开 | 中 |
-| 电杆 `collision_box` | 小/中 ±0.15（1×1）；大 ±0.65、变电站 ±0.7（2×2） | seed json | dump 对比 | 中 |
-| 熔炉 | 石炉 2×2 速度 1 90kW 烧煤；钢炉 2×2 速度 2 90kW 烧煤；电炉 3×3 速度 2 180kW | seed json | dump 对比 | 中 |
-| 组装机 | 1/2/3 型 3×3，速度 0.5/0.75/1.25，75/150/375kW，类别 crafting/basic-crafting/advanced-crafting(+crafting-with-fluid) | seed json | dump 对比；2.0 可能有更多类别（如 electronics、pressing） | 中（类别：低） |
-| 采矿机 | 烧煤钻 2×2 速度 0.25 150kW 半径 0.99 出料 (-0.5,-1.3)；电钻 3×3 速度 0.5 90kW 半径 2.49 出料 (0,-1.85) | seed json | dump 对比 | 中 |
-| 抽油机 | mining-drill 类型 3×3，速度 1，半径 0.49，`output_fluid_box` 一个连接 position (1,-1) direction N | seed json | dump 对比；尤其输出口位置 | 低 |
-| 管道 | 1×1，四个连接 position (0,0)，方向 N/E/S/W | seed json | dump 对比 | 中 |
-| 地下管 | 普通连接 (0,0) 向 N；地下连接向 S，`connection_type: "underground"`，`max_underground_distance: 10`（写在连接上） | seed json, `loader.py` | dump 对比；确认 2.0 该字段写在连接上而非原型顶层 | 低 |
-| 海水泵 | 1×2（`collision_box` x ±0.4、y ±0.9），连接 (0,-0.5) 向 N，能源 void | seed json | dump 对比（2.0 海水泵改过尺寸与能源，最不确定之一） | 低 |
-| 储液罐 | 3×3（±1.3），四个连接：(-1,-1) 向 N 与 W，(1,1) 向 E 与 S | seed json | dump 对比 | 低 |
-| 箱子 `inventory_size` | 木 16、铁 32、钢 48 | seed json | dump 对比 | 高 |
-| 燃料 `fuel_value` | 煤 4MJ，木头 2MJ | seed json | dump 对比 | 高 |
-| 物品 `stack_size` | 矿/煤/石 50，板 100，铜线/绿板 200，齿轮 100（未被计算使用） | seed json | dump 对比 | 中 |
-| 熔炼配方 | 铁板/铜板 3.2s 1 矿→1 板；石砖 3.2s 2 石→1；钢板 16s 5 铁板→1 | seed json | dump 对比 | 高 |
-| 合成配方 | 铜线 0.5s 1→2；绿板 0.5s 1 铁板+3 铜线→1；齿轮 0.5s 2 铁板→1；类别均写 `crafting` | seed json | dump 对比；绿板/齿轮在 2.0 的类别可能是 electronics / pressing 之类 | 高（数值）/ 低（类别） |
+**已核对（2.0.76）。** 种子文件现在由 `scripts/extract_seed.py` 从真实 `--dump-data` 生成（`_provenance` 记录来源与版本），不再是手写数据，本节原有的逐项核对表作废。重新生成：
+
+```
+bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless.sh dump)" 2.0.76
+```
+
+手写版与 2.0.76 dump 的差异（供参考，说明哪些"记忆"不可靠）：
+
+- 爪子 `extension_speed` 全部偏低（普通 0.035、快速/集装 0.1、长臂 0.05）；烧煤爪 `rotation_speed` 0.013。
+- 大电杆 `maximum_wire_distance` 是 32，不是 30。
+- 钢炉 `collision_box` ±0.7（仍是 2×2）；电钻 ±1.35（仍是 3×3）；地下管 y 方向 -0.29..0.2。
+- 海水泵：`collision_box` x ±0.6、y -1.05..0.3，但 `tile_width = tile_height = 1`，能耗 60kW（电）；连接点 position (0,0) direction S（向岸侧）。几何库以 `tile_width/height` 优先于包围盒。
+- 储液罐四个连接顺序为 N、E、S、W（内容一致）。
+- 组装机 `crafting_categories` 多出 electronics、pressing 等；铜线、绿板配方类别是 `electronics`（齿轮仍是 `crafting`）。
+- 抽油机 `output_fluid_box` 连接用的是 `positions`（每方向一个），不是 `position`；`load_dump` 已兼容，几何库取 N 向那一个再旋转。
+
+仍未由 dump 覆盖、需实机核对的数据项只剩 §2 的引擎常数。
 
 ## 2. 引擎常数（种子文件 `_constants`，dump 里没有）
 
@@ -99,6 +89,6 @@
 
 | 条目 | 当前假设值 / 约定 | 所在文件 | 核对方法 | 把握 |
 | --- | --- | --- | --- | --- |
-| 字段名与嵌套路径 | 见 `fgen.data.loader.fields_used()`；如 `energy_source.type`、`energy_source.fuel_categories`（缺省时读 `fuel_category`）、`fluid_box.pipe_connections`、抽油机 `output_fluid_box.pipe_connections` | `data/loader.py` | 对真实 dump 跑 `load_dump`，对每个字段统计"有值的原型数"，为 0 的就是路径错了 | 中 |
-| 向量/包围盒编码 | dump 中向量可能是 `[x, y]` 或 `{"x","y"}`，包围盒可能是 `[[..],[..]]` 或 `{"left_top","right_bottom"}`，两种都接受 | `data/loader.py` | 看真实 dump 原文 | 中 |
+| 字段名与嵌套路径 | 见 `fgen.data.loader.fields_used()`；如 `energy_source.type`、`energy_source.fuel_categories`（缺省时读 `fuel_category`）、`fluid_box.pipe_connections`、抽油机 `output_fluid_box.pipe_connections` | `data/loader.py` | 对真实 dump 跑 `load_dump`，对每个字段统计"有值的原型数"，为 0 的就是路径错了 | 已核对（2.0.76）：`load_dump` 成功加载全部 53 个原型 |
+| 向量/包围盒编码 | dump 中向量可能是 `[x, y]` 或 `{"x","y"}`，包围盒可能是 `[[..],[..]]` 或 `{"left_top","right_bottom"}`，两种都接受 | `data/loader.py` | 看真实 dump 原文 | 已核对（2.0.76）：dump 使用 `[x, y]` 与 `[[..],[..]]`；抽油机连接用 `positions` 列表 |
 | dump 不含版本与常数 | `load_dump` 的版本号与引擎常数缺省取自种子文件 | `data/loader.py` | 调用时显式传 `version=` | — |

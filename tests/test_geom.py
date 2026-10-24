@@ -93,8 +93,13 @@ def test_tile_transforms_match_point_transforms(t: Tile, d: Direction) -> None:
 
 
 def _expected_size(gd: GameData, name: str) -> tuple[int, int]:
-    (x1, y1), (x2, y2) = gd.entity(name).collision_box
-    return math.ceil(x2 - x1), math.ceil(y2 - y1)
+    # The prototype's own tile_width/tile_height win over the collision box (the 2.0
+    # offshore pump declares 1x1 while its box extends into the water).
+    e = gd.entity(name)
+    (x1, y1), (x2, y2) = e.collision_box
+    w = e.tile_width if e.tile_width is not None else math.ceil(x2 - x1)
+    h = e.tile_height if e.tile_height is not None else math.ceil(y2 - y1)
+    return w, h
 
 
 def test_footprint_sizes_follow_collision_box(gd: GameData) -> None:
