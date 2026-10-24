@@ -55,7 +55,7 @@ REQUIRED_RECIPES = [
 
 def test_seed_loads(gd: GameData) -> None:
     assert gd.source == "seed"
-    assert gd.version.startswith("2.0")
+    assert gd.version.startswith("2.")
     for name in REQUIRED_ENTITIES:
         assert name in gd.entities, name
     for name in REQUIRED_RECIPES:
@@ -67,7 +67,8 @@ def test_seed_has_provenance() -> None:
 
     raw = _seed_raw()
     assert "--dump-data" in raw["_provenance"]
-    assert raw["_version"].startswith("2.0.")
+    assert raw["_version"].startswith("2.")
+    assert "mods:" in raw["_provenance"]
 
 
 def test_seed_type_specific_fields_present(gd: GameData) -> None:
@@ -212,7 +213,7 @@ def test_load_dump_fragment(tmp_path: Path) -> None:
     assert gd.recipe("new-style").results == (("b", 2.0),)
     old = gd.recipe("old-style")
     assert old.ingredients == (("a", 1.0),) and old.results == (("c", 1.0),)
-    assert old.category == "crafting"
+    assert old.categories == ("crafting",)
     assert old.energy_required == gd.constants["recipe_default_energy_required"]
     # constants fall back to the seed file
     assert gd.constants == load_seed().constants

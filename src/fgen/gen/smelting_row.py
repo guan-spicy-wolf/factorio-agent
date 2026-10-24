@@ -142,9 +142,11 @@ def _check_names(p: SmeltingRowParams, gd: GameData) -> None:
         raise Infeasible(f"sides={p.sides} not supported", ["sides=1", "sides=2"])
     if not p.target_rate > 0:
         raise Infeasible("target_rate must be positive")
-    cat = gd.recipe(p.recipe).category
-    if cat not in gd.entity(p.furnace).crafting_categories:
-        ok = [n for n in _names_of_type(gd, "furnace") if cat in gd.entity(n).crafting_categories]
+    cats = set(gd.recipe(p.recipe).categories)
+    if not cats & set(gd.entity(p.furnace).crafting_categories):
+        ok = [
+            n for n in _names_of_type(gd, "furnace") if cats & set(gd.entity(n).crafting_categories)
+        ]
         raise Infeasible(f"{p.furnace} cannot craft {p.recipe}", [f"furnace={n!r}" for n in ok])
     if gd.entity(p.inserter).is_burner:
         raise Infeasible(
@@ -173,7 +175,7 @@ def _candidate_changes(p: SmeltingRowParams, gd: GameData) -> list[dict[str, Any
         for n in faster("inserter", p.inserter, lambda n: tp.inserter_throughput_estimate(gd, n))
         if gd.entity(n).is_electric
     ]
-    category = gd.recipe(p.recipe).category
+    categories = set(gd.recipe(p.recipe).categories)
     furnace_opts: list[dict[str, Any]] = [{}]
     if p.fuel_lane and not gd.entity(p.furnace).is_burner:
         furnace_opts.append({"fuel_lane": False})
@@ -181,7 +183,7 @@ def _candidate_changes(p: SmeltingRowParams, gd: GameData) -> list[dict[str, Any
         furnace_opts.append({"fuel_lane": True})
     for n in _names_of_type(gd, "furnace"):
         e = gd.entity(n)
-        if n != p.furnace and e.is_electric and category in e.crafting_categories:
+        if n != p.furnace and e.is_electric and categories & set(e.crafting_categories):
             furnace_opts.append({"furnace": n, "fuel_lane": False})
     axes: list[list[dict[str, Any]]] = [
         [{}] + ([{"sides": 2}] if p.sides == 1 else []),

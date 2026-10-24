@@ -1,6 +1,8 @@
 """Regenerate the seed data file from a real ``factorio --dump-data`` dump.
 
-Usage: uv run python scripts/extract_seed.py <data-raw-dump.json> <factorio-version>
+Usage: uv run python scripts/extract_seed.py <data-raw-dump.json> <factorio-version> [mods]
+
+``mods`` defaults to the ``<dump>.mods`` stamp written by ``bin/headless.sh dump``.
 
 Keeps the entity / recipe / item *names* and the ``_constants`` of the existing seed,
 and for each prototype copies from the dump only the fields fgen reads (plus any key
@@ -20,13 +22,18 @@ SEED_PATH = Path(__file__).resolve().parents[1] / "src" / "fgen" / "data" / "see
 
 def main() -> None:
     dump_path, version = sys.argv[1], sys.argv[2]
+    if len(sys.argv) > 3:
+        mods = sys.argv[3]
+    else:
+        stamp = Path(dump_path + ".mods")
+        mods = stamp.read_text().strip().split(":", 1)[-1] if stamp.exists() else "unknown"
     dump = json.loads(Path(dump_path).read_text(encoding="utf-8"))
     seed = json.loads(SEED_PATH.read_text(encoding="utf-8"))
     used = fields_used()
 
     out: dict = {
         "_provenance": (
-            f"extracted from factorio {version} --dump-data (base mod only, see "
+            f"extracted from factorio {version} --dump-data (mods: {mods}; see "
             "bin/headless.sh dump) by scripts/extract_seed.py"
         ),
         "_version": version,

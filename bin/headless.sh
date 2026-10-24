@@ -3,17 +3,18 @@
 #
 # Usage: bin/headless.sh [install|dump|path]
 #   install  download + extract to $FACTORIO_DIR (idempotent)
-#   dump     run --dump-data with only the base mod enabled (the stock install enables
-#            space-age, quality and elevated-rails, which change base prototypes, e.g.
-#            recipe categories); prints the path of data-raw-dump.json
+#   dump     run --dump-data with exactly the $FGEN_MODS mod set enabled (the stock
+#            install enables everything; prototypes such as recipe categories differ
+#            between sets); prints the path of data-raw-dump.json
 #   path     print the factorio binary path
 #
-# Env: FACTORIO_VERSION (default 2.0.76), FACTORIO_DIR (default ~/factorio)
+# Env: FACTORIO_VERSION (default 2.1.23), FACTORIO_DIR (default ~/factorio),
+#      FGEN_MODS (comma list; default base,space-age,quality,elevated-rails,recycler)
 # The headless build is a free download; no account is needed.
 # Network: needs factorio.com and dl.factorio.com reachable.
 set -euo pipefail
 
-FACTORIO_VERSION="${FACTORIO_VERSION:-2.0.76}"
+FACTORIO_VERSION="${FACTORIO_VERSION:-2.1.23}"
 FACTORIO_DIR="${FACTORIO_DIR:-$HOME/factorio}"
 BIN="$FACTORIO_DIR/bin/x64/factorio"
 DL_DIR="${FACTORIO_DL_DIR:-$HOME/factorio-dl}"
@@ -41,19 +42,30 @@ cmd_install() {
     echo "installed: $("$BIN" --version | head -1)"
 }
 
-MODS_BASE="$FACTORIO_DIR/fgen-mods-base"
+FGEN_MODS="${FGEN_MODS:-base,space-age,quality,elevated-rails,recycler}"
+STOCK_MODS="base elevated-rails quality space-age recycler"
+MODS_DIR="$FACTORIO_DIR/fgen-mods"
+
+write_mod_list() {
+    # mod-list.json enabling exactly $FGEN_MODS among the stock mods (the stock install
+    # enables everything; we want the set to be explicit and reproducible).
+    mkdir -p "$MODS_DIR"
+    local entries="" n enabled
+    for n in $STOCK_MODS; do
+        enabled=false
+        case ",$FGEN_MODS," in *",$n,"*) enabled=true ;; esac
+        entries="$entries${entries:+, }{\"name\": \"$n\", \"enabled\": $enabled}"
+    done
+    printf '{"mods": [%s]}\n' "$entries" > "$MODS_DIR/mod-list.json"
+}
 
 cmd_dump() {
     local out="$FACTORIO_DIR/script-output/data-raw-dump.json"
     local stamp="$out.mods"
-    if [[ ! -s "$out" || "$(cat "$stamp" 2>/dev/null)" != "base" ]]; then
-        mkdir -p "$MODS_BASE"
-        cat > "$MODS_BASE/mod-list.json" <<'JSON'
-{"mods": [{"name": "base", "enabled": true}, {"name": "elevated-rails", "enabled": false},
-          {"name": "quality", "enabled": false}, {"name": "space-age", "enabled": false}]}
-JSON
-        "$BIN" --mod-directory "$MODS_BASE" --dump-data >/dev/null 2>&1
-        echo base > "$stamp"
+    if [[ ! -s "$out" || "$(cat "$stamp" 2>/dev/null)" != "$FACTORIO_VERSION:$FGEN_MODS" ]]; then
+        write_mod_list
+        "$BIN" --mod-directory "$MODS_DIR" --dump-data >/dev/null 2>&1
+        echo "$FACTORIO_VERSION:$FGEN_MODS" > "$stamp"
     fi
     echo "$out"
 }

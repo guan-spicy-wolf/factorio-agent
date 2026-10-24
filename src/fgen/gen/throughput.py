@@ -22,8 +22,8 @@ def _check_machine(gd: GameData, recipe: str, machine: str) -> None:
     r, m = gd.recipe(recipe), gd.entity(machine)
     if m.crafting_speed is None:
         raise ValueError(f"{machine} is not a crafting machine")
-    if r.category not in m.crafting_categories:
-        raise ValueError(f"{machine} cannot craft {recipe} (category {r.category})")
+    if not set(r.categories) & set(m.crafting_categories):
+        raise ValueError(f"{machine} cannot craft {recipe} (categories {r.categories})")
 
 
 def main_product(gd: GameData, recipe: str) -> tuple[str, float]:

@@ -1,6 +1,6 @@
 # 待实机核对清单（VERIFY）
 
-阶段 0 时本环境没有 Factorio 二进制，下表内容原本都是**凭记忆**写下或由此推出的。阶段 1 起 headless 2.0.76 可用：标"已核对（2.0.76）"的行由 `uv run fgen verify`（`src/fgen/sim/verify.py`，测试 `tests/test_sim_verify.py`）或往返测试（`tests/test_sim_deployer.py`）在游戏里核对过，其余仍按"核对方法"待核。实机核对时只启用 `base` 模组（见 §0）。
+阶段 0 时本环境没有 Factorio 二进制，下表内容原本都是**凭记忆**写下或由此推出的。阶段 1 起 headless 2.0.76（后迁移到 2.1.23）可用：标"已核对（2.0.76）"的行由 `uv run fgen verify`（`src/fgen/sim/verify.py`，测试 `tests/test_sim_verify.py`）或往返测试（`tests/test_sim_deployer.py`）在游戏里核对过，其余仍按"核对方法"待核。实机核对时只启用 `base` 模组（见 §0）。
 
 "把握"一列是作者自评：**高** = 很确定（多年未变的基础值）；**中** = 记得 1.1 的值，2.0 可能改过；**低** = 只记得大概，或 2.0 格式细节不确定。
 
@@ -8,16 +8,16 @@
 
 ## 0. 实机环境
 
-- 测试服务器只启用 `base`。headless 安装包自带的 `mod-list.json` 启用了 space-age / quality / elevated-rails，它们会改写 base 原型（例如铜线、绿板配方类别变成 `electronics`，组装机多出 `pressing` 等类别）。阶段 0 的种子文件就是从这样的 dump 抽出来的；阶段 1 起 `bin/headless.sh dump` 改为只开 base 再 dump，种子已重新生成（差异只有上述配方类别 / 组装机类别，以及管道 fluid_box 里 space-age 的冰冻贴图）。
+- 测试服务器与数据 dump 启用 base + space-age + quality + elevated-rails + recycler（2.1 新增的内置 mod），即项目的目标 mod 组合；`FGEN_MODS` 可改。对种子集里的实体，base 与全开组合的原型没有差异，只有配方的 `categories` 不同。
 - 平地测试场（`config/test-map-gen-settings.json`）：只把 water 的 `size` 设 0 仍会有湖，需要把 `property_expression_names.elevation` 固定为常数；2.0 的石头是单独的 `rocks` 自动放置项。建图后用 RCON 核对原点 200×200 内无阻挡地块、无实体（`tests/test_sim_server.py`）。
 - RCON、`/sc` 与服务器启动的实测细节写在 `src/fgen/sim/rcon.py`、`src/fgen/sim/server.py` 的 docstring 里。
 
 ## 1. 种子数据（`src/fgen/data/seed/vanilla-2.0.json`）
 
-**已核对（2.0.76）。** 种子文件现在由 `scripts/extract_seed.py` 从真实 `--dump-data` 生成（`_provenance` 记录来源与版本），不再是手写数据，本节原有的逐项核对表作废。重新生成：
+**已核对（2.0.76，2.1.23 重新生成）。** 种子文件现在由 `scripts/extract_seed.py` 从真实 `--dump-data` 生成（`_provenance` 记录来源与版本），不再是手写数据，本节原有的逐项核对表作废。重新生成：
 
 ```
-bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless.sh dump)" 2.0.76
+bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless.sh dump)" 2.1.23
 ```
 
 手写版与 2.0.76 dump 的差异（供参考，说明哪些"记忆"不可靠）：
@@ -31,6 +31,16 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 - 抽油机 `output_fluid_box` 连接用的是 `positions`（每方向一个），不是 `position`；`load_dump` 已兼容，几何库取 N 向那一个再旋转。
 
 仍未由 dump 覆盖、需实机核对的数据项只剩 §2 的引擎常数。
+
+### 2.0.76 → 2.1.23 迁移记录（2026-10-24）
+
+- 配方的 `category`（单值）改为 `categories`（列表）；`RecipeProto.categories` 随之改为元组，生成器按集合相交判断机器能否生产。2.1 的铜线类别是 `crafting` + `electromagnetics`，1 型组装机的类别只剩 `crafting`、`advanced-crafting`（`basic-crafting` 取消）。
+- `defines.inventory.furnace_source` 等熔炉专用常量取消，统一用 `crafter_input` / `crafter_output`。
+- `LuaEntity.neighbours` 取消，地下带配对改读 `underground_belt_neighbour`（电杆铜线早已用 `get_wire_connector`）。
+- `map-settings.json` 的 `enemy_expansion` 新增三个必填字段，缺了建存档直接失败；`config/test-map-settings.json` 已补。
+- 2.1 多了内置 mod `recycler`，游戏会把它自动加进 `mod-list.json`。
+- 烧煤钻 `vector_to_place_result` 从 (-0.5,-1.3) 改为 (-0.35,-1.3)；海水泵多了 60kW 能耗字段。
+- 其余 VERIFY 条目在 2.1.23 上重跑 `fgen verify` 与全部 headless 测试，结论不变。
 
 ## 2. 引擎常数（种子文件 `_constants`，dump 里没有）
 

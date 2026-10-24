@@ -69,7 +69,7 @@ script.on_nth_tick({PROBE_TICKS}, function(ev)
     local e = m.entity
     if e.valid then
       m.probes = m.probes + 1
-      local src = e.get_inventory(defines.inventory.furnace_source)
+      local src = e.get_inventory(defines.inventory.crafter_input)
       if src and src.is_empty() then m.source_empty = m.source_empty + 1 end
       if e.status == defines.entity_status.no_ingredients
          or e.status == defines.entity_status.item_ingredient_shortage then

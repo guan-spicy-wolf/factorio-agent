@@ -113,7 +113,7 @@ class ItemProto:
 @dataclass(frozen=True)
 class RecipeProto:
     name: str
-    category: str
+    categories: tuple[str, ...]  # 2.1: ``categories`` list; 2.0 had a single ``category``
     energy_required: float
     ingredients: tuple[tuple[str, float], ...]
     results: tuple[tuple[str, float], ...]

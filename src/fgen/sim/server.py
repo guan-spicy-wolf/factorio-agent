@@ -1,12 +1,13 @@
 """Factorio headless server for tests and measurements.
 
-Facts established against 2.0.76 (headless, Linux):
+Facts established against 2.0.76 and re-checked on 2.1.23 (headless, Linux):
 
 - The binary is ``$FACTORIO_DIR/bin/x64/factorio``. We run it with ``-c <workdir>/config.ini``
   whose ``write-data`` points into the work directory (so logs, saves and
   ``player-data.json`` never touch the install) and ``--mod-directory <workdir>/mods``
-  with a ``mod-list.json`` that enables **only** ``base``: the stock install enables
-  space-age, quality and elevated-rails, which would change prototypes.
+  with a ``mod-list.json`` that enables exactly ``mods`` (default: base + space-age +
+  quality + elevated-rails, the project's target set): the mod set changes prototypes
+  (e.g. recipe categories), so it must be explicit and match the seed data.
 - ``--create <save> --map-gen-settings F --map-settings F`` writes a new map in ~4 s and
   exits. ``water`` ``size`` 0 alone still leaves lakes; pinning
   ``property_expression_names.elevation`` to a constant removes them. Rocks are their
@@ -41,8 +42,8 @@ from fgen.sim.rcon import RconClient, RconError
 
 REPO_CONFIG = Path(__file__).resolve().parents[3] / "config"
 READY_MARKER = "Starting RCON interface"
-DEFAULT_MODS = ("base",)
-ALL_STOCK_MODS = ("base", "elevated-rails", "quality", "space-age")
+DEFAULT_MODS = ("base", "space-age", "quality", "elevated-rails", "recycler")
+ALL_STOCK_MODS = ("base", "elevated-rails", "quality", "space-age", "recycler")  # 2.1 adds recycler
 
 
 def factorio_dir() -> Path:

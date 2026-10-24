@@ -74,6 +74,7 @@ _OTHER_FIELDS: dict[str, list[str]] = {
     "item": ["name", "type", "stack_size", "fuel_value", "fuel_category"],
     "recipe": [
         "name",
+        "categories",
         "category",
         "energy_required",
         "ingredients[].name",
@@ -230,13 +231,20 @@ def _products(raw: Mapping[str, Any], key: str) -> tuple[tuple[str, float], ...]
     return tuple(out)
 
 
+def _categories(raw: Mapping[str, Any]) -> tuple[str, ...]:
+    """2.1 recipes carry ``categories`` (list); 2.0 a single ``category``; default crafting."""
+    if "categories" in raw:
+        return tuple(raw["categories"])
+    return (raw.get("category", "crafting"),)
+
+
 def _recipe(raw: Mapping[str, Any], default_energy: float) -> RecipeProto:
     results = _products(raw, "results")
     if not results and "result" in raw:  # 1.1 short form
         results = ((raw["result"], float(raw.get("result_count", 1))),)
     return RecipeProto(
         name=raw["name"],
-        category=raw.get("category", "crafting"),
+        categories=_categories(raw),
         energy_required=float(raw.get("energy_required", default_energy)),
         ingredients=_products(raw, "ingredients"),
         results=results,

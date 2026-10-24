@@ -258,7 +258,8 @@ def check_underground(srv: HeadlessServer, gd: GameData) -> Result:
         + "direction=defines.direction.east, type='input', force=F}\n"
         + f"  local b = S.create_entity{{name={lua.lit(name)}, position={{x + k, y}}, "
         + "direction=defines.direction.east, type='output', force=F}\n"
-        + "  res[k] = (a.neighbours ~= nil and a.neighbours.unit_number == b.unit_number)\n"
+        + "  local nb = a.underground_belt_neighbour\n"
+        + "  res[k] = (nb ~= nil and nb.unit_number == b.unit_number)\n"
         + "end\n"
         + lua.emit("res")
     )
