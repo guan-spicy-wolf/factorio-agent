@@ -11,5 +11,5 @@ Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不�
 - 任何实体尺寸、速度、配方数字（以及 tick 率、每格物品数等引擎常数）只能出现在 `src/fgen/data/seed/*.json`，代码里不写死；测试的期望值也从种子数据推导。
 - 凭记忆写下、未经实机核对的数值与约定，一律登记到 `docs/VERIFY.md`。
 - 坐标与方向约定见 `docs/plan-phase0.md` §3，全库统一。
-- 本环境没有 Factorio 二进制、访问不到 factorio.com；需要服务器的部分只留接口（`fgen.sim.protocol`）。
+- Factorio headless 2.0.76 由 SessionStart 钩子自动下载到 `$FACTORIO_DIR`（默认 `~/factorio`），`$FACTORIO_DATA_DUMP` 指向 `--dump-data` 输出；手动用 `bin/headless.sh install|dump`。种子数据用 `scripts/extract_seed.py` 从 dump 重新生成。RCON 部署器尚未实现，`fgen.sim.protocol` 仍是占位。
 - `characterization/smelting_row.{jsonl,md}` 由 `uv run fgen sweep smelting` 生成，不要手改。
