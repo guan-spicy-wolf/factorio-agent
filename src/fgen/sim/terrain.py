@@ -82,6 +82,25 @@ end
 """
 
 
+# ``LuaEntity.bounding_box`` of a diagonal cliff carries ``orientation`` (0.125 ...):
+# left_top/right_bottom are then the *unrotated* box, rotated about its centre. The
+# axis-aligned box of the rotated corners covers every tile the cliff blocks (checked
+# against ``can_place_entity`` on 2.1.23, VERIFY.md §10).
+AABB_FN = """
+local function aabb(bb)
+  local x0, y0, x1, y1 = bb.left_top.x, bb.left_top.y, bb.right_bottom.x, bb.right_bottom.y
+  local o = bb.orientation
+  if not o or o == 0 then return x0, y0, x1, y1 end
+  local cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+  local hw, hh = (x1 - x0) / 2, (y1 - y0) / 2
+  local a = o * 2 * math.pi
+  local c, s = math.abs(math.cos(a)), math.abs(math.sin(a))
+  local ex, ey = hw * c + hh * s, hw * s + hh * c
+  return cx - ex, cy - ey, cx + ex, cy + ey
+end
+"""
+
+
 class RconTerrain:
     """Terrain queries over RCON. ``reference_entities`` define what "buildable"
     means (no tile layer shared with any of their collision masks)."""
@@ -176,13 +195,14 @@ class RconTerrain:
             res = self.rcon.lua_json(
                 lua.PRELUDE
                 + RLE_FN
+                + AABB_FN
                 + f"local A = {lua.area_lit(_lua_area(band))}\n"
                 + "local ps = {}\n"
                 + "for _, e in pairs(S.find_entities_filtered{area=A}) do\n"
                 + "  if e.type ~= 'resource' and e.type ~= 'character' then\n"
-                + "    local bb = e.bounding_box\n"
-                + "    for x = math.floor(bb.left_top.x), math.ceil(bb.right_bottom.x) - 1 do\n"
-                + "      for y = math.floor(bb.left_top.y), math.ceil(bb.right_bottom.y) - 1 do\n"
+                + "    local x0, y0, x1, y1 = aabb(e.bounding_box)\n"
+                + "    for x = math.floor(x0), math.ceil(x1) - 1 do\n"
+                + "      for y = math.floor(y0), math.ceil(y1) - 1 do\n"
                 + "        table.insert(ps, {x=x, y=y})\n"
                 + "      end\n    end\n  end\nend\n"
                 + lua.emit("{rows=rle(ps)}")

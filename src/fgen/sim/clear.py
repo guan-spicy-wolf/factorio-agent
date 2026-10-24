@@ -60,18 +60,19 @@ def clear_obstacles(
 def entity_tiles(rcon: RconClient, area: Area, types: tuple[str, ...]) -> frozenset[Tile]:
     """Tiles under the bounding boxes of entities of ``types`` (as ``RconTerrain.occupied``
     computes them), clipped to the area."""
-    from fgen.sim.terrain import RLE_FN, _rle_rows
+    from fgen.sim.terrain import AABB_FN, RLE_FN, _rle_rows
     from fgen.terrain.model import area_tiles
 
     out = rcon.lua_json(
         lua.PRELUDE
         + RLE_FN
+        + AABB_FN
         + "local ps = {}\n"
         + f"for _, e in pairs(S.find_entities_filtered{{area={_box(area)}, "
         + f"type={lua.lit(list(types))}}}) do\n"
-        + "  local bb = e.bounding_box\n"
-        + "  for x = math.floor(bb.left_top.x), math.ceil(bb.right_bottom.x) - 1 do\n"
-        + "    for y = math.floor(bb.left_top.y), math.ceil(bb.right_bottom.y) - 1 do\n"
+        + "  local x0, y0, x1, y1 = aabb(e.bounding_box)\n"
+        + "  for x = math.floor(x0), math.ceil(x1) - 1 do\n"
+        + "    for y = math.floor(y0), math.ceil(y1) - 1 do\n"
         + "      table.insert(ps, {x=x, y=y})\n"
         + "    end\n  end\nend\n"
         + lua.emit("{rows=rle(ps)}")

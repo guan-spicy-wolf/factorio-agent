@@ -22,6 +22,7 @@ from fgen.data.loader import SEED_FILE, fields_used
 ADD: dict[str, list[str]] = {
     "mining-drill": ["big-mining-drill"],
     "resource": ["iron-ore", "copper-ore", "coal", "stone", "uranium-ore", "crude-oil"],
+    "infinity-pipe": ["infinity-pipe"],  # phase 3a: fluid source fixture
 }
 
 SEED_PATH = Path(__file__).resolve().parents[1] / "src" / "fgen" / "data" / "seed" / SEED_FILE

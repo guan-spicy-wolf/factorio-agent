@@ -36,6 +36,7 @@ class LinkRoute:
     placements: list[Placement]
     mode: str = ""
     lane: str | None = None
+    fluid: str | None = None
 
     def summary(self) -> dict[str, Any]:
         counts: dict[str, int] = {}
@@ -58,7 +59,17 @@ class Connection:
     warnings: list[str] = field(default_factory=list)
     violations: list[Violation] = field(default_factory=list)
     order: list[str] = field(default_factory=list)
-    route_fluids: dict[int, str] = field(default_factory=dict)  # index in layout -> fluid
+
+    def route_fluids(self) -> dict[int, str]:
+        """Index in :attr:`layout` -> fluid, for routed pipes."""
+        out: dict[int, str] = {}
+        k = len(self.extra)
+        for r in self.routes:
+            for _ in r.placements:
+                if r.fluid is not None:
+                    out[k] = r.fluid
+                k += 1
+        return out
 
     @property
     def layout(self) -> Layout:
@@ -195,7 +206,7 @@ def _validate(site: Site, gd: GameData, conn: Connection) -> list[Violation]:
     merged = conn.site_layout(site)
     fluids = dict(site.fluids())
     base = len(site.merged().placements)
-    for k, f in conn.route_fluids.items():
+    for k, f in conn.route_fluids().items():
         fluids[base + k] = f
     return validate(
         merged,

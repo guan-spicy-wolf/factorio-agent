@@ -1,21 +1,27 @@
-"""Connect a ``Unit``'s interfaces to infinite sources, counting sinks and free power
-(plan §3.4). Everything is placed with ``create_entity`` and recorded, so the
-harness can be excluded from ``read_back``.
+"""Test fixtures as units, and the harness that wires them to a unit (plan-phase3a §3.3).
 
-Per interface kind (``d`` = interface direction, i.e. the belt flow):
+A fixture is a tiny :class:`~fgen.layout.model.Unit` with its own interfaces, so the
+router treats "fixture" and "unit" alike: a fixture is just the other end of a
+contract. Every fixture is built facing east in its own frame (``layout.transform``
+turns it):
 
-- **item input**, ``lane`` ``both``: the belt is extended upstream and fed head-on by an
-  ``infinity-chest`` -> loader (loader tier matched to the belt; loaders keep up with
-  their belt, ``fgen verify`` #7).
-- **item input**, ``lane`` ``left`` / ``right``: the belt is extended upstream; a
-  one-tile feeder belt side-loads the extension from the lane's side (side-loading fills
-  the near lane, ``fgen verify`` #4), itself fed head-on by chest -> loader. A straight
-  extension tile stays behind the side-load tile so it stays a side-load, not a curve.
-  Two lane interfaces on the same tile (ore left, fuel right) share the side-load tile.
-- **item output**: the belt is extended downstream into a loader (``type=input``) and a
-  ``steel-chest``; an in-game per-tick handler counts and empties the chest.
-- **power**: an ``electric-energy-interface`` and a pole of the unit's pole type,
-  placed outside the unit within wire reach of the interface pole.
+- :func:`source_unit`: ``infinity-chest`` -> loader (``type=output``) -> one belt; output
+  interface on the belt, lane ``both``, ``rate`` None (supplies whatever the belt takes).
+  Loader tier matches the belt (loaders keep up with their belt, ``fgen verify`` #7).
+- :func:`sink_unit`: one belt -> loader (``type=input``) -> ``steel-chest``; input
+  interface on the belt; an in-game per-tick handler counts and empties the chest.
+- :func:`power_unit`: ``electric-energy-interface`` + one pole in its supply area; power
+  interface on the pole.
+- :func:`fluid_source_unit`: one ``infinity-pipe`` (filter set after building:
+  ``set_infinity_pipe_filter{name, percentage, mode}``, checked on 2.1.23).
+- :func:`fluid_sink_unit`: a ``storage-tank``; read with ``LuaEntity.get_fluid(1)``
+  (2.1 has no ``LuaEntity.fluidbox``; VERIFY §10).
+
+:func:`plan` (used by :class:`fgen.sim.measure.RconCharacterizer`) builds a site from a
+unit and one fixture per interface, routes it with :func:`fgen.route.connect.connect`
+and returns the fixture and route entities as ``create_entity`` specs. Lane inputs get
+their own source each and are side-loaded onto a stub (ore left, coal right), exactly
+what the router does for any producer.
 """
 
 from __future__ import annotations
@@ -25,27 +31,153 @@ from typing import Any
 
 from fgen.data.schema import GameData
 from fgen.geom import belt as beltgeom
+from fgen.geom import fluid as fluidgeom
 from fgen.geom import footprint, pole
-from fgen.geom.vec import Direction, Tile, Vec2
-from fgen.layout.model import Interface, Unit
+from fgen.geom.vec import Direction, Tile
+from fgen.layout.model import Interface, Layout, PlacedUnit, Placement, Unit
 from fgen.sim import lua
 from fgen.sim.rcon import RconClient
+from fgen.site import place
+from fgen.site.model import Endpoint, Link, Site
+from fgen.terrain.model import Terrain, area_tiles
 
 SOURCE_CHEST = "infinity-chest"
 SINK_CHEST = "steel-chest"
 POWER_SOURCE = "electric-energy-interface"
+FLUID_SOURCE = "infinity-pipe"
+FLUID_SINK = "storage-tank"
 LOADER_FOR_BELT = {
     "transport-belt": "loader",
     "fast-transport-belt": "fast-loader",
     "express-transport-belt": "express-loader",
 }
-UPSTREAM = 3  # extension tiles before an input interface (side-load on the 2nd)
-DOWNSTREAM = 2  # extension tiles after an output interface
 SOURCE_STOCK = 200  # items an infinity chest keeps (refilled every tick by the game)
+FIXTURE_GAP = 3  # source/sink ports sit this many tiles from the port they serve
+E = Direction.E
 
 
 class HarnessError(RuntimeError):
     pass
+
+
+# ---- fixtures as units ---------------------------------------------------------------
+
+
+def _loader(gd: GameData, belt: str) -> str:
+    name = LOADER_FOR_BELT.get(beltgeom_plain(gd, belt))
+    if name is None or name not in gd.entities:
+        raise HarnessError(f"no loader for {belt}")
+    return name
+
+
+def beltgeom_plain(gd: GameData, belt: str) -> str:
+    from fgen.route.belt import plain_belt
+
+    return plain_belt(gd, belt)
+
+
+def _put(gd: GameData, name: str, anchor: Tile, d: Direction = E, **extra: Any) -> Placement:
+    return Placement(name, footprint.center_for_tile_anchor(gd, name, anchor, d), d, dict(extra))
+
+
+def source_unit(gd: GameData, item: str, belt: str = "transport-belt") -> Unit:
+    belt = beltgeom_plain(gd, belt)
+    loader = _loader(gd, belt)
+    lw, _ = footprint.size(gd, loader, E)
+    cw, _ = footprint.size(gd, SOURCE_CHEST)
+    ps = [
+        _put(gd, SOURCE_CHEST, Tile(0, 0), Direction.N),
+        _put(gd, loader, Tile(cw, 0), E, type="output"),
+        _put(gd, belt, Tile(cw + lw, 0), E),
+    ]
+    out = Interface(
+        "item",
+        item,
+        Tile(cw + lw, 0),
+        E,
+        "both",
+        None,
+        "output",
+        ["infinite source: supplies whatever the belt takes, both lanes"],
+    )
+    meta = {"fixture": {"kind": "source", "item": item, "chest": 0}, "family": "fixture/source"}
+    return Unit(Layout(ps), [out], meta)
+
+
+def sink_unit(gd: GameData, item: str | None, belt: str = "transport-belt") -> Unit:
+    belt = beltgeom_plain(gd, belt)
+    loader = _loader(gd, belt)
+    lw, _ = footprint.size(gd, loader, E)
+    ps = [
+        _put(gd, belt, Tile(0, 0), E),
+        _put(gd, loader, Tile(1, 0), E, type="input"),
+        _put(gd, SINK_CHEST, Tile(1 + lw, 0), Direction.N),
+    ]
+    inp = Interface(
+        "item",
+        item,
+        Tile(0, 0),
+        E,
+        "both",
+        None,
+        "input",
+        ["counting sink: takes everything, both lanes"],
+    )
+    meta = {
+        "fixture": {"kind": "sink", "item": item, "chest": 2},
+        "family": "fixture/sink",
+        "belt_terminals": [Tile(0, 0)],
+    }
+    return Unit(Layout(ps), [inp], meta)
+
+
+def power_unit(gd: GameData, pole_name: str = "small-electric-pole") -> Unit:
+    ew, eh = footprint.size(gd, POWER_SOURCE)
+    eei = _put(gd, POWER_SOURCE, Tile(0, 0), Direction.N)
+    eei_tiles = eei.tiles(gd)
+    for anchor in (Tile(ew, 0), Tile(0, eh), Tile(ew, eh)):
+        c = footprint.center_for_tile_anchor(gd, pole_name, anchor)
+        if pole.supply_tiles(gd, pole_name, c) & eei_tiles:
+            p = Placement(pole_name, c)
+            iface = Interface(
+                "power", None, c.floor(), E, None, None, "output", ["infinite electricity"]
+            )
+            meta = {"fixture": {"kind": "power", "pole": 1}, "family": "fixture/power"}
+            return Unit(Layout([eei, p]), [iface], meta)
+    raise HarnessError(f"{pole_name} next to {POWER_SOURCE} does not supply it")
+
+
+def fluid_source_unit(gd: GameData, fluid: str, percentage: float = 1.0) -> Unit:
+    p = Placement(FLUID_SOURCE, Tile(0, 0).center())
+    iface = Interface(
+        "fluid", fluid, Tile(0, 0), E, None, None, "output", [f"infinite {fluid} (infinity-pipe)"]
+    )
+    meta = {
+        "fixture": {"kind": "fluid-source", "fluid": fluid, "percentage": percentage},
+        "family": "fixture/fluid-source",
+        "fluids": {0: fluid},
+    }
+    return Unit(Layout([p]), [iface], meta)
+
+
+def fluid_sink_unit(gd: GameData, fluid: str, tank: str = FLUID_SINK) -> Unit:
+    c = footprint.center_for_tile_anchor(gd, tank, Tile(0, 0))
+    ports = fluidgeom.connection_points(gd, tank, c, Direction.N)
+    west = [(t, d) for t, d in ports if d == Direction.W]
+    if not west:
+        raise HarnessError(f"{tank} has no west-facing connection")
+    t, d = west[0]
+    iface = Interface("fluid", fluid, t, d, None, None, "input", [f"{tank} collects {fluid}"])
+    # the fixture faces east like the others: its port points west (into the flow)
+    meta = {
+        "fixture": {"kind": "fluid-sink", "fluid": fluid},
+        "family": "fixture/fluid-sink",
+        "fluids": {0: fluid},
+    }
+    return Unit(Layout([Placement(tank, c)]), [iface], meta)
+
+
+# ---- harness for one unit ------------------------------------------------------------
 
 
 @dataclass
@@ -53,161 +185,178 @@ class Harness:
     specs: list[dict[str, Any]] = field(default_factory=list)  # create_entity tables
     sources: list[tuple[int, str]] = field(default_factory=list)  # (spec index, item)
     sinks: list[tuple[int, str]] = field(default_factory=list)  # (spec index, item)
+    fluid_sources: list[tuple[int, str, float]] = field(default_factory=list)
     tiles: set[Tile] = field(default_factory=set)
     unit_numbers: list[int] = field(default_factory=list)
     power_pole: int | None = None  # spec index
+    site: Site | None = None
+    connection: Any = None
 
 
-def _belt_at(unit: Unit, gd: GameData, t: Tile) -> str:
-    for i in unit.layout.tile_index(gd).get(t, []):
-        name = unit.layout.placements[i].name
-        if gd.entity(name).type in beltgeom.BELT_TYPES:
-            return name
-    raise HarnessError(f"no belt at interface tile {t}")
+def spec_of(gd: GameData, p: Placement) -> dict[str, Any]:
+    spec: dict[str, Any] = {
+        "name": p.name,
+        "position": [p.position.x, p.position.y],
+        "direction": int(p.direction),
+    }
+    t = gd.entity(p.name).type
+    if t in ("underground-belt", "loader", "loader-1x1"):
+        spec["type"] = p.extra.get("type", "input")
+    return spec
 
 
-def _plain_belt(gd: GameData, name: str) -> str:
-    """The transport-belt of the same tier as ``name`` (undergrounds/splitters)."""
-    if gd.entity(name).type == "transport-belt":
-        return name
-    speed = gd.entity(name).speed
-    for n, e in gd.entities.items():
-        if e.type == "transport-belt" and e.speed == speed:
-            return n
-    raise HarnessError(f"no transport-belt with the speed of {name}")
+def fixture_specs(
+    site: Site, gd: GameData, conn: Any, units: list[str], *, routes: bool = True
+) -> Harness:
+    """Specs for the fixture units ``units`` and (with ``routes``) every routed entity
+    of ``conn``."""
+    h = Harness(site=site, connection=conn)
+    for p in conn.layout.placements if routes else ():
+        h.specs.append(spec_of(gd, p))
+        h.tiles |= p.tiles(gd)
+    for name in units:
+        w = site.world(name)
+        fx = w.meta["fixture"]
+        base = len(h.specs)
+        for p in w.layout.placements:
+            h.specs.append(spec_of(gd, p))
+            h.tiles |= p.tiles(gd)
+        if fx["kind"] == "source":
+            h.sources.append((base + fx["chest"], fx["item"]))
+        elif fx["kind"] == "sink":
+            h.sinks.append((base + fx["chest"], fx["item"] or ""))
+        elif fx["kind"] == "power":
+            if h.power_pole is None:
+                h.power_pole = base + fx["pole"]
+        elif fx["kind"] == "fluid-source":
+            h.fluid_sources.append((base, fx["fluid"], fx["percentage"]))
+    return h
 
 
-class _Builder:
-    def __init__(self, unit: Unit, gd: GameData, origin: Tile) -> None:
-        self.unit, self.gd, self.origin = unit, gd, origin
-        self.blocked: set[Tile] = {t + origin for t in unit.layout.tiles(gd)}
-        self.h = Harness()
-
-    def world(self, t: Tile) -> Tile:
-        return t + self.origin
-
-    def add(self, name: str, anchor_center: Vec2, d: Direction = Direction.N, **kw: Any) -> int:
-        ts = footprint.tiles_of(self.gd, name, anchor_center, d)
-        clash = ts & (self.blocked | self.h.tiles)
-        if clash:
-            raise HarnessError(f"harness {name} at {anchor_center} overlaps {sorted(clash)[:3]}")
-        self.h.tiles |= ts
-        spec = {"name": name, "position": [anchor_center.x, anchor_center.y], "direction": int(d)}
-        spec.update(kw)
-        self.h.specs.append(spec)
-        return len(self.h.specs) - 1
-
-    def belt(self, name: str, t: Tile, d: Direction) -> int:
-        return self.add(name, t.center(), d)
-
-    def feed_head_on(self, belt: str, first: Tile, d: Direction, item: str) -> None:
-        """Chest -> loader -> belt tile ``first`` (flow ``d``), loader right behind it."""
-        loader = LOADER_FOR_BELT.get(belt)
-        if loader is None or loader not in self.gd.entities:
-            raise HarnessError(f"no loader for {belt}")
-        c = first.center()
-        back = d.opposite.vector()
-        self.add(loader, c + back * 1.5, d, type="output")
-        i = self.add(SOURCE_CHEST, c + back * 3, Direction.N)
-        self.h.sources.append((i, item))
-
-    def item_input(self, ifaces: list[Interface]) -> None:
-        t0 = self.world(ifaces[0].tile)
-        d = ifaces[0].direction
-        belt = _plain_belt(self.gd, _belt_at(self.unit, self.gd, ifaces[0].tile))
-        up = d.opposite
-        ext = [t0.neighbor(up, k) for k in range(1, UPSTREAM + 1)]
-        for t in ext:
-            self.belt(belt, t, d)
-        if any(i.lane in (None, "both") for i in ifaces):
-            if len(ifaces) > 1:
-                raise HarnessError("a 'both' lane input cannot share its tile")
-            # feed the last extension tile from behind
-            self.feed_head_on(belt, ext[-1], d, str(ifaces[0].material))
-            return
-        side_tile = ext[1]
-        for i in ifaces:
-            side = beltgeom.lane_side(d, i.lane)  # type: ignore[arg-type]
-            feeder = side_tile.neighbor(side)
-            flow = side.opposite  # towards the main belt
-            self.belt(belt, feeder, flow)
-            self.feed_head_on(belt, feeder, flow, str(i.material))
-
-    def item_output(self, i: Interface) -> None:
-        t0 = self.world(i.tile)
-        d = i.direction
-        belt = _plain_belt(self.gd, _belt_at(self.unit, self.gd, i.tile))
-        ext = [t0.neighbor(d, k) for k in range(1, DOWNSTREAM + 1)]
-        for t in ext:
-            self.belt(belt, t, d)
-        c = ext[-1].center()
-        fwd = d.vector()
-        self.add(LOADER_FOR_BELT[belt], c + fwd * 1.5, d, type="input")
-        k = self.add(SINK_CHEST, c + fwd * 3, Direction.N)
-        self.h.sinks.append((k, str(i.material)))
-
-    def power(self, i: Interface) -> None:
-        unit_pole = next(
-            (
-                p
-                for p in self.unit.layout.placements
-                if self.gd.entity(p.name).type == "electric-pole" and p.position.floor() == i.tile
-            ),
-            None,
-        )
-        if unit_pole is None:
-            raise HarnessError(f"no pole at power interface {i.tile}")
-        name = unit_pole.name
-        target = unit_pole.position + Vec2(self.origin.x, self.origin.y)
-        reach = int(pole.wire_distance(self.gd, name, name))
-        best: tuple[float, Tile, Tile] | None = None
-        t0 = target.floor()
-        for dx in range(-reach, reach + 1):
-            for dy in range(-reach, reach + 1):
-                a = Tile(t0.x + dx, t0.y + dy)
-                pc = footprint.center_for_tile_anchor(self.gd, name, a)
-                if not pole.wire_reaches(self.gd, name, pc, name, target):
-                    continue
-                pts = footprint.tiles_of(self.gd, name, pc, Direction.N)
-                if pts & (self.blocked | self.h.tiles):
-                    continue
-                sup = pole.supply_tiles(self.gd, name, pc)
-                for e in sorted(sup):
-                    ec = footprint.center_for_tile_anchor(self.gd, POWER_SOURCE, e)
-                    ets = footprint.tiles_of(self.gd, POWER_SOURCE, ec, Direction.N)
-                    if ets & (self.blocked | self.h.tiles | pts):
-                        continue
-                    # prefer the farthest spot still in reach: keeps clear of the unit
-                    score = pc.distance(target)
-                    if best is None or score > best[0]:
-                        best = (score, a, e)
-                    break
-        if best is None:
-            raise HarnessError("no room for the harness pole and power source")
-        _, a, e = best
-        self.h.power_pole = self.add(name, footprint.center_for_tile_anchor(self.gd, name, a))
-        self.add(POWER_SOURCE, footprint.center_for_tile_anchor(self.gd, POWER_SOURCE, e))
+def _flat_terrain(unit: Unit, gd: GameData, origin: Tile, margin: int = 40) -> Terrain:
+    lo, hi = unit.layout.bounds(gd)
+    a = Tile(origin.x + lo.x - margin, origin.y + lo.y - margin)
+    b = Tile(origin.x + hi.x + margin, origin.y + hi.y + margin)
+    return Terrain(buildable=area_tiles((a, b)))
 
 
-def plan(unit: Unit, gd: GameData, origin: Tile) -> Harness:
-    """Harness entities (world coordinates) for ``unit`` placed at ``origin``."""
-    b = _Builder(unit, gd, origin)
-    inputs: dict[Tile, list[Interface]] = {}
-    for i in unit.interfaces:
+def attach_fixtures(
+    site_units: list[PlacedUnit],
+    target: str,
+    gd: GameData,
+    terrain: Terrain,
+    *,
+    skip: set[int] | None = None,
+) -> tuple[list[PlacedUnit], list[Link]]:
+    """One fixture per interface of unit ``target`` (except indices in ``skip``),
+    placed next to the port it serves (falling back to the nearest free spot)."""
+    from fgen.route.belt import belt_at
+
+    skip = skip or set()
+    placed = list(site_units)
+    unit = next(u for u in placed if u.name == target)
+    w = unit.world()
+    taken: set[Tile] = set()
+    for u in placed:
+        taken |= u.world().layout.tiles(gd)
+
+    def free(t: Tile) -> bool:
+        return terrain.can_build(t) and t not in taken
+
+    fixtures: list[PlacedUnit] = []
+    links: list[Link] = []
+
+    def add(pu: PlacedUnit) -> None:
+        fixtures.append(pu)
+        taken.update(pu.world().layout.tiles(gd))
+        # keep the gap and port tiles of later fixtures clear of this one
+        for i in pu.world().interfaces:
+            taken.update(place.port_tiles(i, 0))
+
+    for k, i in enumerate(w.interfaces):
+        if k in skip:
+            continue
+        ep = Endpoint(target, k)
+        fname = f"{target}.fx{k}"
         if i.kind == "item" and i.role == "input":
-            if i.material is None:  # e.g. a fuel lane an electric furnace leaves unused
+            if i.material is None:  # e.g. the fuel lane of an electric furnace
                 continue
-            inputs.setdefault(i.tile, []).append(i)
-    for group in inputs.values():
-        b.item_input(group)
-    for i in unit.interfaces:
-        if i.kind == "item" and i.role == "output":
-            b.item_output(i)
-    for i in unit.interfaces:
-        if i.kind == "power" and i.role == "input":
-            b.power(i)
-            break
-    return b.h
+            belt = belt_at(gd, w.layout, i.tile) or "transport-belt"
+            fx = source_unit(gd, i.material, belt)
+            if i.lane in ("left", "right"):
+                side = beltgeom.lane_side(i.direction, i.lane)  # type: ignore[arg-type]
+                approach = i.tile.neighbor(i.direction.opposite).neighbor(side)
+                want = approach.neighbor(side, FIXTURE_GAP - 1)
+                pu = place.place_port(fname, fx, 0, want, side.opposite)
+            else:
+                want = i.tile.neighbor(i.direction.opposite, FIXTURE_GAP)
+                pu = place.place_port(fname, fx, 0, want, i.direction)
+            if not place.footprint_ok(pu.world(), gd, free, margin=0, clearance=0):
+                pu = place.find_spot(fname, fx, gd, free, want, poses=_poses(), clearance=1)
+            add(pu)
+            links.append(Link(Endpoint(fname, 0), ep))
+        elif i.kind == "item" and i.role == "output":
+            belt = belt_at(gd, w.layout, i.tile) or "transport-belt"
+            fx = sink_unit(gd, i.material, belt)
+            want = i.tile.neighbor(i.direction, FIXTURE_GAP)
+            pu = place.place_port(fname, fx, 0, want, i.direction)
+            if not place.footprint_ok(pu.world(), gd, free, margin=0, clearance=0):
+                pu = place.find_spot(fname, fx, gd, free, want, poses=_poses(), clearance=1)
+            add(pu)
+            links.append(Link(ep, Endpoint(fname, 0)))
+        elif i.kind == "power" and not any(
+            u.unit.meta.get("fixture", {}).get("kind") == "power" for u in fixtures
+        ):
+            pole_name = next(
+                (
+                    p.name
+                    for p in w.layout.placements
+                    if gd.entity(p.name).type == "electric-pole" and i.tile in p.tiles(gd)
+                ),
+                "small-electric-pole",
+            )
+            fx = power_unit(gd, pole_name)
+            pu = place.find_spot(fname, fx, gd, free, i.tile, margin=1)
+            add(pu)
+            links.append(Link(Endpoint(fname, 0), ep))
+        elif i.kind == "fluid":
+            fx = (
+                fluid_source_unit(gd, str(i.material))
+                if i.role == "input"
+                else fluid_sink_unit(gd, str(i.material))
+            )
+            want = i.tile.neighbor(i.direction, FIXTURE_GAP)
+            pu = place.find_spot(fname, fx, gd, free, want, poses=_poses())
+            add(pu)
+            links.append(
+                Link(Endpoint(fname, 0), ep) if i.role == "input" else Link(ep, Endpoint(fname, 0))
+            )
+    return fixtures, links
+
+
+def _poses():  # -> list[Pose]
+    from fgen.layout.model import Pose
+
+    return [Pose(d) for d in (Direction.N, Direction.E, Direction.S, Direction.W)]
+
+
+def plan(unit: Unit, gd: GameData, origin: Tile, terrain: Terrain | None = None) -> Harness:
+    """Fixtures and routes (world coordinates) for ``unit`` placed at ``origin``.
+    Without ``terrain`` the surroundings are assumed flat and empty."""
+    from fgen.route.connect import connect
+
+    terrain = terrain or _flat_terrain(unit, gd, origin)
+    main = PlacedUnit("unit", unit, origin)
+    fixtures, links = attach_fixtures([main], "unit", gd, terrain)
+    site = Site(terrain, [main, *fixtures], links)
+    try:
+        conn = connect(site, gd)
+    except Exception as exc:
+        raise HarnessError(f"cannot wire the harness: {exc}") from exc
+    bad = [v for v in conn.violations if v.code != "drill.no_ore"]
+    if bad:
+        raise HarnessError(f"harness violates invariants: {bad[:3]}")
+    return fixture_specs(site, gd, conn, [f.name for f in fixtures])
 
 
 def build(rcon: RconClient, h: Harness) -> Harness:
@@ -217,6 +366,7 @@ def build(rcon: RconClient, h: Harness) -> Harness:
         lua.PRELUDE
         + f"local specs = {lua.lit(h.specs)}\n"
         + f"local sources = {lua.lit([[i + 1, item] for i, item in h.sources])}\n"
+        + f"local fsources = {lua.lit([[i + 1, f, p] for i, f, p in h.fluid_sources])}\n"
         + f"local sinks = {lua.lit([[i + 1, item] for i, item in h.sinks])}\n"
         + f"local pole_i = {lua.lit(None if h.power_pole is None else h.power_pole + 1)}\n"
         + f"""
@@ -234,6 +384,10 @@ for _, s in ipairs(sources) do
                                       mode='exactly'}}}}
   end
 end
+for _, s in ipairs(fsources) do
+  local e = ents[s[1]]
+  if e then e.set_infinity_pipe_filter{{name=s[2], percentage=s[3], mode='at-least'}} end
+end
 storage.fgen_harness = {{sinks={{}}, pole=pole_i and ents[pole_i] or nil}}
 for k, s in ipairs(sinks) do
   storage.fgen_harness.sinks[k] = {{entity=ents[s[1]], item=s[2], total=0, first_tick=nil}}
@@ -245,6 +399,9 @@ out.pole_net = pole_i and ents[pole_i] and ents[pole_i].electric_network_id or n
     out = rcon.lua_json(code)
     failed = out["failed"]
     if failed:
-        raise HarnessError(f"create_entity failed for harness specs {failed}")
+        idx = [int(i) - 1 for i in (failed.values() if isinstance(failed, dict) else failed)]
+        raise HarnessError(
+            f"create_entity failed for harness specs {[h.specs[i] for i in idx][:3]}"
+        )
     h.unit_numbers = [int(u) for u in (out["unit_numbers"] or [])]
     return h

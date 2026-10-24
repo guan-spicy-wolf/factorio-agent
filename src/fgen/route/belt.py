@@ -124,8 +124,11 @@ def link_mode(dst: Interface) -> tuple[Literal["direct", "side"], Lane | None]:
 
 
 def reserve_ports(grid: RouteGrid, ports: Iterable[tuple[Endpoint, Interface]]) -> None:
-    """Keep ``RESERVE`` tiles in front of every item output / behind every item input."""
+    """Keep ``RESERVE`` tiles in front of every item output / behind every item input,
+    and the tile outside every fluid connection."""
     for ep, i in ports:
+        if i.kind == "fluid":  # the tile outside the connection
+            grid.reserve([i.tile.neighbor(i.direction)], str(ep))
         if i.kind != "item":
             continue
         d = i.direction if i.role == "output" else i.direction.opposite

@@ -71,6 +71,7 @@ _ENTITY_FIELDS: dict[str, list[str]] = {
     "loader": [*_COMMON, "speed"],
     "infinity-container": [*_COMMON, "inventory_size"],
     "electric-energy-interface": [*_COMMON],
+    "infinity-pipe": [*_COMMON, "fluid_box.pipe_connections"],
 }
 
 _OTHER_FIELDS: dict[str, list[str]] = {

@@ -2033,5 +2033,160 @@
         ]
       }
     }
+  },
+  "infinity-pipe": {
+    "infinity-pipe": {
+      "type": "infinity-pipe",
+      "name": "infinity-pipe",
+      "flags": [
+        "placeable-neutral",
+        "player-creation"
+      ],
+      "collision_box": [
+        [
+          -0.29,
+          -0.29
+        ],
+        [
+          0.29,
+          0.29
+        ]
+      ],
+      "fluid_box": {
+        "volume": 100,
+        "pipe_covers": {
+          "north": {
+            "layers": [
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5
+              },
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5,
+                "draw_as_shadow": true
+              }
+            ]
+          },
+          "east": {
+            "layers": [
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5
+              },
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5,
+                "draw_as_shadow": true
+              }
+            ]
+          },
+          "south": {
+            "layers": [
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5
+              },
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5,
+                "draw_as_shadow": true
+              }
+            ]
+          },
+          "west": {
+            "layers": [
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5
+              },
+              {
+                "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                "priority": "extra-high",
+                "width": 128,
+                "height": 128,
+                "scale": 0.5,
+                "draw_as_shadow": true
+              }
+            ]
+          }
+        },
+        "pipe_connections": [
+          {
+            "direction": 0,
+            "position": [
+              0,
+              0
+            ],
+            "hide_connection_info": true,
+            "connection_category": [
+              "default",
+              "fusion-reactor",
+              "fusion-generator"
+            ]
+          },
+          {
+            "direction": 4,
+            "position": [
+              0,
+              0
+            ],
+            "hide_connection_info": true,
+            "connection_category": [
+              "default",
+              "fusion-reactor",
+              "fusion-generator"
+            ]
+          },
+          {
+            "direction": 8,
+            "position": [
+              0,
+              0
+            ],
+            "hide_connection_info": true,
+            "connection_category": [
+              "default",
+              "fusion-reactor",
+              "fusion-generator"
+            ]
+          },
+          {
+            "direction": 12,
+            "position": [
+              0,
+              0
+            ],
+            "hide_connection_info": true,
+            "connection_category": [
+              "default",
+              "fusion-reactor",
+              "fusion-generator"
+            ]
+          }
+        ]
+      }
+    }
   }
 }

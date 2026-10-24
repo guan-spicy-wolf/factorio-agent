@@ -9,7 +9,7 @@ import pytest
 from fgen.gen import sweep
 from fgen.gen.smelting_row import SmeltingRowParams, generate
 from fgen.geom import pole
-from fgen.geom.vec import Tile, Vec2
+from fgen.geom.vec import Direction, Tile, Vec2
 from fgen.sim import harness as hs
 
 PARAMS = [
@@ -36,14 +36,18 @@ def test_harness_plan_avoids_unit_and_covers_interfaces(gd, p):
     assert sorted(item for _, item in h.sources) == want
     outs = [i for i in unit.interfaces if i.kind == "item" and i.role == "output"]
     assert len(h.sinks) == len(outs)
-    # harness pole in wire reach of the unit's power-interface pole
+    # harness pole of the unit's pole type, wired to the unit (directly or by a chain)
     pw = next(i for i in unit.interfaces if i.kind == "power")
     up = next(q for q in unit.layout.placements if q.position.floor() == pw.tile)
     spec = h.specs[h.power_pole]
     assert spec["name"] == up.name
-    a = Vec2(*spec["position"])
-    b = up.position + Vec2(origin.x, origin.y)
-    assert pole.wire_reaches(gd, up.name, a, up.name, b)
+    assert not [v for v in h.connection.violations if v.code.startswith("power.")]
+    poles = [s for s in h.specs if gd.entity(s["name"]).type == "electric-pole"]
+    unit_poles = [q for q in unit.layout.placements if gd.entity(q.name).type == "electric-pole"]
+    allp = [(s["name"], Vec2(*s["position"])) for s in poles] + [
+        (q.name, q.position + Vec2(origin.x, origin.y)) for q in unit_poles
+    ]
+    assert len(pole.copper_tree(gd, allp)) == len(allp) - 1  # one network
     # loaders match the belt tier
     belts = {s["name"] for s in h.specs if gd.entity(s["name"]).type == "transport-belt"}
     loaders = {s["name"] for s in h.specs if gd.entity(s["name"]).type == "loader"}
@@ -54,12 +58,15 @@ def test_lane_inputs_are_side_loaded_from_the_lane_side(gd):
     unit = generate(SmeltingRowParams(), gd)
     h = hs.plan(unit, gd, Tile(0, 0))
     ore = next(i for i in unit.interfaces if i.material == "iron-ore")
-    # side-load feeders: belts flowing towards the main row, north (left) and south (right)
-    feeders = [s for s in h.specs if s["name"] == "transport-belt" and s["direction"] in (0, 8)]
-    ys = sorted(s["position"][1] - (ore.tile.y + 0.5) for s in feeders)
-    assert ys == [-1, 1]
-    north = next(s for s in feeders if s["position"][1] < ore.tile.y)
-    assert north["direction"] == 8  # flows south, into the left (north) lane
+    stub = ore.tile.neighbor(ore.direction.opposite)  # side-load tile of the stub
+    by_tile = {Vec2(*s["position"]).floor(): s for s in h.specs}
+    north, south = stub.neighbor(Direction.N), stub.neighbor(Direction.S)
+    assert by_tile[stub]["direction"] == int(ore.direction)
+    assert by_tile[north]["direction"] == int(Direction.S)  # into the left (north) lane
+    assert by_tile[south]["direction"] == int(Direction.N)
+    # the source north of the row carries ore, the one south carries coal
+    src = {item: Vec2(*h.specs[i]["position"]).y for i, item in h.sources}
+    assert src["iron-ore"] < ore.tile.y < src["coal"]
 
 
 def _fake_measure(unit):
