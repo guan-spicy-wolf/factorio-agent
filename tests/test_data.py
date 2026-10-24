@@ -226,3 +226,42 @@ def test_fields_used_covers_all_entity_types() -> None:
     assert "supply_area_distance" in fu["electric-pole"]
     assert "pickup_position" in fu["inserter"]
     assert "recipe" in fu and "item" in fu
+
+
+def test_seed_resources_and_big_drill(gd: GameData) -> None:
+    for name in ("iron-ore", "copper-ore", "coal", "stone"):
+        r = gd.resource(name)
+        assert r.category == "basic-solid" and not r.infinite and r.required_fluid is None
+        assert r.mining_time > 0 and r.product == name
+    oil = gd.resource("crude-oil")
+    assert oil.infinite and oil.category == "basic-fluid"
+    assert gd.resource("uranium-ore").required_fluid
+    emd = gd.entity("electric-mining-drill")
+    assert emd.resource_categories == ("basic-solid",) and not emd.drops_full_belt_stacks
+    big = gd.entity("big-mining-drill")
+    assert big.type == "mining-drill" and big.drops_full_belt_stacks
+    assert big.mining_speed and big.resource_searching_radius and big.vector_to_place_result
+    assert "basic-solid" in big.resource_categories
+    assert "resource" in fields_used()
+
+
+def test_load_dump_resource_forms(tmp_path: Path) -> None:
+    frag = {
+        "resource": {
+            "short": {"minable": {"mining_time": 2, "result": "short", "count": 3}},
+            "long": {
+                "category": "basic-fluid",
+                "infinite": True,
+                "minable": {
+                    "mining_time": 1,
+                    "results": [{"type": "fluid", "name": "goo", "amount": 10}],
+                },
+            },
+        }
+    }
+    p = tmp_path / "d.json"
+    p.write_text(json.dumps(frag))
+    gd = load_dump(p, version="2.1.0")
+    s, lg = gd.resource("short"), gd.resource("long")
+    assert s.results == (("short", 3.0),) and s.category == "basic-solid" and s.mining_time == 2
+    assert lg.infinite and lg.results == (("goo", 10.0),) and lg.category == "basic-fluid"

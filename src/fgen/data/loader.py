@@ -23,6 +23,7 @@ from fgen.data.schema import (
     ItemProto,
     PipeConnection,
     RecipeProto,
+    ResourceProto,
     Vector,
 )
 
@@ -52,6 +53,8 @@ _ENTITY_FIELDS: dict[str, list[str]] = {
         "mining_speed",
         "resource_searching_radius",
         "vector_to_place_result",
+        "resource_categories",
+        "drops_full_belt_stacks",
         *_ENERGY,
         "output_fluid_box.pipe_connections",
     ],
@@ -72,6 +75,17 @@ _ENTITY_FIELDS: dict[str, list[str]] = {
 
 _OTHER_FIELDS: dict[str, list[str]] = {
     "item": ["name", "type", "stack_size", "fuel_value", "fuel_category"],
+    "resource": [
+        "name",
+        "category",
+        "infinite",
+        "minable.mining_time",
+        "minable.result",
+        "minable.count",
+        "minable.results[].name",
+        "minable.results[].amount",
+        "minable.required_fluid",
+    ],
     "recipe": [
         "name",
         "categories",
@@ -210,6 +224,8 @@ def _entity(raw: Mapping[str, Any]) -> EntityProto:
         crafting_speed=_opt_float(raw, "crafting_speed"),
         crafting_categories=tuple(raw.get("crafting_categories", ())),
         mining_speed=_opt_float(raw, "mining_speed"),
+        resource_categories=tuple(raw.get("resource_categories", ())),
+        drops_full_belt_stacks=bool(raw.get("drops_full_belt_stacks", False)),
         resource_searching_radius=_opt_float(raw, "resource_searching_radius"),
         vector_to_place_result=(
             _vec(raw["vector_to_place_result"]) if "vector_to_place_result" in raw else None
@@ -251,6 +267,21 @@ def _recipe(raw: Mapping[str, Any], default_energy: float) -> RecipeProto:
     )
 
 
+def _resource(raw: Mapping[str, Any]) -> ResourceProto:
+    m = raw.get("minable") or {}
+    results = _products(m, "results")
+    if not results and "result" in m:  # short form: result (+ count)
+        results = ((m["result"], float(m.get("count", 1))),)
+    return ResourceProto(
+        name=raw["name"],
+        mining_time=float(m["mining_time"]),
+        results=results,
+        category=raw.get("category", "basic-solid"),
+        infinite=bool(raw.get("infinite", False)),
+        required_fluid=m.get("required_fluid"),
+    )
+
+
 def _item(raw: Mapping[str, Any]) -> ItemProto:
     return ItemProto(
         name=raw["name"],
@@ -278,12 +309,14 @@ def from_raw(
         n: _recipe({"name": n, **r}, default_energy) for n, r in (raw.get("recipe") or {}).items()
     }
     items = {n: _item({"name": n, **i}) for n, i in (raw.get("item") or {}).items()}
+    res = {n: _resource({"name": n, **r}) for n, r in (raw.get("resource") or {}).items()}
     return GameData(
         entities=entities,
         recipes=recipes,
         version=version,
         source=source,
         items=items,
+        resources=res,
         constants=dict(constants),
     )
 

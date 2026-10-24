@@ -85,6 +85,8 @@ class EntityProto:
     mining_speed: float | None = None
     resource_searching_radius: float | None = None
     vector_to_place_result: Vector | None = None
+    resource_categories: tuple[str, ...] = ()
+    drops_full_belt_stacks: bool = False
     # fluids
     fluid_box: FluidBox | None = None
     output_fluid_box: FluidBox | None = None
@@ -111,6 +113,24 @@ class ItemProto:
 
 
 @dataclass(frozen=True)
+class ResourceProto:
+    """A ``resource`` prototype (ore patch tile, oil well). ``results`` are the
+    ``minable`` products as ``(name, amount)``; ``category`` defaults to
+    ``basic-solid`` as in ``data.raw``."""
+
+    name: str
+    mining_time: float
+    results: tuple[tuple[str, float], ...]
+    category: str = "basic-solid"
+    infinite: bool = False
+    required_fluid: str | None = None
+
+    @property
+    def product(self) -> str:
+        return self.results[0][0]
+
+
+@dataclass(frozen=True)
 class RecipeProto:
     name: str
     categories: tuple[str, ...]  # 2.1: ``categories`` list; 2.0 had a single ``category``
@@ -126,6 +146,7 @@ class GameData:
     version: str
     source: Literal["seed", "dump"]
     items: dict[str, ItemProto] = field(default_factory=dict)
+    resources: dict[str, ResourceProto] = field(default_factory=dict)
     # Engine constants that are not part of any prototype (ticks per second, items per
     # belt tile). They live in the seed file, never in code.
     constants: dict[str, float] = field(default_factory=dict)
@@ -141,6 +162,12 @@ class GameData:
             return self.recipes[name]
         except KeyError:
             raise KeyError(f"unknown recipe {name!r} in {self.source} data") from None
+
+    def resource(self, name: str) -> ResourceProto:
+        try:
+            return self.resources[name]
+        except KeyError:
+            raise KeyError(f"unknown resource {name!r} in {self.source} data") from None
 
     def constant(self, name: str) -> float:
         try:

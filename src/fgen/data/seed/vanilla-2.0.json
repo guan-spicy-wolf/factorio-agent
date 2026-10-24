@@ -728,6 +728,9 @@
         "placeable-neutral",
         "player-creation"
       ],
+      "resource_categories": [
+        "basic-solid"
+      ],
       "collision_box": [
         [
           -0.7,
@@ -781,6 +784,9 @@
         "placeable-neutral",
         "player-creation"
       ],
+      "resource_categories": [
+        "basic-solid"
+      ],
       "collision_box": [
         [
           -1.35,
@@ -812,6 +818,9 @@
       "flags": [
         "placeable-neutral",
         "player-creation"
+      ],
+      "resource_categories": [
+        "basic-fluid"
       ],
       "collision_box": [
         [
@@ -941,6 +950,43 @@
       "vector_to_place_result": [
         0,
         0
+      ]
+    },
+    "big-mining-drill": {
+      "type": "mining-drill",
+      "name": "big-mining-drill",
+      "flags": [
+        "placeable-neutral",
+        "player-creation"
+      ],
+      "resource_categories": [
+        "basic-solid",
+        "hard-solid"
+      ],
+      "collision_box": [
+        [
+          -2.35,
+          -2.35
+        ],
+        [
+          2.35,
+          2.35
+        ]
+      ],
+      "drops_full_belt_stacks": true,
+      "mining_speed": 2.5,
+      "energy_source": {
+        "type": "electric",
+        "emissions_per_minute": {
+          "pollution": 40
+        },
+        "usage_priority": "secondary-input"
+      },
+      "energy_usage": "300kW",
+      "resource_searching_radius": 6.49,
+      "vector_to_place_result": [
+        0,
+        -2.85
       ]
     }
   },
@@ -1927,6 +1973,65 @@
           "amount": 1
         }
       ]
+    }
+  },
+  "resource": {
+    "iron-ore": {
+      "name": "iron-ore",
+      "minable": {
+        "mining_particle": "iron-ore-particle",
+        "mining_time": 1,
+        "result": "iron-ore"
+      }
+    },
+    "copper-ore": {
+      "name": "copper-ore",
+      "minable": {
+        "mining_particle": "copper-ore-particle",
+        "mining_time": 1,
+        "result": "copper-ore"
+      }
+    },
+    "coal": {
+      "name": "coal",
+      "minable": {
+        "mining_particle": "coal-particle",
+        "mining_time": 1,
+        "result": "coal"
+      }
+    },
+    "stone": {
+      "name": "stone",
+      "minable": {
+        "mining_particle": "stone-particle",
+        "mining_time": 1,
+        "result": "stone"
+      }
+    },
+    "uranium-ore": {
+      "name": "uranium-ore",
+      "minable": {
+        "mining_particle": "stone-particle",
+        "mining_time": 2,
+        "result": "uranium-ore",
+        "fluid_amount": 10,
+        "required_fluid": "sulfuric-acid"
+      }
+    },
+    "crude-oil": {
+      "name": "crude-oil",
+      "category": "basic-fluid",
+      "infinite": true,
+      "minable": {
+        "mining_time": 1,
+        "results": [
+          {
+            "type": "fluid",
+            "name": "crude-oil",
+            "amount": 10
+          }
+        ]
+      }
     }
   }
 }

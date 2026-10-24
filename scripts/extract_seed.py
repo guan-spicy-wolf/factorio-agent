@@ -17,6 +17,13 @@ from pathlib import Path
 
 from fgen.data.loader import SEED_FILE, fields_used
 
+# Prototypes added on top of the names already in the seed (type -> names). Adding a
+# name here and re-running the script is how the seed grows; never edit the JSON.
+ADD: dict[str, list[str]] = {
+    "mining-drill": ["big-mining-drill"],
+    "resource": ["iron-ore", "copper-ore", "coal", "stone", "uranium-ore", "crude-oil"],
+}
+
 SEED_PATH = Path(__file__).resolve().parents[1] / "src" / "fgen" / "data" / "seed" / SEED_FILE
 
 
@@ -40,9 +47,11 @@ def main() -> None:
         "_constants": seed["_constants"],
     }
     missing = []
-    for proto_type, protos in seed.items():
-        if proto_type.startswith("_"):
-            continue
+    wanted_names = {t: dict(v) for t, v in seed.items() if not t.startswith("_")}
+    for proto_type, names in ADD.items():
+        for name in names:
+            wanted_names.setdefault(proto_type, {}).setdefault(name, {})
+    for proto_type, protos in wanted_names.items():
         keys = {f.split(".")[0].split("[")[0] for f in used.get(proto_type, [])}
         out[proto_type] = {}
         for name, old in protos.items():
