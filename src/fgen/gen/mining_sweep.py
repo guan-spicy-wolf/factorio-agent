@@ -26,6 +26,7 @@ from fgen.terrain.paint import ShapeSpec
 AMOUNT = 5000  # ore per painted tile: far more than a measurement mines
 TOLERANCE = 0.05  # plan-phase2 §4 M4: measured vs contract per interface
 REAL_MAP = "real-map"
+BEFORE = "mining_patch.before.json"  # numbers before phase 6a, for the comparison
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,14 @@ CASES: tuple[Case, ...] = (
         MiningPatchParams(pole="medium-electric-pole", max_belts=1),
         "long thin patch: drills cut at lane capacity",
     ),
+    Case(
+        "big-drill-medium",
+        _rect(10, 10, 30, 24),
+        MiningPatchParams(
+            drill="big-mining-drill", pole="medium-electric-pole", belt="express-transport-belt"
+        ),
+        "5x5 drills, belt rows 11 apart > the medium pole's wire: rows bridged",
+    ),
 )
 
 type Measurer = Callable[[Case, Unit, Terrain], dict[str, Any]]
@@ -97,6 +106,8 @@ def contract(unit: Unit) -> dict[str, Any]:
         "total": sum(i.rate or 0.0 for i in outs),
         "drills": m["anchor"]["drills"],
         "poles": m["poles"],
+        "undergrounds": m.get("undergrounds", 0),
+        "drills_before_poles": m.get("drills_before_poles"),
         "lanes": [b["lanes"] for b in m["belts"]],
         "dropped_by_reason": m["dropped_by_reason"],
         "suggestions": m["suggestions"],
@@ -221,6 +232,39 @@ def _real_map_section(r: dict[str, Any]) -> list[str]:
     return out
 
 
+def _before_after(path: Path, rows: list[dict[str, Any]]) -> list[str]:
+    """Drills and ``pole_slot`` against the recorded numbers before phase 6a (poles took
+    a whole drill slot), when ``characterization/mining_patch.before.json`` exists."""
+    if not path.exists():
+        return []
+    before = json.loads(path.read_text())
+    out = [
+        "## Before vs after (phase 6a)",
+        "",
+        f"Before: {before['source']}. After: this sweep. `pole_slot` after = drills the "
+        "rows hold without poles (after the lane cut) minus drills placed; before = drill "
+        "grid slots a pole took.",
+        "",
+        "| case | drills before | drills after | pole_slot before | pole_slot after | "
+        "poles before | poles after | undergrounds after |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    tot = [0, 0, 0, 0]
+    for r in rows:
+        b = before["cases"].get(r["case"])
+        if b is None:
+            continue
+        c = r["contract"]
+        ps = c["dropped_by_reason"].get("pole_slot", 0)
+        tot = [tot[0] + b["drills"], tot[1] + c["drills"], tot[2] + b["pole_slot"], tot[3] + ps]
+        out.append(
+            f"| {r['case']} | {b['drills']} | {c['drills']} | {b['pole_slot']} | {ps} | "
+            f"{b['poles']} | {c['poles']} | {c.get('undergrounds', '-')} |"
+        )
+    out += [f"| **total** | {tot[0]} | {tot[1]} | {tot[2]} | {tot[3]} | | | |", ""]
+    return out
+
+
 def write(
     gd: GameData,
     out_dir: Path,
@@ -276,6 +320,7 @@ def write(
             + (f"; suggestions: {', '.join(c['suggestions'])}" if c["suggestions"] else ""),
             "",
         ]
+    md += _before_after(out_dir / BEFORE, all_rows)
     if real:
         md += _real_map_section(real)
     mdp = out_dir / "mining_patch.md"

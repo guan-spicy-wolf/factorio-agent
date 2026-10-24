@@ -90,14 +90,20 @@ def chain(
     lo_y = min(a[1].y, b[1].y) - 3 * reach
     hi_y = max(a[1].y, b[1].y) + 3 * reach
 
+    memo: dict[Tile, Vec2 | None] = {}
+
     def fits(anchor: Tile) -> Vec2 | None:
-        c = footprint.center_for_tile_anchor(gd, name, anchor)
-        if not (lo_x <= c.x <= hi_x and lo_y <= c.y <= hi_y):
-            return None
-        ts = footprint.tiles_of(gd, name, c, Direction.N)
-        if all(grid.free(t) and t not in grid.item_hazards for t in ts):
-            return c
-        return None
+        if anchor in memo:
+            return memo[anchor]
+        c: Vec2 | None = footprint.center_for_tile_anchor(gd, name, anchor)
+        assert c is not None
+        if not (lo_x <= c.x <= hi_x and lo_y <= c.y <= hi_y) or not all(
+            grid.free(t) and t not in grid.item_hazards
+            for t in footprint.tiles_of(gd, name, c, Direction.N)
+        ):
+            c = None
+        memo[anchor] = c
+        return c
 
     start = ("start", a[1])
 

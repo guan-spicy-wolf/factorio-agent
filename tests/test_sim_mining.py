@@ -14,7 +14,7 @@ from fgen.sim.mining import painted_measurer
 
 pytestmark = pytest.mark.headless
 
-MEASURED = ("rect-1belt", "rect-2belt", "l-shape", "lane-capacity")
+MEASURED = ("rect-1belt", "rect-2belt", "l-shape", "lane-capacity", "big-drill-medium")
 
 
 @pytest.fixture(scope="module")

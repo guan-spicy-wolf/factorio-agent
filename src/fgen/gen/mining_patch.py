@@ -4,39 +4,50 @@ Canonical frame (``axis="x"``, ``flow="+"``): belts run east along rows; each be
 has a row of drills on each side facing it (north side faces S, south side faces N), so
 every drill drops onto the belt (the drop tile comes from ``vector_to_place_result``,
 the lane from where the drop point lies inside the belt tile: the drill's own side).
-With the electric drill::
+With the electric drill and small poles::
 
-    DDDDDDPDDDDDD      north drill row (3 tall), P = pole that replaced one drill slot
-    DDDDDD.DDDDDD
-    DDDDDDDDDDDDD
-    >>>>>>>>>>>>>      belt row: flows east; its east end is an output interface
-    DDDDDDDDDDDDD
-    DDDDDDDDDDDDD      south drill row
-    DDDDDDDDDDDDD
+    DDDDDDDDDDDDDDD    north drill row (3 tall), packed
+    DDDDDDDDDDDDDDD
+    DDDDDDDDDDDDDDD
+    P>UPU>>>UPU>>>>    belt row: poles stand in the belt, the belt passes under them
+    DDDDDDDDDDDDDDD    (U = underground entrance / exit; drills drop onto those too)
+    DDDDDDDDDDDDDDD    south drill row
+    DDDDDDDDDDDDDDD
 
 Belt rows repeat every ``period`` = drill rows + belt + drill rows (7 for the 3x3
 drill). Other axes/flows are the canonical frame rotated (``layout.transform``).
 
-Derived from ``GameData`` (no entity names in the logic):
+Derived from ``GameData`` (no entity names in the logic; phase 6a):
 
-- drill positions: drop tile and footprint from the prototype; a slot gets a drill when
-  its search area (``fgen.geom.mining.search_tiles``) holds at least
+- drill positions: any column along the belt (no fixed grid). A position may hold a
+  drill when its search area (``fgen.geom.mining.search_tiles``) holds at least
   ``min_ore_tiles_per_drill`` patch tiles and ``min_ore_amount_per_drill`` ore, no other
   resource the drill would mine too (unless ``allow_mixed``; reasons ``low_ore`` /
-  ``mixed_resource``), and its footprint and belt tile are buildable;
-- the x/y phase of the grid is searched (``period`` x drill width options) for the most
-  drills;
-- poles: the in-slot offset whose supply area reaches the drill rows of both sides
-  (else one pole row per side); pole slots along the belt by a greedy sweep under
-  ``maximum_wire_distance``, the same slots in every belt row so rows connect;
-  a pole replaces the drill in its slot (``meta["dropped_drills"]`` reason ``pole_slot``);
+  ``mixed_resource``), and its footprint and belt tile are buildable. Each side of each
+  belt row is packed with the most drills (interval scheduling, then most ore tiles);
+  the y phase of the rows is searched (``period`` options).
 - lane capacity: each lane carries the drills of one side; drills beyond
   ``lane capacity / drill rate`` are cut from the upstream end (reason
   ``lane_capacity``) and ``meta["suggestions"]`` names a belt tier or axis that keeps them.
+  ``max_belt_rate`` (e.g. what the consumer of a belt takes) cuts further from the
+  upstream end (reason ``belt_rate_cap``).
+- poles, after the drills: per belt row, pole spots are the free tiles of the row's
+  strip (row ends, gaps in the patch) and, when the pole is one tile deep and the belt
+  tier has an underground belt, belt tiles that are no drop tile, with an underground
+  pair around the pole inside the belt (entrance and exit no further apart than
+  ``max_distance``, exit upstream of the output tile). Only spots whose supply area
+  reaches both drill rows are used if there are any (else one chain per drill row). A
+  DP picks the cheapest chain (poles, then underground pairs): neighbours within
+  ``maximum_wire_distance``, every drill supplied by one of the two poles around it or
+  by a pole of an earlier row; a chain wired to the rows above is preferred. Rows still
+  out of wire reach (e.g. belt period > wire) are joined with ``route.power.chain``
+  over free tiles. Only when no chain exists does a drill give way (reason
+  ``pole_slot``): ``meta["drills_before_poles"]`` minus the drills kept.
 """
 
 from __future__ import annotations
 
+import bisect
 import math
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
@@ -85,30 +96,42 @@ class MiningPatchParams:
     min_ore_amount_per_drill: int = 0  # ore (sum of amounts) needed in its search area
     allow_mixed: bool = False  # allow drills whose search area holds another resource
     flow: Literal["+", "-"] = "+"  # belts flow toward the + (E/S) or - (W/N) end of axis
+    max_belt_rate: float | None = None  # per belt, e.g. what the consumer takes (None: lanes)
 
 
 @dataclass
 class _Cand:
     row: int  # belt row index
     side: str
-    k: int  # slot index along the belt
     x: int  # drop column (= belt tile x)
     pos: Vec2
     ore: int  # patch tiles in the search area
     lane: Lane
+    span: tuple[int, int]  # the drill's columns (inclusive)
 
 
 @dataclass
 class _Geo:
     """Per-parameter geometry in the canonical frame (independent of the patch)."""
 
-    w: int  # drill width along the belt (slot step)
+    w: int  # drill width along the belt
     period: int
     rows: dict[str, tuple[int, int]]  # side -> drill top-row offset from belt row, height
     anchor_dx: dict[str, int]  # side -> drill anchor x - drop column
     lanes: dict[str, Lane]
-    pole_offsets: dict[str, list[tuple[int, int]]]  # side -> in-slot pole anchors to try
-    pole_sides: tuple[str, ...]  # sides that get poles
+    strip: tuple[int, int]  # first / last row offset of one belt row's strip
+    underground: str | None  # underground belt of the belt's tier (poles in the belt row)
+    groups: tuple[tuple[str, ...], ...]  # drill rows served by one pole chain each
+
+
+@dataclass(frozen=True)
+class _Site:
+    """A spot for one pole of a belt row (canonical frame)."""
+
+    pos: Vec2
+    tiles: frozenset[Tile]
+    ug: tuple[Tile, Tile] | None  # entrance / exit tiles when the pole sits in the belt row
+    cover: int  # bit mask over the row's drills (sorted by drop column)
 
 
 @dataclass
@@ -120,6 +143,8 @@ class _Result:
     poles: list[Placement]
     phase: tuple[int, int]
     score: tuple[Any, ...] = field(default=())
+    undergrounds: int = 0
+    free_drills: int = 0  # drills the rows hold before poles take any
 
 
 def _names_of_type(gd: GameData, type_: str) -> list[str]:
@@ -146,6 +171,8 @@ def _check_names(p: MiningPatchParams, gd: GameData) -> None:
         raise Infeasible("min_ore_tiles_per_drill must be >= 1", ["min_ore_tiles_per_drill=1"])
     if p.min_ore_amount_per_drill < 0:
         raise Infeasible("min_ore_amount_per_drill must be >= 0", ["min_ore_amount_per_drill=0"])
+    if p.max_belt_rate is not None and p.max_belt_rate <= 0:
+        raise Infeasible("max_belt_rate must be > 0 or None", ["max_belt_rate=None"])
     if p.max_belts is not None and p.max_belts < 1:
         raise Infeasible("max_belts must be >= 1 or None", ["max_belts=None"])
     res = gd.resource(p.resource)
@@ -173,6 +200,8 @@ def _usable_drill(gd: GameData, name: str, resource: str) -> bool:
 
 
 def _geometry(p: MiningPatchParams, gd: GameData) -> _Geo:
+    from fgen.route.belt import underground_for
+
     rows: dict[str, tuple[int, int]] = {}
     anchor_dx: dict[str, int] = {}
     lanes: dict[str, Lane] = {}
@@ -202,65 +231,32 @@ def _geometry(p: MiningPatchParams, gd: GameData) -> _Geo:
     n_top = rows["north"][0]
     s_top, s_h = rows["south"]
     period = s_top + s_h - n_top
+    strip = (n_top, s_top + s_h - 1)
+    # one chain per belt row when a pole between the drills (in a drill row, or in the
+    # belt row over an underground pair when it is one tile deep) supplies both drill
+    # rows, else one chain per drill row
+    ug = underground_for(gd, p.belt)
+    _, ph = footprint.size(gd, p.pole)
 
-    # pole anchor offsets inside a slot, measured relative to belt row 0 / drop column 0
-    pw, ph = footprint.size(gd, p.pole)
-    if pw > w or ph > max(rows["north"][1], s_h):
-        raise Infeasible(f"{p.pole} does not fit in a {p.drill} slot")
+    def inside(oy: int) -> bool:
+        ys = set(range(oy, oy + ph))
+        return 0 not in ys or (ys == {0} and ug is not None)
 
-    def side_rows(side: str) -> tuple[int, int]:
-        top, h = rows[side]
-        return top, top + h - 1
+    both = any(
+        inside(oy) and _reaches(p, gd, rows, oy) == set(SIDES)
+        for oy in range(strip[0], strip[1] - ph + 2)
+    )
+    groups = (SIDES,) if both else tuple((s,) for s in SIDES)
+    return _Geo(w, period, rows, anchor_dx, lanes, strip, ug, groups)
 
-    def offsets(side: str) -> list[tuple[int, int, set[str]]]:
-        top, h = rows[side]
-        out = []
-        for oy in range(h - ph + 1):
-            for ox in range(w - pw + 1):
-                a = Tile(anchor_dx[side] + ox, top + oy)
-                cen = footprint.center_for_tile_anchor(gd, p.pole, a)
-                _, y0, _, y1 = pole.supply_range(gd, p.pole, cen)
-                reach = {s for s in SIDES if side_rows(s)[0] <= y1 and side_rows(s)[1] >= y0}
-                out.append((ox, oy, reach))
-        mid = (w - pw) / 2
-        # nearest the belt first, then the middle column
-        out.sort(key=lambda o: (abs(rows[side][0] + o[1] + (ph - 1) / 2), abs(o[0] - mid)))
-        return out
 
-    def centre_y(side: str, oy: int) -> float:
-        a = Tile(anchor_dx[side], rows[side][0] + oy)
-        return footprint.center_for_tile_anchor(gd, p.pole, a).y
-
-    wire = pole.wire_distance(gd, p.pole, p.pole)
-    both = {s: [o for o in offsets(s) if set(SIDES) <= o[2]] for s in SIDES}
-    # one pole row per belt when one in-slot spot supplies both drill rows and the same
-    # spot one belt period further is still in wire reach
-    one = [s for s in SIDES if both[s] and period <= wire + _EPS]
-    if one:
-        side = one[0]
-        pole_offsets = {side: [(ox, oy) for ox, oy, _ in both[side]]}
-        sides: tuple[str, ...] = (side,)
-    else:
-        own = {s: [o for o in offsets(s) if s in o[2]] for s in SIDES}
-        if not all(own.values()):
-            raise Infeasible(f"{p.pole} in a drill slot cannot reach the drills next to it")
-        # a pole row on each side; pick the rows that keep the longest vertical hop short
-        best = None
-        for on in own["north"]:
-            for os_ in own["south"]:
-                h1 = abs(centre_y("south", os_[1]) - centre_y("north", on[1]))
-                hop = max(h1, period - h1)
-                key = (hop, own["north"].index(on) + own["south"].index(os_))
-                if best is None or key < best[0]:
-                    best = (key, on, os_)
-        assert best is not None
-        _, on, os_ = best
-        pole_offsets = {
-            "north": [(on[0], on[1])] + [(o[0], o[1]) for o in own["north"] if o != on],
-            "south": [(os_[0], os_[1])] + [(o[0], o[1]) for o in own["south"] if o != os_],
-        }
-        sides = SIDES
-    return _Geo(w, period, rows, anchor_dx, lanes, pole_offsets, sides)
+def _reaches(
+    p: MiningPatchParams, gd: GameData, rows: dict[str, tuple[int, int]], oy: int
+) -> set[str]:
+    """Drill rows a pole anchored ``oy`` rows from the belt supplies (some tile of)."""
+    c = footprint.center_for_tile_anchor(gd, p.pole, Tile(0, oy))
+    _, y0, _, y1 = pole.supply_range(gd, p.pole, c)
+    return {s for s, (top, h) in rows.items() if y0 <= top + h - 1 and y1 >= top}
 
 
 def _drill_anchor(g: _Geo, side: str, x: int, yb: int) -> Tile:
@@ -273,16 +269,16 @@ def _candidates(
     g: _Geo,
     terr: Terrain,
     ore: frozenset[Tile],
-    phase: tuple[int, int],
-) -> tuple[dict[int, int], list[_Cand], list[dict[str, Any]]]:
-    """Belt rows (index -> y) and candidate drills; drops for blocked belts."""
+    py: int,
+) -> tuple[dict[int, int], list[_Cand], list[tuple[_Cand, str, str]]]:
+    """Belt rows (index -> y), every drill position that may hold a drill (any column:
+    drills are not on a fixed grid along the belt) and rejected positions with reason."""
     lo, hi = bounds_of(ore)
     ox0, oy0, ox1, oy1 = lo.x, lo.y, hi.x, hi.y
     r = gd.entity(p.drill).resource_searching_radius or 0
     margin = math.ceil(r) + g.w + g.period
-    px, py = phase
     ys = [y for y in range(oy0 - margin, oy1 + margin + 1) if (y - py) % g.period == 0]
-    xs = [x for x in range(ox0 - margin, ox1 + margin + 1) if (x - px) % g.w == 0]
+    xs = range(ox0 - margin, ox1 + margin + 1)
     rows = dict(enumerate(ys))
     count = _counter({t: 1 for t in ore})
     amount = _counter({t: terr.resources[t][1] for t in ore if t in terr.resources})
@@ -298,7 +294,7 @@ def _candidates(
     }
     mixed = _counter(other) if other else None
     cands: list[_Cand] = []
-    dropped: list[dict[str, Any]] = []
+    rejected: list[tuple[_Cand, str, str]] = []
     for i, yb in rows.items():
         for side in SIDES:
             d = FACING[side]
@@ -312,12 +308,11 @@ def _candidates(
                 ts = footprint.tiles_of(gd, p.drill, pos, d)
                 if not terr.can_build_all(ts) or not terr.can_build(Tile(x, yb)):
                     continue
-                k = (x - px) // g.w
-                c = _Cand(i, side, k, x, pos, n, g.lanes[side])
+                c = _Cand(i, side, x, pos, n, g.lanes[side], (a.x, a.x + g.w - 1))
                 if amount(*box) < p.min_ore_amount_per_drill:
-                    dropped.append(_drop(c, "low_ore", f"{amount(*box)} ore in its area"))
+                    rejected.append((c, "low_ore", f"{amount(*box)} ore in its area"))
                 elif mixed is not None and not p.allow_mixed and mixed(*box):
-                    dropped.append(_drop(c, "mixed_resource"))
+                    rejected.append((c, "mixed_resource", ""))
                 else:
                     cands.append(c)
     # a belt must run from each drill to the row's downstream end
@@ -327,15 +322,53 @@ def _candidates(
         if not cs:
             continue
         end = max(c.x for c in cs)
-        lo = min(c.x for c in cs)
-        blocked = [x for x in range(lo, end + 1) if not terr.can_build(Tile(x, yb))]
+        lo_x = min(c.x for c in cs)
+        blocked = [x for x in range(lo_x, end + 1) if not terr.can_build(Tile(x, yb))]
         cut = max(blocked) if blocked else None
         for c in cs:
             if cut is not None and c.x < cut:
-                dropped.append(_drop(c, "belt_blocked", f"belt blocked at ({cut},{yb})"))
+                rejected.append((c, "belt_blocked", f"belt blocked at ({cut},{yb})"))
             else:
                 kept.append(c)
-    return rows, kept, dropped
+    return rows, kept, rejected
+
+
+def _pack(cands: list[_Cand]) -> list[_Cand]:
+    """Most drills with disjoint columns (then most ore tiles): interval scheduling."""
+    cs = sorted(cands, key=lambda c: c.span)
+    starts = [c.span[0] for c in cs]
+    best: list[tuple[int, int, int]] = [(0, 0, -1)] * (len(cs) + 1)  # (n, ore, next)
+    for i in range(len(cs) - 1, -1, -1):
+        j = bisect.bisect_right(starts, cs[i].span[1])
+        take = (best[j][0] + 1, best[j][1] + cs[i].ore, j)
+        skip = (best[i + 1][0], best[i + 1][1], -2)
+        best[i] = take if take[:2] > skip[:2] else skip
+    out: list[_Cand] = []
+    i = 0
+    while i < len(cs):
+        n = best[i][2]
+        if n == -2:
+            i += 1
+        else:
+            out.append(cs[i])
+            i = n
+    return out
+
+
+def _report(rejected: list[tuple[_Cand, str, str]], placed: list[_Cand]) -> list[dict[str, Any]]:
+    """One drop entry per rejected spot that a drill could have taken: rejected
+    positions packed left to right around the placed drills of the same row side."""
+    taken: dict[tuple[int, str], list[tuple[int, int]]] = {}
+    for c in placed:
+        taken.setdefault((c.row, c.side), []).append(c.span)
+    out: list[dict[str, Any]] = []
+    for c, reason, detail in sorted(rejected, key=lambda r: (r[0].row, r[0].side, r[0].span)):
+        spans = taken.setdefault((c.row, c.side), [])
+        if any(a <= c.span[1] and c.span[0] <= b for a, b in spans):
+            continue
+        spans.append(c.span)
+        out.append(_drop(c, reason, detail))
+    return out
 
 
 def _counter(weights: dict[Tile, int]):  # -> Callable[[int, int, int, int], int]
@@ -369,132 +402,384 @@ def _drop(c: _Cand, reason: str, detail: str = "") -> dict[str, Any]:
     return out
 
 
-def _pole_slots(
-    p: MiningPatchParams, gd: GameData, g: _Geo, cands: list[_Cand], phase_x: int
-) -> list[int] | None:
-    """Global pole slot indices: a greedy sweep so every candidate's columns meet some
-    pole's supply columns and consecutive poles are in wire reach (same row)."""
-    if not cands:
-        return []
-    side = g.pole_sides[0]
-    ox, _ = g.pole_offsets[side][0]
-    pw, _ = footprint.size(gd, p.pole)
+def _drill_tiles(gd: GameData, p: MiningPatchParams, c: _Cand) -> frozenset[Tile]:
+    return footprint.tiles_of(gd, p.drill, c.pos, FACING[c.side])
 
-    def pole_cx(j: int) -> float:
-        return phase_x + g.w * j + g.anchor_dx[side] + ox + pw / 2
 
-    def cover(j: int) -> tuple[int, int]:
-        x0, _, x1, _ = pole.supply_range(gd, p.pole, Vec2(pole_cx(j), 0.5))
-        return x0, x1
+def _row_sites(
+    p: MiningPatchParams,
+    gd: GameData,
+    g: _Geo,
+    terr: Terrain,
+    yb: int,
+    drills: list[_Cand],
+    group: tuple[str, ...],
+) -> list[_Site]:
+    """Pole spots in one belt row's strip: any buildable spot free of drills, and in
+    the belt itself when the pole is one tile deep and an underground pair of the
+    belt's tier can pass under it (entrance and exit inside the belt, exit upstream of
+    the output tile, pole tiles not under a drop point). No spot downstream of the
+    output (the belt leaves the unit there). Only spots whose supply reaches every drill
+    row of ``group`` are kept; ``cover`` is over the drills of ``group``."""
+    x0, x1 = min(c.x for c in drills), max(c.x for c in drills)
+    occupied: set[Tile] = set()
+    for c in drills:
+        occupied |= _drill_tiles(gd, p, c)
+    drops = {Tile(c.x, yb) for c in drills}
+    pw, ph = footprint.size(gd, p.pole)
+    sad = gd.entity(p.pole).supply_area_distance or 0.0
+    lo_x = min(c.span[0] for c in drills) - math.ceil(sad) - pw
+    top, bottom = yb + g.strip[0], yb + g.strip[1]
+    bands = {s: (yb + g.rows[s][0], yb + g.rows[s][0] + g.rows[s][1] - 1) for s in SIDES}
+    reach_max = int(gd.entity(g.underground).max_distance or 0) if g.underground else 0
+    targets = sorted((c for c in drills if c.side in group), key=lambda c: c.x)
+    ys = [y for y in range(top, bottom - ph + 2) if set(group) <= _reaches(p, gd, g.rows, y - yb)]
+    # pole footprint, centre and supply rectangle relative to its anchor tile
+    c0 = footprint.center_for_tile_anchor(gd, p.pole, Tile(0, 0))
+    offs = [t for t in footprint.tiles_of(gd, p.pole, c0, Direction.N)]
+    r0 = pole.supply_range(gd, p.pole, c0)
+    out: list[_Site] = []
+    for ay in ys:
+        for ax in range(lo_x, x1 + 1 - (pw - 1)):
+            ts = frozenset(Tile(ax + t.x, ay + t.y) for t in offs)
+            if ts & occupied or not terr.can_build_all(ts):
+                continue
+            ug = None
+            if any(t.y == yb and x0 <= t.x <= x1 for t in ts):
+                if g.underground is None or any(t.y != yb for t in ts) or ts & drops:
+                    continue
+                a = Tile(min(t.x for t in ts) - 1, yb)
+                b = Tile(max(t.x for t in ts) + 1, yb)
+                if a.x < x0 or b.x >= x1 or b.x - a.x > reach_max:
+                    continue
+                ug = (a, b)
+            sx0, sy0, sx1, sy1 = r0[0] + ax, r0[1] + ay, r0[2] + ax, r0[3] + ay
+            mask = 0
+            for k, d in enumerate(targets):
+                (dx0, dx1), (dy0, dy1) = d.span, bands[d.side]
+                if dx0 <= sx1 and dx1 >= sx0 and dy0 <= sy1 and dy1 >= sy0:
+                    mask |= 1 << k
+            out.append(_Site(Vec2(c0.x + ax, c0.y + ay), ts, ug, mask))
+    out.sort(key=lambda s: (s.pos.x, s.pos.y))
+    return out
 
+
+def _chain(
+    p: MiningPatchParams,
+    gd: GameData,
+    sites: list[_Site],
+    centres: list[float],
+    links: list[Vec2],
+    pre: int = 0,
+) -> tuple[list[_Site] | None, int]:
+    """Cheapest pole chain along one belt row: consecutive poles in wire reach, every
+    drill (bit k = k-th drill by drop column, centre ``centres[k]``) covered by one of
+    the two poles around it (or the first / last pole beyond the ends); poles in the belt
+    cost their underground pair. Prefers a chain with a pole in wire reach of ``links``
+    (the poles of rows already placed); drills in ``pre`` are supplied already. Returns
+    (chain, -1) or (None, k): no chain covers drill k (the first drill no feasible prefix
+    reaches)."""
+    n = len(centres)
+    full = (1 << n) - 1
+    if pre & full == full:
+        return [], -1
+    sites = [replace(s, cover=s.cover | pre) for s in sites]
     wire = pole.wire_distance(gd, p.pole, p.pole)
-    spans = sorted(
-        {(c.x + g.anchor_dx[c.side], c.x + g.anchor_dx[c.side] + g.w - 1) for c in cands},
-        key=lambda s: s[1],
-    )
-    kmin = min(c.k for c in cands) - 3
-    kmax = max(c.k for c in cands) + 3
-    placed: list[int] = []
-    covered = [False] * len(spans)
-    while not all(covered):
-        u = covered.index(False)
-        a, b = spans[u]
-        js = [j for j in range(kmin, kmax + 1) if cover(j)[0] <= b and cover(j)[1] >= a]
-        if placed:
-            js = [
-                j for j in js if j > placed[-1] and pole_cx(j) - pole_cx(placed[-1]) <= wire + _EPS
-            ]
-        if not js:
+    reach2 = (wire + _EPS) ** 2
+    xs = [s.pos.x for s in sites]
+    ys = [s.pos.y for s in sites]
+    if not links:
+        links_ok = [True] * len(sites)
+    else:
+        links_ok = [
+            any((q.x - x) ** 2 + (q.y - y) ** 2 <= reach2 for q in links)
+            for x, y in zip(xs, ys, strict=True)
+        ]
+    below = [(1 << bisect.bisect_left(centres, x - _EPS)) - 1 for x in xs]  # centre < x
+    upto = [(1 << bisect.bisect_right(centres, x + _EPS)) - 1 for x in xs]  # centre <= x
+    ugt = [frozenset(s.ug) if s.ug else frozenset() for s in sites]
+    # state (site, linked) -> (cost, prev state, last underground exit x)
+    best: dict[tuple[int, bool], tuple[tuple[int, int], tuple[int, bool] | None, float]] = {}
+    for i, s in enumerate(sites):
+        if below[i] & ~s.cover:
+            continue
+        cost = (1, 1 if s.ug else 0)
+        key = (i, links_ok[i])
+        exit_x = s.ug[1].x if s.ug else -math.inf
+        if key not in best or cost < best[key][0]:
+            best[key] = (cost, None, exit_x)
+    # sites are sorted by x: relax in order
+    for i, s in enumerate(sites):
+        for linked in (False, True):
+            cur = best.get((i, linked))
+            if cur is None:
+                continue
+            for j in range(i + 1, len(sites)):
+                dx = xs[j] - xs[i]
+                if dx > wire + _EPS:
+                    break
+                if dx * dx + (ys[j] - ys[i]) ** 2 > reach2:
+                    continue
+                t = sites[j]
+                if t.ug and (t.ug[0].x <= cur[2] or (s.ug and t.ug[0].x <= s.ug[1].x)):
+                    continue
+                if s.tiles & t.tiles or t.tiles & ugt[i] or s.tiles & ugt[j]:
+                    continue
+                if (upto[j] & ~below[i]) & ~(s.cover | t.cover):
+                    continue
+                cost = (cur[0][0] + 1, cur[0][1] + (1 if t.ug else 0))
+                key = (j, linked or links_ok[j])
+                exit_x = t.ug[1].x if t.ug else cur[2]
+                if key not in best or cost < best[key][0]:
+                    best[key] = (cost, (i, linked), exit_x)
+    finals = [
+        (not k[1], v[0], k)
+        for k, v in best.items()
+        if not (full & ~upto[k[0]] & ~sites[k[0]].cover)
+    ]
+    if finals:
+        _, _, k = min(finals)
+        out: list[_Site] = []
+        cur_k: tuple[int, bool] | None = k
+        while cur_k is not None:
+            out.append(sites[cur_k[0]])
+            cur_k = best[cur_k][1]
+        return out[::-1], -1
+    # first drill no reached state covers
+    progress = 0
+    for (i, _), _v in best.items():
+        covered = upto[i] | sites[i].cover
+        k = 0
+        while k < n and covered >> k & 1:
+            k += 1
+        progress = max(progress, k)
+    return None, min(progress, n - 1)
+
+
+def _row_poles(
+    p: MiningPatchParams,
+    gd: GameData,
+    g: _Geo,
+    terr: Terrain,
+    yb: int,
+    cs: list[_Cand],
+    links: list[Vec2],
+) -> tuple[list[_Cand], list[_Site], list[_Cand]]:
+    """Pole chains of one belt row (one per ``g.groups`` entry); where no chain exists a
+    drill makes room (of the drill no chain reaches and the one before it, the removal
+    that lets a chain reach furthest). Returns (drills kept, poles, drills removed)."""
+    removed: list[_Cand] = []
+
+    def attempt(drills: list[_Cand], grp: tuple[str, ...], ln: list[Vec2]):
+        order = sorted((c for c in drills if c.side in grp), key=lambda c: c.x)
+        if not order:
+            return [], -1, order
+        sites = _row_sites(p, gd, g, terr, yb, drills, grp)
+        supplied: set[Tile] = set()
+        for q in ln:
+            supplied |= pole.supply_tiles(gd, p.pole, q)
+        pre = sum(1 << k for k, c in enumerate(order) if _drill_tiles(gd, p, c) & supplied)
+        ch, k = _chain(p, gd, sites, [c.pos.x for c in order], ln, pre)
+        return ch, k, order
+
+    while True:
+        chains: list[_Site] = []
+        restart = False
+        for grp in g.groups:
+            while True:
+                ch, k, order = attempt(cs, grp, links + [s.pos for s in chains])
+                if ch is not None:
+                    chains += ch
+                    break
+                options = [order[k]] + ([order[k - 1]] if k > 0 else [])
+                best_c, best_k = options[0], -2
+                for c in options:
+                    rest = [d for d in cs if d is not c]
+                    ch2, k2, _ = attempt(rest, grp, links + [s.pos for s in chains])
+                    score = len(order) if ch2 is not None else k2
+                    if score > best_k:
+                        best_c, best_k = c, score
+                cs = [d for d in cs if d is not best_c]
+                removed.append(best_c)
+                restart = len(g.groups) > 1
+            if restart:
+                break
+        if not restart:
+            return cs, chains, removed
+
+
+def _bridge(
+    p: MiningPatchParams,
+    gd: GameData,
+    terr: Terrain,
+    placements: list[Placement],
+    poles: list[Placement],
+    keep_clear: set[Tile],
+) -> list[Placement] | None:
+    """Join pole networks that are out of wire reach (e.g. belt rows further apart than
+    the wire) with pole chains over free tiles (``route.power.chain``)."""
+    from fgen.route.belt import RouteError
+    from fgen.route.grid import RouteGrid
+    from fgen.route.power import chain
+
+    def components(ps: list[Placement]) -> list[list[int]]:
+        seen: set[int] = set()
+        out = []
+        for a in range(len(ps)):
+            if a in seen:
+                continue
+            comp, stack = [], [a]
+            seen.add(a)
+            while stack:
+                u = stack.pop()
+                comp.append(u)
+                for v in range(len(ps)):
+                    if v not in seen and pole.wire_reaches(
+                        gd, ps[u].name, ps[u].position, ps[v].name, ps[v].position
+                    ):
+                        seen.add(v)
+                        stack.append(v)
+            out.append(comp)
+        return out
+
+    added: list[Placement] = []
+    grid = RouteGrid.build(gd, terr, [("unit", Layout(placements + poles), {})])
+    grid.blocked |= keep_clear
+    while True:
+        ps = poles + added
+        comps = components(ps)
+        if len(comps) == 1:
+            return added
+        main, rest = comps[0], [q for c in comps[1:] for q in c]
+
+        # drill rows are packed between their ends: try the poles at the upstream ends
+        # (free ground there by construction) first, then the closest pairs
+        pos = [q.position for q in ps]
+        pairs = [(a, b) for a in main for b in rest]
+        near = sorted(pairs, key=lambda ab: pos[ab[0]].distance(pos[ab[1]]))
+        pairs.sort(
+            key=lambda ab: (max(pos[ab[0]].x, pos[ab[1]].x), pos[ab[0]].distance(pos[ab[1]]))
+        )
+        found = None
+        for a, b in pairs[:3] + near[:2]:
+            try:
+                found = chain(
+                    grid, p.pole, (p.pole, ps[a].position), (p.pole, ps[b].position), "bridge"
+                )
+                break
+            except RouteError:
+                continue
+        if found is None:
             return None
-        j = max(js)
-        placed.append(j)
-        x0, x1 = cover(j)
-        for n, (sa, sb) in enumerate(spans):
-            if sa <= x1 and sb >= x0:
-                covered[n] = True
-    return placed
+        grid.add(found, "bridge")
+        added += found
 
 
-def _place_poles(
+@dataclass
+class _Power:
+    drills: list[_Cand]
+    poles: list[Placement]
+    ugs: dict[Tile, str]  # belt tile -> underground type
+    pole_tiles: set[Tile]
+    keep_clear: set[Tile]  # belt-row tiles downstream of the outputs
+    removed: list[_Cand]
+
+
+def _power(
     p: MiningPatchParams,
     gd: GameData,
     g: _Geo,
     terr: Terrain,
     rows: dict[int, int],
-    cands: list[_Cand],
-    slots: list[int],
-    phase_x: int,
-) -> tuple[list[Placement], set[tuple[int, str, int]]]:
-    """Poles per belt row (only over the row's drills, extended so neighbouring rows
-    share a slot); returns poles and the (row, side, k) slots they took."""
-    if not slots:
-        return [], set()
-    by_row: dict[int, list[_Cand]] = {}
-    for c in cands:
-        by_row.setdefault(c.row, []).append(c)
-    used = sorted(by_row)
-    pw, _ = footprint.size(gd, p.pole)
-    side0 = g.pole_sides[0]
-    ox0, _ = g.pole_offsets[side0][0]
+    drills: list[_Cand],
+) -> _Power:
+    """Poles row by row (top to bottom), each chain linked to the rows above when it can."""
+    out = _Power([], [], {}, set(), set(), [])
+    _, hi_all = terr.bounds()
+    for r, yb in rows.items():
+        cs, chain_, removed = _row_poles(
+            p, gd, g, terr, yb, [c for c in drills if c.row == r], [q.position for q in out.poles]
+        )
+        out.removed += removed
+        if not cs:
+            continue
+        out.drills += cs
+        for s in chain_:
+            out.poles.append(Placement(p.pole, s.pos))
+            out.pole_tiles |= s.tiles
+            if s.ug:
+                out.ugs[s.ug[0]] = "input"
+                out.ugs[s.ug[1]] = "output"
+        x1 = max(c.x for c in cs)
+        out.keep_clear |= {Tile(x, yb) for x in range(x1 + 1, hi_all.x + 1)}
+    return out
 
-    def window(j: int) -> tuple[int, int]:
-        cx = phase_x + g.w * j + g.anchor_dx[side0] + ox0 + pw / 2
-        x0, _, x1, _ = pole.supply_range(gd, p.pole, Vec2(cx, 0.5))
-        return x0, x1
 
-    intervals: dict[int, tuple[int, int]] = {}
-    for r in used:
-        need = [
-            j
-            for j in slots
-            if any(
-                window(j)[0] <= c.x + g.anchor_dx[c.side] + g.w - 1
-                and window(j)[1] >= c.x + g.anchor_dx[c.side]
-                for c in by_row[r]
-            )
-        ]
-        intervals[r] = (min(need), max(need))
-    # rows in between used rows get a bridge pole; neighbouring intervals must overlap
-    order = list(range(used[0], used[-1] + 1))
-    prev: tuple[int, int] | None = None
-    final: dict[int, tuple[int, int]] = {}
-    for r in order:
-        if r in intervals:
-            a, b = intervals[r]
-            if prev is not None:
-                if b < prev[0]:
-                    b = prev[0]
-                if a > prev[1]:
-                    a = prev[1]
-            final[r] = (a, b)
-            prev = final[r]
-        else:
-            assert prev is not None
-            final[r] = (prev[1], prev[1])
-            prev = final[r]
-    poles: list[Placement] = []
-    taken: set[tuple[int, str, int]] = set()
-    for r, (a, b) in final.items():
-        yb = rows[r]
-        for j in slots:
-            if not a <= j <= b:
-                continue
-            for side in g.pole_sides:
-                top = yb + g.rows[side][0]
-                ax = phase_x + g.w * j + g.anchor_dx[side]
-                for ox, oy in g.pole_offsets[side] + [
-                    (x, y)
-                    for y in range(g.rows[side][1])
-                    for x in range(g.w - pw + 1)
-                    if (x, y) not in g.pole_offsets[side]
-                ]:
-                    anchor = Tile(ax + ox, top + oy)
-                    cen = footprint.center_for_tile_anchor(gd, p.pole, anchor)
-                    if terr.can_build_all(footprint.tiles_of(gd, p.pole, cen, Direction.N)):
-                        poles.append(Placement(p.pole, cen))
-                        taken.add((r, side, j))
-                        break
-    return poles, taken
+@dataclass
+class _Prep:
+    """A y phase before poles: belt rows, packed drills, drops so far."""
+
+    py: int
+    rows: dict[int, int]
+    packed: list[_Cand]
+    dropped: list[dict[str, Any]]
+    free: int = 0  # drills after the lane cut, before poles (an upper bound)
+
+
+def _prepare(
+    p: MiningPatchParams,
+    gd: GameData,
+    g: _Geo,
+    terr: Terrain,
+    ore: frozenset[Tile],
+    py: int,
+) -> _Prep:
+    rows, cands, rejected = _candidates(p, gd, g, terr, ore, py)
+    packed: list[_Cand] = []
+    for r in rows:
+        for side in SIDES:
+            packed += _pack([c for c in cands if c.row == r and c.side == side])
+    dropped = _report(rejected, packed)
+    if p.max_belts is not None:
+        counts = {r: sum(1 for c in packed if c.row == r) for r in rows}
+        best = max(
+            range(len(rows)),
+            key=lambda s: (sum(counts.get(r, 0) for r in range(s, s + p.max_belts)), -s),
+        )
+        keep_rows = set(range(best, best + p.max_belts))
+        for c in packed:
+            if c.row not in keep_rows:
+                dropped.append(_drop(c, "max_belts"))
+        packed = [c for c in packed if c.row in keep_rows]
+    prep = _Prep(py, rows, packed, dropped)
+    prep.free = len(_lane_cut(p, gd, rows, packed)[0])
+    return prep
+
+
+def _lane_cut(
+    p: MiningPatchParams, gd: GameData, rows: dict[int, int], drills: list[_Cand]
+) -> tuple[list[_Cand], list[dict[str, Any]]]:
+    """One lane per side, cut from the upstream end."""
+    rate = mining.drill_rate(gd, p.drill, p.resource)
+    cap = tp.belt_lane_capacity(gd, p.belt)
+    per_lane = math.floor(cap / rate + _EPS)
+    kept: list[_Cand] = []
+    out: list[dict[str, Any]] = []
+    per_belt = math.floor(p.max_belt_rate / rate + _EPS) if p.max_belt_rate is not None else None
+    for r in rows:
+        row: list[_Cand] = []
+        for lane in ("left", "right"):
+            cs = sorted((c for c in drills if c.row == r and c.lane == lane), key=lambda c: -c.x)
+            row += cs[:per_lane]
+            detail = f"{len(cs)} drills x {rate:g}/s > {p.belt} lane {cap:g}/s"
+            out += [_drop(c, "lane_capacity", detail) for c in cs[per_lane:]]
+        if per_belt is not None and len(row) > per_belt:
+            row.sort(key=lambda c: -c.x)
+            detail = f"{len(row)} drills x {rate:g}/s > max_belt_rate {p.max_belt_rate:g}/s"
+            out += [_drop(c, "belt_rate_cap", detail) for c in row[per_belt:]]
+            row = row[:per_belt]
+        kept += row
+    return kept, out
 
 
 def _build(
@@ -502,50 +787,45 @@ def _build(
     gd: GameData,
     g: _Geo,
     terr: Terrain,
-    ore: frozenset[Tile],
-    phase: tuple[int, int],
+    prep: _Prep,
 ) -> _Result | None:
-    rows, cands, dropped = _candidates(p, gd, g, terr, ore, phase)
-    if p.max_belts is not None:
-        counts = {r: sum(1 for c in cands if c.row == r) for r in rows}
-        best = max(
-            range(len(rows)),
-            key=lambda s: (sum(counts.get(r, 0) for r in range(s, s + p.max_belts)), -s),
-        )
-        keep_rows = set(range(best, best + p.max_belts))
-        for c in cands:
-            if c.row not in keep_rows:
-                dropped.append(_drop(c, "max_belts"))
-        cands = [c for c in cands if c.row in keep_rows]
-    if not cands:
-        return _Result([], [], dropped, 0, [], phase, (0,))
-    slots = _pole_slots(p, gd, g, cands, phase[0])
-    if slots is None:
-        return None
-    poles, taken = _place_poles(p, gd, g, terr, rows, cands, slots, phase[0])
-    kept: list[_Cand] = []
-    for c in cands:
-        if (c.row, c.side, c.k) in taken:
-            dropped.append(_drop(c, "pole_slot"))
-        else:
-            kept.append(c)
-    # lane capacity: one lane per side, cut from the upstream end
+    rows, packed, py = prep.rows, prep.packed, prep.py
+    dropped = list(prep.dropped)
+    if not packed:
+        return _Result([], [], dropped, 0, [], (0, py), (0,))
     rate = mining.drill_rate(gd, p.drill, p.resource)
-    cap = tp.belt_lane_capacity(gd, p.belt)
-    per_lane = math.floor(cap / rate + _EPS)
-    final: list[_Cand] = []
-    for r in rows:
-        for lane in ("left", "right"):
-            cs = sorted((c for c in kept if c.row == r and c.lane == lane), key=lambda c: -c.x)
-            final += cs[:per_lane]
-            for c in cs[per_lane:]:
-                dropped.append(
-                    _drop(
-                        c,
-                        "lane_capacity",
-                        f"{len(cs)} drills x {rate:g}/s > {p.belt} lane {cap:g}/s",
-                    )
-                )
+
+    def lane_cut(drills: list[_Cand]) -> tuple[list[_Cand], list[dict[str, Any]]]:
+        return _lane_cut(p, gd, rows, drills)
+
+    # lane cut first (poles only for drills that stay); when poles then take drills,
+    # also try poles first and the lane cut after (drills a pole displaced may be ones
+    # the lane would have cut anyway) and keep the better
+    kept, cut = lane_cut(packed)
+    free_drills = len(kept)  # what the belts would carry if poles took no room
+    plan = _power(p, gd, g, terr, rows, kept)
+    if plan.removed and cut:
+        first = _power(p, gd, g, terr, rows, packed)
+        kept2, cut2 = lane_cut(first.drills)
+        plan2 = _power(p, gd, g, terr, rows, kept2)
+        plan2.removed = first.removed + plan2.removed
+        if (len(plan2.drills), -len(plan2.poles)) > (len(plan.drills), -len(plan.poles)):
+            # displaced drills beyond what the lanes carry anyway are lane-capacity drops:
+            # only free_drills - drills kept count as lost to poles
+            surplus = {id(c) for c in packed} - {id(c) for c in kept}
+            order = sorted(plan2.removed, key=lambda c: id(c) in surplus)
+            lost = max(0, free_drills - len(plan2.drills))
+            moved, plan2.removed = order[lost:], order[:lost]
+            detail = "displaced by a pole; beyond the lane capacity anyway"
+            plan, cut = plan2, cut2 + [_drop(c, "lane_capacity", detail) for c in moved]
+    dropped += cut + [_drop(c, "pole_slot") for c in plan.removed]
+    final, poles, ugs, pole_tiles, keep_clear = (
+        plan.drills,
+        plan.poles,
+        plan.ugs,
+        plan.pole_tiles,
+        plan.keep_clear,
+    )
     placements: list[Placement] = []
     belts: list[dict[str, Any]] = []
     for r, yb in rows.items():
@@ -556,10 +836,15 @@ def _build(
             placements.append(Placement(p.drill, c.pos, FACING[c.side]))
         x0, x1 = min(c.x for c in cs), max(c.x for c in cs)
         for x in range(x0, x1 + 1):
+            t = Tile(x, yb)
+            if t in pole_tiles:
+                continue
+            if t in ugs:
+                assert g.underground is not None
+                placements.append(Placement(g.underground, t.center(), FLOW, {"type": ugs[t]}))
+                continue
             placements.append(
-                Placement(
-                    p.belt, footprint.center_for_tile_anchor(gd, p.belt, Tile(x, yb), FLOW), FLOW
-                )
+                Placement(p.belt, footprint.center_for_tile_anchor(gd, p.belt, t, FLOW), FLOW)
             )
         lanes = {lane: sum(1 for c in cs if c.lane == lane) for lane in ("left", "right")}
         belts.append(
@@ -573,11 +858,15 @@ def _build(
                 "ore_tiles": sum(c.ore for c in cs),
             }
         )
+    bridge = _bridge(p, gd, terr, placements, poles, keep_clear) if len(poles) > 1 else []
+    if bridge is None:
+        return None
+    poles += bridge
     placements += poles
     n = len(final)
     cap_drops = sum(1 for d in dropped if d["reason"] == "lane_capacity")
-    score = (n, -cap_drops, -len(poles), -phase[1], -phase[0])
-    return _Result(placements, belts, dropped, n, poles, phase, score)
+    score = (n, -cap_drops, -len(poles), -len(ugs), -py)
+    return _Result(placements, belts, dropped, n, poles, (0, py), score, len(ugs), free_drills)
 
 
 def _transform_terrain(terr: Terrain, rot: Direction | None) -> Terrain:
@@ -624,14 +913,21 @@ class MiningPatch:
         ore = frozenset(t.rotate(rot) for t in patch.tiles) if rot is not None else patch.tiles
         best: _Result | None = None
         power_failed = False
-        for py in range(g.period):
-            for px in range(g.w):
-                res = _build(p, gd, g, terr, ore, (px, py))
-                if res is None:
-                    power_failed = True
-                    continue
-                if best is None or res.score > best.score:
-                    best = res
+        # phases by their pole-free drill count: none can end with more than that, so
+        # stop once a phase reaches the next one's bound
+        preps = sorted(
+            (_prepare(p, gd, g, terr, ore, py) for py in range(g.period)),
+            key=lambda q: (-q.free, q.py),
+        )
+        for prep in preps:
+            if best is not None and prep.free <= best.drills:
+                break
+            res = _build(p, gd, g, terr, prep)
+            if res is None:
+                power_failed = True
+                continue
+            if best is None or res.score > best.score:
+                best = res
         if best is None or best.drills == 0:
             if power_failed and best is None:
                 alts = self._alternatives(
@@ -836,11 +1132,7 @@ class MiningPatch:
         )
         # per output: the earliest any of its drills can run dry (same bound)
         drills = [pl for pl in unit.layout.placements if pl.name == p.drill]
-        belt_tiles = {
-            pl.position.floor()
-            for pl in unit.layout.placements
-            if gd.entity(pl.name).type == "transport-belt"
-        }
+        lengths = [b["x"][1] - b["x"][0] + 1 for b in res.belts]  # output k = belt k
         dry_by_tile: dict[Tile, float] = {}
         for pl, a in zip(drills, areas, strict=True):
             if a:
@@ -848,14 +1140,14 @@ class MiningPatch:
                     patch.amounts.get(t, 0) for t in a
                 ) / (rate * max(sharers[t] for t in a))
         new_ifaces = []
-        for i in unit.interfaces:
+        for k, i in enumerate(unit.interfaces):
             if i.kind == "item" and i.role == "output" and i.rate is not None:
-                t, bound = i.tile, None
-                while t in belt_tiles:
+                bound = None
+                for s in range(lengths[k]):  # the belt's tiles, upstream from the output
+                    t = i.tile.neighbor(i.direction.opposite, s)
                     if t in dry_by_tile:
                         v = dry_by_tile[t]
                         bound = v if bound is None else min(bound, v)
-                    t = t.neighbor(i.direction.opposite)
                 i = replace(i, rate_profile=RateProfile(i.rate, bound))
             new_ifaces.append(i)
         unit = Unit(unit.layout, new_ifaces, unit.meta)
@@ -891,6 +1183,8 @@ class MiningPatch:
                 for b, i in zip(res.belts, unit.interfaces, strict=False)
             ],
             "poles": len(res.poles),
+            "undergrounds": res.undergrounds,
+            "drills_before_poles": res.free_drills,
             "phase": list(res.phase),
             "dropped_drills": dropped,
             "dropped_by_reason": reasons,

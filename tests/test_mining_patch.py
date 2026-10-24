@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections import Counter
 from dataclasses import replace
@@ -17,6 +18,7 @@ from fgen.geom import footprint, mining
 from fgen.geom.vec import Direction, Tile
 from fgen.layout.model import Layout, Placement
 from fgen.layout.validate import validate
+from fgen.route.belt import underground_for
 from fgen.terrain import paint
 from fgen.terrain.model import Patch, Terrain, patches
 
@@ -98,7 +100,8 @@ def test_drills_face_belts_and_fill_both_lanes(gd):
     for d in _drills(unit, gd):
         t = mining.drop_tile(gd, d.name, d.position, d.direction)
         (belt,) = [unit.layout.placements[i] for i in at[t]]
-        assert gd.entity(belt.name).type == "transport-belt"
+        # a drill may drop onto the underground pair that passes under a pole
+        assert gd.entity(belt.name).type in ("transport-belt", "underground-belt")
         lanes[mining.drop_lane(gd, d.name, d.position, d.direction, belt.direction)] += 1
     assert set(lanes) == {"left", "right"}
 
@@ -122,25 +125,76 @@ def test_swap_entities_by_params_only(gd, change):
     unit = generate(p, gd, patch, terrain)
     _check_unit(unit, gd, p, patch, terrain)
     names = {pl.name for pl in unit.layout.placements}
-    assert names == {p.drill, p.belt, p.pole}
-
-
-def test_pole_rows_derived_from_supply_area(gd):
-    """One pole row per belt when the pole's supply reaches both drill rows (small and
-    medium poles with the electric drill); poles never where a drill is."""
-    patch, terrain = _patch(paint.rectangle(0, 0, 30, 30, AMOUNT))
-    for pole_name in ("small-electric-pole", "medium-electric-pole"):
-        unit = generate(MiningPatchParams(pole=pole_name), gd, patch, terrain)
-        poles = [q for q in unit.layout.placements if q.name == pole_name]
-        belt_rows = {i.tile.y for i in unit.interfaces if i.kind == "item"}
-        pole_rows = {q.position.floor().y for q in poles}
-        assert len(pole_rows) <= len(belt_rows) + 1
-    small = generate(MiningPatchParams(), gd, patch, terrain)
-    medium = generate(MiningPatchParams(pole="medium-electric-pole"), gd, patch, terrain)
-    # the medium pole's wider supply/longer wire costs fewer drill slots
     assert (
-        medium.meta["dropped_by_reason"]["pole_slot"] < small.meta["dropped_by_reason"]["pole_slot"]
+        {p.drill, p.belt, p.pole} <= names <= {p.drill, p.belt, p.pole, underground_for(gd, p.belt)}
     )
+
+
+def test_poles_take_no_drill_room(gd):
+    """Small and medium poles reach both drill rows from the belt row, so they stand in
+    the belt over an underground pair (or on free ground) and displace no drill: the
+    rows hold as many drills as without poles. Every pole tile inside a belt has the
+    belt's underground entrance upstream and exit downstream."""
+    patch, terrain = _patch(paint.rectangle(0, 0, 30, 30, AMOUNT))
+    counts = {}
+    for pole_name in ("small-electric-pole", "medium-electric-pole"):
+        p = MiningPatchParams(pole=pole_name)
+        unit = generate(p, gd, patch, terrain)
+        _check_unit(unit, gd, p, patch, terrain)
+        assert "pole_slot" not in unit.meta["dropped_by_reason"]
+        assert unit.meta["anchor"]["drills"] == unit.meta["drills_before_poles"]
+        at = {pl.position.floor(): pl for pl in unit.layout.placements}
+        ug = underground_for(gd, p.belt)
+        belt_rows = {i.tile.y for i in unit.interfaces if i.kind == "item"}
+        inline = [
+            q
+            for q in unit.layout.placements
+            if q.name == pole_name and q.position.floor().y in belt_rows
+        ]
+        assert inline
+        for q in inline:
+            t = q.position.floor()
+            west, east = at.get(t.neighbor(Direction.W)), at.get(t.neighbor(Direction.E))
+            if west is None or west.name != ug:  # upstream of the belt
+                continue
+            assert west.extra["type"] == "input" and east.name == ug
+            assert east.extra["type"] == "output"
+        counts[pole_name] = len([q for q in unit.layout.placements if q.name == pole_name])
+    # the medium pole's longer wire needs fewer poles
+    assert counts["medium-electric-pole"] < counts["small-electric-pole"]
+
+
+def test_big_drill_with_medium_poles(gd):
+    """5x5 drills put belt rows 11 tiles apart, beyond the medium pole's wire: each row
+    gets its own chain in the belt and the rows are bridged by extra poles on free
+    ground. No drill gives way to a pole."""
+    patch, terrain = _patch(paint.rectangle(0, 0, 30, 24, AMOUNT))
+    p = MiningPatchParams(
+        drill="big-mining-drill", pole="medium-electric-pole", belt="express-transport-belt"
+    )
+    unit = generate(p, gd, patch, terrain)
+    _check_unit(unit, gd, p, patch, terrain)
+    m = unit.meta
+    assert len(m["belts"]) > 1
+    assert "pole_slot" not in m["dropped_by_reason"]
+    assert m["anchor"]["drills"] == m["drills_before_poles"]
+    wire = gd.entity(p.pole).maximum_wire_distance
+    ys = sorted({i.tile.y for i in unit.interfaces if i.kind == "item"})
+    assert min(b - a for a, b in itertools.pairwise(ys)) > wire
+
+
+def test_pole_slot_when_no_underground_fits(gd):
+    """A 2x2 pole cannot stand in a one-tile belt: it takes room in a drill row, and
+    the loss is reported as ``pole_slot`` (drills before poles minus drills kept)."""
+    patch, terrain = _patch(paint.rectangle(0, 0, 30, 30, AMOUNT))
+    for pole_name in ("substation", "big-electric-pole"):
+        p = MiningPatchParams(pole=pole_name)
+        unit = generate(p, gd, patch, terrain)
+        _check_unit(unit, gd, p, patch, terrain)
+        m = unit.meta
+        assert (
+            m["dropped_by_reason"]["pole_slot"] == m["drills_before_poles"] - m["anchor"]["drills"]
+        )
 
 
 def test_lane_capacity_truncation(gd):
@@ -168,6 +222,23 @@ def test_lane_capacity_truncation(gd):
     )
 
 
+def test_max_belt_rate(gd):
+    """``max_belt_rate`` caps each belt (drills cut from the upstream end)."""
+    patch, terrain = _patch(paint.rectangle(0, 0, 40, 6, AMOUNT))
+    p = MiningPatchParams(max_belts=1)
+    full = generate(p, gd, patch, terrain)
+    rate = mining.drill_rate(gd, p.drill, p.resource)
+    cap = full.meta["anchor"]["rate"] - 2.5 * rate
+    capped = generate(replace(p, max_belt_rate=cap), gd, patch, terrain)
+    _check_unit(capped, gd, replace(p, max_belt_rate=cap), patch, terrain)
+    assert capped.meta["anchor"]["rate"] == pytest.approx(math.floor(cap / rate) * rate)
+    cut = [d for d in capped.meta["dropped_drills"] if d["reason"] == "belt_rate_cap"]
+    kept_x = min(d.position.x for d in _drills(capped, gd))
+    assert cut and all(d["position"][0] <= kept_x for d in cut)
+    with pytest.raises(Infeasible):
+        generate(replace(p, max_belt_rate=0), gd, patch, terrain)
+
+
 def test_max_belts(gd):
     patch, terrain = _patch(paint.rectangle(0, 0, 20, 30, AMOUNT))
     full = generate(MiningPatchParams(), gd, patch, terrain)
@@ -192,10 +263,11 @@ def test_obstacles_respected(gd):
 
 
 def test_render_shows_ore_and_drills(gd):
-    patch, terrain = _patch(SHAPES["hole"])
-    unit = generate(MiningPatchParams(), gd, patch, terrain)
+    # drills need 6 ore tiles: some edge ore stays uncovered and shows as ':'
+    patch, terrain = _patch(SHAPES["l"])
+    unit = generate(MiningPatchParams(min_ore_tiles_per_drill=6), gd, patch, terrain)
     art = render(unit, gd, terrain)
-    assert "D" in art and ">" in art and "P" in art and ":" in art and "." in art
+    assert all(ch in art for ch in "D>PU:.")
 
 
 def test_infeasible_cases(gd):

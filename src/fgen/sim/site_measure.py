@@ -284,7 +284,8 @@ REAL_MEASURE = {"warmup_s": 120.0, "sample_s": 15.0, "samples": 6, "speed": 32.0
 REAL_NOTE = (
     "Normal map (`config/ore-map-gen-settings.json`). Clear obstacles around the nearest "
     "iron patch -> snapshot -> one-belt mining unit (`site_sweep.choose_mining`: highest "
-    "belt rate not above the smelting row's ore lane, no drill dry within the window) -> "
+    "belt rate not above the smelting row's ore lane, each variant capped there with "
+    "`max_belt_rate`, no drill dry within the window) -> "
     "smelting row placed by `find_spot` next to the belt end, target = the belt's initial "
     "rate -> router: ore belt side-loaded onto the row's left lane, coal fixture onto the "
     "right lane, plates to a sink, one power fixture chained to both units."

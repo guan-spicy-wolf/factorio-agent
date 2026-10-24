@@ -148,7 +148,8 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 树与石头的实体类型 | 树 `tree`、石头 `simple-entity`；端到端前在矿区周围销毁（seed 20261024 清了 150 个），悬崖 `cliff` 保留为障碍 | `sim/mining.py` | 销毁计数 | 部分核对（只看了计数，没逐类核对类型名覆盖了所有障碍） |
 | 已占格 | 非资源、非角色实体的 `bounding_box` 覆盖的格（钢箱 1 格、石炉 2×2 实测正确） | `sim/terrain.py` `occupied` | `test_occupied` | 已核对；树的碰撞盒很小，按 bounding_box 取整后只占 1 格（未逐棵核对） |
 | 正常地图生成配置 | `config/ore-map-gen-settings.json`（测试场配置去掉 elevation 常数、各项 size 1、enemy-base size 0、peaceful）在 2.1.23 上可建图；seed 20261024 出生点 ±150 内有铁/铜/煤/石各一块，最近铁矿 352 格、29×29、(-66,35) 起，总量 156978 | `config/ore-map-gen-settings.json` | `tests/test_sim_real_map.py` | 已核对 |
-| 大钻 `drops_full_belt_stacks` | 种子里有该字段；本阶段不用大钻实测，未核对无科技时是否真的按满叠放带、对道容量有何影响 | — | 大钻 + 带实测 | 未核对 |
+| 大钻 `drops_full_belt_stacks` | 种子里有该字段。阶段 6a 实测大钻 + 极速带（`big-drill-medium`，63 台）：每道 9 台 × 2.5/s = 22.5/s，实测每条带 45/s，与按"单件"算的道容量一致（无堆叠科技时不影响道容量） | `gen/mining_sweep.py` | `fgen sweep mining --measure` | 已核对（只测了无科技、极速带） |
+| 钻机出料到地下带 | 钻机的出料点落在地下带**入口或出口**格上时照常上带、道不变（阶段 6a：spike 12 台钻、落在 2 个入口 1 个出口上，6/s 全到；`lane-capacity` 每道 15 台满载两道都 7.5/s；8 个画矿用例 + 真实地图 0% 偏差）。不变量 `drill.output_blocked` 本来就把 `underground-belt` 算作合法输出 | `gen/mining_patch.py` | `fgen sweep mining --measure` | 已核对（2.1.23） |
 | `lua.clear_area` | 改为默认保留 `resource` 实体（否则实测前的清场会把画的矿一起删掉）；冶炼列实测不受影响 | `sim/lua.py` | 全部 headless 测试 | — |
 
 ## 10. 连接路由与夹具（阶段 3a，2.1.23 实机）

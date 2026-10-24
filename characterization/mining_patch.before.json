@@ -1,0 +1,82 @@
+{
+ "cases": {
+  "blob": {
+   "drills": 41,
+   "dropped_by_reason": {
+    "pole_slot": 11
+   },
+   "pole_slot": 11,
+   "poles": 15,
+   "total": 20.5
+  },
+  "l-shape": {
+   "drills": 40,
+   "dropped_by_reason": {
+    "pole_slot": 12
+   },
+   "pole_slot": 12,
+   "poles": 14,
+   "total": 20.0
+  },
+  "lane-capacity": {
+   "drills": 30,
+   "dropped_by_reason": {
+    "lane_capacity": 8,
+    "pole_slot": 8
+   },
+   "pole_slot": 8,
+   "poles": 8,
+   "total": 15.0
+  },
+  "real-map": {
+   "drills": 32,
+   "dropped_by_reason": {
+    "low_ore": 12,
+    "mixed_resource": 9,
+    "pole_slot": 10
+   },
+   "pole_slot": 10,
+   "poles": 17,
+   "total": 16.0
+  },
+  "rect-1belt": {
+   "drills": 15,
+   "dropped_by_reason": {
+    "max_belts": 20,
+    "pole_slot": 5
+   },
+   "pole_slot": 5,
+   "poles": 5,
+   "total": 7.5
+  },
+  "rect-2belt": {
+   "drills": 30,
+   "dropped_by_reason": {
+    "max_belts": 10,
+    "pole_slot": 10
+   },
+   "pole_slot": 10,
+   "poles": 10,
+   "total": 15.0
+  },
+  "rect-axis-y": {
+   "drills": 61,
+   "dropped_by_reason": {
+    "pole_slot": 9
+   },
+   "pole_slot": 9,
+   "poles": 16,
+   "total": 30.5
+  },
+  "rect-hole": {
+   "drills": 54,
+   "dropped_by_reason": {
+    "pole_slot": 14
+   },
+   "pole_slot": 14,
+   "poles": 20,
+   "total": 27.0
+  }
+ },
+ "source": "characterization/mining_patch.jsonl at 77f1be2 (before phase 6a: one pole per drill slot)"
+}
