@@ -150,3 +150,21 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 正常地图生成配置 | `config/ore-map-gen-settings.json`（测试场配置去掉 elevation 常数、各项 size 1、enemy-base size 0、peaceful）在 2.1.23 上可建图；seed 20261024 出生点 ±150 内有铁/铜/煤/石各一块，最近铁矿 352 格、29×29、(-66,35) 起，总量 156978 | `config/ore-map-gen-settings.json` | `tests/test_sim_real_map.py` | 已核对 |
 | 大钻 `drops_full_belt_stacks` | 种子里有该字段；本阶段不用大钻实测，未核对无科技时是否真的按满叠放带、对道容量有何影响 | — | 大钻 + 带实测 | 未核对 |
 | `lua.clear_area` | 改为默认保留 `resource` 实体（否则实测前的清场会把画的矿一起删掉）；冶炼列实测不受影响 | `sim/lua.py` | 全部 headless 测试 | — |
+
+## 10. 连接路由与夹具（阶段 3a，2.1.23 实机）
+
+一次性 `/sc` 探测之后由 headless 测试持续覆盖：`tests/test_sim_route.py`（电网、管道、侧向汇入地下带、悬崖旁可建性）、`tests/test_sim_clear.py`、`tests/test_sim_site.py`、`tests/test_sim_site_real.py`。
+
+| 条目 | 结论 | 所在文件 | 核对方法 | 状态 |
+| --- | --- | --- | --- | --- |
+| infinity-pipe 过滤字段 | `LuaEntity.set_infinity_pipe_filter{name, percentage?, temperature?, mode?}`，`mode` 取 `at-least`（缺省）/`at-most`/`exactly`/`add`/`remove`；`get_infinity_pipe_filter()` 读回 `{name='water', percentage=1, temperature=15, mode='at-least'}`（温度缺省为该液体最低温）。种子新增 `infinity-pipe` 原型（四向连接，同管道） | `sim/harness.py`、`scripts/extract_seed.py` | 设过滤后读回；接管道 + 储液罐 120 tick 后罐满 25000 | 已核对 |
+| 读液体量 | **2.1 没有 `LuaEntity.fluidbox`**（访问报 `LuaEntity doesn't contain key fluidbox`）；改用 `get_fluid(1)`（`{name, amount, temperature}` 或 nil）、`get_fluid_count(name?)`、`get_fluid_contents()`、`fluids_count`、`get_fluid_box_neighbours(i)`（连接到的实体列表） | `sim/site_measure.py` `tank_fluid` | 储液罐读数 | 已核对 |
+| 地下管最远配对 | 偏移 10（= `max_underground_distance`，中间隔 9 格）能配对，偏移 11 不能；路由跳跃偏移取 2..`max_underground_distance` | `route/pipe.py` | 两端相对放置，`get_fluid_box_neighbours(1)` 计数 | 已核对 |
+| 地下带跳跃上限 | 沿用 §4：最远配对偏移 = `max_distance`（黄带 5）。任务书 §3.4 写的 `n ≤ max_distance + 1` 与 §4 实测不符，按实测取 2..`max_distance` | `route/belt.py` | §4 | 已核对（2.0.76） |
+| 侧向汇入到地下带入口/出口格 | 东向地下带入口或出口从北侧被带子侧向喂入，物品都只上 **left（近）道**，与普通带一致（900 tick 后下游带 left 有货、right 为 0）。路由器只往自己补的直带桩上汇入，从不选地下带格作汇入点，所以不需要禁止规则；吞吐未测 | `route/belt.py` | `test_side_load_onto_underground_ends_fills_near_lane` | 已核对（只看了道，没测速率） |
+| 悬崖旁的可建性 | 斜向悬崖（如 `west-to-north`）的 `bounding_box` 带 `orientation`（0.125），`left_top/right_bottom` 是**未旋转**的框；阶段 2 按轴对齐取整会漏掉 3 格、多算 4 格。`RconTerrain.occupied` 改为取旋转后四角的外接框：6 种朝向的悬崖周围，小杆、中杆、带子、管道 `can_place_entity` 为假的格全部落在 `occupied` 里（保守：117 格中 57 格其实可放） | `sim/terrain.py` `AABB_FN` | `test_snapshot_marks_every_cliff_tile_poles_cannot_use` | 已核对；真实地图 seed 20261024 的矿区 ±45 格内没有悬崖，端到端没遇到 |
+| 清障的实体类型与势力 | 树 `tree`、石头 `simple-entity`、地上物品 `item-entity`（名 `item-on-ground`）、尸体 `corpse`，势力都是 `neutral`；`clear_obstacles` 只删 neutral 的这四类。seed 20261024 最近铁矿 ±45 格：366 棵树、2 块石头、0 悬崖 | `sim/clear.py` | `test_clear_counts_match_snapshot`（计数 = 清前计数，清后快照 occupied = 剩余实体占格） | 已核对 |
+| 脚本建的杆自动连线 | `create_entity` 建的夹具电杆会自动连到拉线范围内的杆，包括蓝图建出（并已写 `wires`）的杆；整站电网 id 唯一 | `sim/site_measure.py` | `networks()`：杆与用电实体各只有一个 `electric_network_id` | 已核对 |
+| 物品统计口径 | `force.get_item_production_statistics(surface)`：`get_output_count` = 消耗（炉子吃矿、烧煤），`get_input_count` = 生产（钻机出矿、炉子出板）。infinity chest 出货与脚本清空汇箱都**不**计入（平地整站 iron-ore 生产 0、消耗 7.5/s）。燃料在开始燃烧时按整个计数，2 分钟窗口里石炉煤耗有 ±3% 的量化 | `sim/site_measure.py` | 平地整站读数 | 已核对 |
+| 路由出的带与夹具 | 夹具 Unit + 路由器替代了阶段 1 的固定夹具；`test_sim_measure`（冶炼列）、`test_sim_mining`、`test_sim_real_map` 在新夹具下全部照旧通过 | `sim/harness.py` | 全部 headless 测试 | 已核对 |
+| 真实地图整站预热 | 采矿供给恰等于冶炼需求（7.5/s）时，冶炼列 24 台炉的输入缓冲要很久才填满：40 s 预热后第一段只有 2/s，120 s 预热后 7.456/s（钻 7.5/s，差额是仍在进缓冲的矿）。平地用满带源时 60 s 足够 | `sim/site_measure.py` `REAL_MEASURE` | 实测样本 | 已核对 |
