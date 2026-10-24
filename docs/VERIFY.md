@@ -57,7 +57,7 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 条目 | 当前假设值 / 约定 | 所在文件 | 核对方法 | 把握 |
 | --- | --- | --- | --- | --- |
 | 带道命名 | `left` / `right` 相对流向；向东流时 left 在北侧 | `geom/belt.py` | 在东向带上手放物品到北侧道，看游戏/脚本 API 报告的 lane 编号 | 中 |
-| 爪子放带落远道 | 侧面放带的爪子落在离自己远的那条道；从带子正前/正后放带未定义（代码抛错） | `geom/belt.py`, `gen/smelting_row.py`（输出带只占远道） | 实放爪子往带上放物品观察 | 高（侧放）/ 未知（正放） |
+| 爪子放带落远道 | 侧面放带的爪子落在离自己远的那条道；从带子正前/正后放带未定义（代码抛错） | `geom/belt.py`, `gen/smelting_row.py`（输出带只占远道） | 实放爪子往带上放物品观察 | 官方维基 Inserters 页已核对：侧放落远道；与带同向/反向时落带的右道；取物优先近道，近道空则取远道 |
 | 爪子从带取两道 | 进料爪从矿带两道都取（矿一道、煤一道的混带能同时供矿和燃料） | `gen/smelting_row.py` | 实测一列石炉 | 高 |
 | 带子连续性 | 带的下一格是不反向的带（含侧向汇入）、同向的地下带入口、同向分流器即视为连续；分流器出口不检查 | `layout/validate.py` | 设计选择，非游戏事实；实机按需补充 | — |
 | 带子终点声明 | 进料带末端是有意的死路，用 `Unit.meta["belt_terminals"]` 显式声明后不报 `belt.discontinuous` | `layout/validate.py`, `gen/smelting_row.py` | 设计选择；实机无需核对 | — |
@@ -68,13 +68,14 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 
 | 条目 | 当前假设值 / 约定 | 所在文件 | 核对方法 | 把握 |
 | --- | --- | --- | --- | --- |
-| 字符串格式 | `"0"` + base64(zlib(JSON)) | `blueprint/codec.py` | fixtures 已能解码；游戏导入一个生成的字符串 | 高 |
+| 字符串格式 | `"0"` + base64(zlib(JSON)) | `blueprint/codec.py` | fixtures 已能解码；游戏导入一个生成的字符串 | 维基 Blueprint string format 页已核对：版本字节 `0` 到 2.0 均不变；2.0 还能直接导入未压缩 JSON |
 | 版本号打包 | `major<<48 \| minor<<32 \| patch<<16 \| build`，build 缺省 0（plan 只写了前三段；fixtures 里 2.0.28 的低 16 位是 1，故加了 build） | `blueprint/codec.py` | 游戏导出蓝图解码看 `version` | 中 |
+| 16 向 direction | 2.x 的 direction 值是 1.1 的两倍（N=0,E=4,S=8,W=12） | `geom/vec.py`, `blueprint/import_.py` | 维基 Blueprint string format 页已核对（"Direction appears to be double the previous values"） | 已核对 |
 | N 向 direction 可省略 | 导出器**总是写出** direction（含 0）；fixtures 中电杆、组装机省略了 direction，说明游戏端接受缺省 | `blueprint/export.py` | 导入一个全写 direction=0 的蓝图确认无报错 | 中 |
 | icons 格式 | 导出 `{"signal": {"type": "item", "name": ...}, "index": 1}`；fixtures 中 signal 省略了 `type` | `blueprint/export.py` | 游戏导入确认两种都接受 | 中 |
 | `mirror` 字段 | 编解码原样保留；`layout.transform.mirror_*` **不**翻转实体的 `mirror` 标志（种子集里没有不对称实体） | `blueprint/*`, `layout/transform.py` | 阶段 5 放化工厂时核对游戏翻转蓝图时是否切换该标志 | 低 |
 | 不可旋转实体的方向 | 变换会旋转所有实体的 direction（熔炉、箱子旋转后可能导出非 0 direction） | `layout/transform.py` | 导入旋转后的蓝图看游戏是否接受/忽略 | 中 |
-| 蓝图级字段 | 导入只取 `entities`；`wires`、`tiles`、`schedules` 等丢弃 | `blueprint/import_.py` | 设计选择 | — |
+| 蓝图级字段 | 导入只取 `entities`；`wires`、`tiles`、`schedules` 等丢弃 | `blueprint/import_.py` | 设计选择；注意维基仍写 1.1 的 `neighbours`（铜线）字段，2.0 改为蓝图级 `wires`，维基页标注"需更新到 2.0" | — |
 | 真实蓝图样本 | factorio.com、factorioprints.com、factorio.school、factoriobin.com 均被代理 403；改从 MIT 许可的 `redruin1/factorio-draftsman` 仓库取了 3 条 2.0 字符串（2.0.28 ×2、2.0.55 ×1），见 `tests/fixtures/SOURCES.txt`。**无法确认它们是游戏导出的，还是 draftsman 生成的** | `tests/fixtures/` | 从游戏里直接导出几条蓝图替换/补充 | — |
 
 ## 6. 吞吐模型
