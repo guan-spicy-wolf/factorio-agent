@@ -147,7 +147,7 @@ def real_map_site(
     outs = [k for k, i in enumerate(unit.interfaces) if i.kind == "item" and i.role == "output"]
     (ore_out,) = outs
     ore_iface = unit.interfaces[ore_out]
-    rate = min(ore_iface.rate or 0.0, max_rate)
+    rate = min(ore_iface.fixed_rate() or 0.0, max_rate)
     sp = SmeltingRowParams(target_rate=rate, belt=mp.belt)
     row = gen_smelting(sp, gd)
     units = [PlacedUnit("mine", unit)]
@@ -218,7 +218,7 @@ def ports(site: Site) -> list[dict[str, Any]]:
                 row["rate"] = i.rate
             else:
                 rp = i.rate_profile
-                row["initial"] = rp.initial if rp else i.rate
+                row["initial"] = i.fixed_rate()
                 row["depletion_s_lower_bound"] = rp.depletion_s_lower_bound if rp else None
                 peer = ln.dst if ep == ln.src else ln.src
                 row["sink"] = peer.unit if "fixture" in site.placed(peer.unit).unit.meta else None

@@ -21,7 +21,6 @@ from __future__ import annotations
 from typing import Any
 
 from fgen.data.schema import GameData
-from fgen.geom import fluid as fluidgeom
 from fgen.geom.vec import Direction, Tile
 from fgen.layout.model import Placement
 from fgen.route.astar import NoPath, astar
@@ -30,16 +29,6 @@ from fgen.route.grid import RouteGrid
 
 PIPE = "pipe"
 PIPE_TO_GROUND = "pipe-to-ground"
-
-
-def _ports(site: Any, gd: GameData, unit: str) -> frozenset[tuple[Tile, Direction]]:
-    out: set[tuple[Tile, Direction]] = set()
-    for p in site.world(unit).layout.placements:
-        e = gd.entity(p.name)
-        if e.fluid_box is None and e.output_fluid_box is None:
-            continue
-        out |= set(fluidgeom.connection_points(gd, p.name, p.position, p.direction))
-    return frozenset(out)
 
 
 def search(
@@ -122,7 +111,8 @@ def route_links(site: Any, gd: GameData, grid: RouteGrid, conn: Any) -> None:
         dst = site.interface(ln.dst)
         if src.material is not None and dst.material is not None and src.material != dst.material:
             raise RouteError(ln.label, f"{src.material} into a {dst.material} input")
-        own = _ports(site, gd, ln.src.unit) | _ports(site, gd, ln.dst.unit)
+        # the link's own two connections (from the contracts) are not foreign
+        own = frozenset({(src.tile, src.direction), (dst.tile, dst.direction)})
         allowed = frozenset({str(ln.src), str(ln.dst)})
         ps = search(
             grid,

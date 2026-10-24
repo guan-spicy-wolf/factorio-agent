@@ -239,7 +239,7 @@ def test_mirrored_consumer_swaps_lane_requirement(gd):
     placed = PlacedUnit("row", dst, Tile(20, 0), Pose(N, mirror=True))
     w = placed.world()
     assert w.interfaces[0].direction == W and w.interfaces[0].lane == "right"
-    assert w.interfaces[0].lane_materials() == {"right": "iron-ore"}
+    assert w.group("feed").lane_materials() == {"right": "iron-ore", "left": "coal"}
     site = Site(
         flat(-10, -15, 40, 15),
         [PlacedUnit("ore", ore, Tile(30, -8)), placed],

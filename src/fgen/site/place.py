@@ -3,9 +3,10 @@
 ``find_spot`` scans square rings around an anchor tile (nearest ring first, a fixed
 order inside each ring) for the first origin where the unit, posed by one of the
 candidate poses, fits on free buildable tiles with a margin around it and with the
-tiles in front of its ports clear. ``place_port`` instead computes the origin and pose
-that put one chosen interface on a given tile facing a given direction (used for
-fixtures that sit right at the port they serve).
+tiles in front of its ports clear (as many as each port's contract ``space`` asks).
+``place_port`` instead computes the origin and pose that put one chosen interface on a
+given tile facing a given direction (used for fixtures that sit right at the port they
+serve).
 """
 
 from __future__ import annotations
@@ -17,11 +18,16 @@ from fgen.geom.vec import Direction, Tile
 from fgen.layout.model import Interface, PlacedUnit, Pose, Unit
 from fgen.layout.transform import place_unit
 
-PORT_CLEARANCE = 3  # tiles in front of item ports (stub + approach) kept free
 
-
-def port_tiles(i: Interface, clearance: int = PORT_CLEARANCE) -> list[Tile]:
+def port_tiles(i: Interface, clearance: int | None = None) -> list[Tile]:
+    """Tiles in front of a port that other units must leave free: for an item port the
+    ``space.upstream`` tiles of its contract (``clearance`` overrides), for a fluid
+    connection the tile outside it."""
     if i.kind == "item":
+        if clearance is None:
+            if i.space is None:
+                raise ValueError(f"item port at {i.tile} has no space in its contract")
+            clearance = i.space.upstream
         d = i.direction if i.role == "output" else i.direction.opposite
         return [i.tile.neighbor(d, k) for k in range(1, clearance + 1)]
     if i.kind == "fluid":
@@ -34,7 +40,7 @@ def footprint_ok(
     gd: GameData,
     free: Callable[[Tile], bool],
     margin: int = 1,
-    clearance: int = PORT_CLEARANCE,
+    clearance: int | None = None,
 ) -> bool:
     tiles = unit.layout.tiles(gd)
     need: set[Tile] = set(tiles)
@@ -69,7 +75,7 @@ def find_spot(
     *,
     poses: Iterable[Pose] = (Pose(),),
     margin: int = 1,
-    clearance: int = PORT_CLEARANCE,
+    clearance: int | None = None,
     max_radius: int = 80,
 ) -> PlacedUnit:
     """First fitting placement of ``unit`` whose origin is nearest ``anchor``.

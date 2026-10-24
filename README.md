@@ -98,12 +98,17 @@ uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：
 
 ## 连接路由（阶段 3a）
 
-`fgen.route.connect.connect(site, gd)` 只读接口契约（格、方向、带道、物料、速率、`requires`）和端口下的实体（带等级、杆种），输出 `Connection`：路由实体（`layout`）、每条链路的明细、契约校验（`LaneMaterial` 必须满足，否则 `Infeasible`；`MinRate` 不足记警告；`Compressed` 只记录）、整站 `validate`。契约升级见 `fgen.layout.model`：`RateProfile(initial, depletion_s_lower_bound)`、`LaneMaterial`、`MinRate`、`Compressed`、`Interface.world(origin, Pose)`、`PlacedUnit`。
+`fgen.route.connect.connect(site, gd)` 只读接口契约，不回头查单元布局里的端口实体（布局只用来标出哪些格被占），输出 `Connection`：路由实体（`layout`）、每条链路的明细、契约校验（`LaneMaterial` 必须满足，否则 `Infeasible`；`MinRate` 不足记警告；`Compressed` 只记录）、整站 `validate`。契约见 `fgen.layout.model`（阶段 6a 补全，字段设计写在 `docs/plan-phase3a.md` §6）：
 
+- `Interface.entity`：端口下的实体（带等级 → 桩用什么带、道容量、生产者带比消费者慢的警告；电接口的杆种 → 拉线距离、杆中心）。
+- `RateProfile`：`supply="fixed"`（`initial` = `rate`，`lanes` 按道给出、相加等于 `initial`，采矿口另有 `depletion_s_lower_bound`）或 `supply="on_demand"`（要多少给多少，`limit` 为上限，`lanes` 为每道上限；`rate` 为 None）。`rate=None` 不再表示"无限供给"。构造用 `RateProfile.fixed(...)` / `RateProfile.on_demand(...)`；`Interface.fixed_rate()`、`lane_rate(lane)`、`on_demand()`。
+- `Interface.port_group` + `Unit.groups`（`PortGroup(name, requires)`）：同一条带上的口归一组，带道要求（`LaneMaterial`）挂在组上；路由器按组（不是按格）把口归成一个消费者、共用一个汇入桩。
+- `Interface.space`（`PortSpace(approach, upstream)`）：允许的进入方式（`direct` / `side` / `both`）和口前要留的直线空格数；路由器按它决定直连还是侧向汇入、保留口前格，放置规则按它留空（`PortSpace.item(approach)`：直连 2 格，侧向汇入 = 2 格桩 + 1 格）。
+- 不变量 `contract.entity` / `contract.space` / `contract.rate` / `contract.group`（`validate_unit` 里）检查这些字段与单元一致；两个生成器与全部夹具都填全字段并通过。
 - 带：从生产者口前一格出发；消费者口 `lane` 为 `both` 时直连（最后一节从正后方进入），为 `left`/`right` 时在消费者上游补 2 格直带“桩”，从该道一侧垂直汇入（东向带填左道从北侧汇入）。地下带跳跃 2..`max_distance`，不在别人的地下段里落脚，不在爪子/钻机可达格和别人喂入的格上铺带。
 - 管：管 + 地下管（偏移 ≤ `max_underground_distance`），管旁不能有异种液体口。
 - 电：所有电接口按欧氏 MST 连，每条边 A* 找杆链（每跳 ≤ 两端较小的拉线距离）。
-- 实测（`characterization/site.md`）：平地 7.5/s 冶炼列由两个源夹具侧向汇入矿（左）和煤（右），板 7.5/s；真实地图最近铁矿 15 台钻 7.5/s → 带 → 冶炼列，板 7.456/s（99.4%）。
+- 实测（`characterization/site.md`）：平地 7.5/s 冶炼列由两个源夹具侧向汇入矿（左）和煤（右），板 7.5/s；真实地图最近铁矿一条带 7.5/s（`max_belt_rate` 限到冶炼列矿道）→ 带 → 冶炼列，板 7.467/s（99.6%）。
 
 ## 测试样本
 

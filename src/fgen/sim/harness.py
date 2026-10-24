@@ -34,7 +34,16 @@ from fgen.geom import belt as beltgeom
 from fgen.geom import fluid as fluidgeom
 from fgen.geom import footprint, pole
 from fgen.geom.vec import Direction, Tile
-from fgen.layout.model import Interface, Layout, PlacedUnit, Placement, Unit
+from fgen.layout.model import (
+    Interface,
+    Layout,
+    PlacedUnit,
+    Placement,
+    PortGroup,
+    PortSpace,
+    RateProfile,
+    Unit,
+)
 from fgen.sim import lua
 from fgen.sim.rcon import RconClient
 from fgen.site import place
@@ -53,6 +62,7 @@ LOADER_FOR_BELT = {
 }
 SOURCE_STOCK = 200  # items an infinity chest keeps (refilled every tick by the game)
 FIXTURE_GAP = 3  # source/sink ports sit this many tiles from the port they serve
+FIXTURE_GROUP = "belt"  # port group of a source / sink fixture (its one belt)
 E = Direction.E
 
 
@@ -99,9 +109,21 @@ def source_unit(gd: GameData, item: str, belt: str = "transport-belt") -> Unit:
         None,
         "output",
         ["infinite source: supplies whatever the belt takes, both lanes"],
+        rate_profile=_belt_on_demand(gd, belt),
+        entity=belt,
+        port_group=FIXTURE_GROUP,
+        space=PortSpace.item("direct"),
     )
     meta = {"fixture": {"kind": "source", "item": item, "chest": 0}, "family": "fixture/source"}
-    return Unit(Layout(ps), [out], meta)
+    return Unit(Layout(ps), [out], meta, (PortGroup(FIXTURE_GROUP),))
+
+
+def _belt_on_demand(gd: GameData, belt: str) -> RateProfile:
+    """Whatever the fixture's belt carries: both lanes, each up to its lane capacity."""
+    from fgen.geom import belt as bg
+
+    lane = bg.lane_items_per_second(gd, belt)
+    return RateProfile.on_demand(bg.items_per_second(gd, belt), {"left": lane, "right": lane})
 
 
 def sink_unit(gd: GameData, item: str | None, belt: str = "transport-belt") -> Unit:
@@ -122,13 +144,17 @@ def sink_unit(gd: GameData, item: str | None, belt: str = "transport-belt") -> U
         None,
         "input",
         ["counting sink: takes everything, both lanes"],
+        rate_profile=_belt_on_demand(gd, belt),
+        entity=belt,
+        port_group=FIXTURE_GROUP,
+        space=PortSpace.item("direct"),
     )
     meta = {
         "fixture": {"kind": "sink", "item": item, "chest": 2},
         "family": "fixture/sink",
         "belt_terminals": [Tile(0, 0)],
     }
-    return Unit(Layout(ps), [inp], meta)
+    return Unit(Layout(ps), [inp], meta, (PortGroup(FIXTURE_GROUP),))
 
 
 def power_unit(gd: GameData, pole_name: str = "small-electric-pole") -> Unit:
@@ -140,7 +166,15 @@ def power_unit(gd: GameData, pole_name: str = "small-electric-pole") -> Unit:
         if pole.supply_tiles(gd, pole_name, c) & eei_tiles:
             p = Placement(pole_name, c)
             iface = Interface(
-                "power", None, c.floor(), E, None, None, "output", ["infinite electricity"]
+                "power",
+                None,
+                c.floor(),
+                E,
+                None,
+                None,
+                "output",
+                ["infinite electricity"],
+                entity=pole_name,
             )
             meta = {"fixture": {"kind": "power", "pole": 1}, "family": "fixture/power"}
             return Unit(Layout([eei, p]), [iface], meta)
@@ -150,7 +184,16 @@ def power_unit(gd: GameData, pole_name: str = "small-electric-pole") -> Unit:
 def fluid_source_unit(gd: GameData, fluid: str, percentage: float = 1.0) -> Unit:
     p = Placement(FLUID_SOURCE, Tile(0, 0).center())
     iface = Interface(
-        "fluid", fluid, Tile(0, 0), E, None, None, "output", [f"infinite {fluid} (infinity-pipe)"]
+        "fluid",
+        fluid,
+        Tile(0, 0),
+        E,
+        None,
+        None,
+        "output",
+        [f"infinite {fluid} (infinity-pipe)"],
+        rate_profile=RateProfile.on_demand(),
+        entity=FLUID_SOURCE,
     )
     meta = {
         "fixture": {"kind": "fluid-source", "fluid": fluid, "percentage": percentage},
@@ -167,7 +210,18 @@ def fluid_sink_unit(gd: GameData, fluid: str, tank: str = FLUID_SINK) -> Unit:
     if not west:
         raise HarnessError(f"{tank} has no west-facing connection")
     t, d = west[0]
-    iface = Interface("fluid", fluid, t, d, None, None, "input", [f"{tank} collects {fluid}"])
+    iface = Interface(
+        "fluid",
+        fluid,
+        t,
+        d,
+        None,
+        None,
+        "input",
+        [f"{tank} collects {fluid}"],
+        rate_profile=RateProfile.on_demand(),
+        entity=tank,
+    )
     # the fixture faces east like the others: its port points west (into the flow)
     meta = {
         "fixture": {"kind": "fluid-sink", "fluid": fluid},
@@ -252,8 +306,6 @@ def attach_fixtures(
 ) -> tuple[list[PlacedUnit], list[Link]]:
     """One fixture per interface of unit ``target`` (except indices in ``skip``),
     placed next to the port it serves (falling back to the nearest free spot)."""
-    from fgen.route.belt import belt_at
-
     skip = skip or set()
     placed = list(site_units)
     unit = next(u for u in placed if u.name == target)
@@ -283,8 +335,7 @@ def attach_fixtures(
         if i.kind == "item" and i.role == "input":
             if i.material is None:  # e.g. the fuel lane of an electric furnace
                 continue
-            belt = belt_at(gd, w.layout, i.tile) or "transport-belt"
-            fx = source_unit(gd, i.material, belt)
+            fx = source_unit(gd, i.material, _port_belt(i))
             if i.lane in ("left", "right"):
                 side = beltgeom.lane_side(i.direction, i.lane)  # type: ignore[arg-type]
                 approach = i.tile.neighbor(i.direction.opposite).neighbor(side)
@@ -298,8 +349,7 @@ def attach_fixtures(
             add(pu)
             links.append(Link(Endpoint(fname, 0), ep))
         elif i.kind == "item" and i.role == "output":
-            belt = belt_at(gd, w.layout, i.tile) or "transport-belt"
-            fx = sink_unit(gd, i.material, belt)
+            fx = sink_unit(gd, i.material, _port_belt(i))
             want = i.tile.neighbor(i.direction, FIXTURE_GAP)
             pu = place.place_port(fname, fx, 0, want, i.direction)
             if not place.footprint_ok(pu.world(), gd, free, margin=0, clearance=0):
@@ -309,15 +359,9 @@ def attach_fixtures(
         elif i.kind == "power" and not any(
             u.unit.meta.get("fixture", {}).get("kind") == "power" for u in fixtures
         ):
-            pole_name = next(
-                (
-                    p.name
-                    for p in w.layout.placements
-                    if gd.entity(p.name).type == "electric-pole" and i.tile in p.tiles(gd)
-                ),
-                "small-electric-pole",
-            )
-            fx = power_unit(gd, pole_name)
+            if i.entity is None:
+                raise HarnessError(f"{target}#{k}: power interface names no pole")
+            fx = power_unit(gd, i.entity)
             pu = place.find_spot(fname, fx, gd, free, i.tile, margin=1)
             add(pu)
             links.append(Link(Endpoint(fname, 0), ep))
@@ -334,6 +378,13 @@ def attach_fixtures(
                 Link(Endpoint(fname, 0), ep) if i.role == "input" else Link(ep, Endpoint(fname, 0))
             )
     return fixtures, links
+
+
+def _port_belt(i: Interface) -> str:
+    """The belt a fixture at item port ``i`` uses: the port's own (contract ``entity``)."""
+    if i.entity is None:
+        raise HarnessError(f"item port at {i.tile} names no belt entity")
+    return i.entity
 
 
 def _poses():  # -> list[Pose]

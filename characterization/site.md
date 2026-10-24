@@ -15,7 +15,7 @@ Units: `row` (belt-fed-row/smelting) at (0,0) N, `ore` (fixture/source) at (-14,
 
 Routes: ore [item side left] transport-belt 19; coal [item side right] transport-belt 21; plates [item direct] transport-belt 15; power row#3-power#0 [power] small-electric-pole 2
 
-Contract checks: row#0 LaneMaterial(left, iron-ore) -> True (left lane gets ['iron-ore']); row#0 MinRate(7.5) -> True (links supply 7.5/s); row#0 Compressed -> None (); row#1 LaneMaterial(right, coal) -> True (right lane gets ['coal']); row#1 MinRate(0.54) -> True (links supply 7.5/s)
+Contract checks: row/feed LaneMaterial(left, iron-ore) -> True (left lane gets ['iron-ore']); row/feed LaneMaterial(right, coal) -> True (right lane gets ['coal']); row#0 MinRate(7.5) -> True (links supply 7.5/s); row#0 Compressed -> None (); row#1 MinRate(0.54) -> True (links supply 7.5/s)
 
 Warnings: -. Violations (whole site): none.
 
@@ -71,7 +71,7 @@ Units: `mine` (anchor/mining-patch) at (0,0) N, `row` (belt-fed-row/smelting) at
 
 Routes: ore [item side left] transport-belt 9; coal [item side right] transport-belt 9; plates [item direct] transport-belt 7; power row#3-power#0 [power] ; power mine#1-power#0 [power] small-electric-pole 5
 
-Contract checks: row#0 LaneMaterial(left, iron-ore) -> True (left lane gets ['iron-ore']); row#0 MinRate(7.5) -> True (links supply 7.5/s); row#0 Compressed -> None (); row#1 LaneMaterial(right, coal) -> True (right lane gets ['coal']); row#1 MinRate(0.54) -> True (links supply 7.5/s)
+Contract checks: row/feed LaneMaterial(left, iron-ore) -> True (left lane gets ['iron-ore']); row/feed LaneMaterial(right, coal) -> True (right lane gets ['coal']); row#0 MinRate(7.5) -> True (links supply 7.5/s); row#0 Compressed -> None (); row#1 MinRate(0.54) -> True (links supply 7.5/s)
 
 Warnings: -. Violations (whole site): none.
 

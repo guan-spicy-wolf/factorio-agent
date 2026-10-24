@@ -70,14 +70,17 @@ def test_world_moves_lane_requirements_with_mirror() -> None:
 def test_smelting_row_fills_structured_contract(gd) -> None:
     unit = gen_smelting(SmeltingRowParams(target_rate=7.0), gd)
     ore, fuel, out, power = unit.interfaces
-    assert ore.lane_materials() == {"left": "iron-ore"}
+    # the lane requirements of the shared input belt hang on its port group
+    assert ore.port_group == fuel.port_group
+    assert unit.group(ore.port_group).lane_materials() == {"left": "iron-ore", "right": "coal"}
+    assert not ore.lane_materials() and not fuel.lane_materials()
     assert any(isinstance(r, Compressed) for r in ore.requires)
     recipe = gd.recipe("iron-plate")
     per_plate = recipe.ingredients[0][1] / recipe.results[0][1]
     assert ore.min_rate() == pytest.approx(7.0 * per_plate)
     assert ore.rate >= ore.min_rate()  # the furnaces could take more than the target
-    assert fuel.lane_materials() == {"right": "coal"} and fuel.min_rate() > 0
-    assert out.rate_profile == RateProfile(out.rate)
+    assert fuel.min_rate() > 0
+    assert out.rate_profile == RateProfile.fixed(out.rate, {out.lane: out.rate})
     assert ore.assumptions and out.assumptions  # human-readable strings kept
     assert power.kind == "power" and not power.requires
 

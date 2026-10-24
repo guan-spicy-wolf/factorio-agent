@@ -59,7 +59,15 @@ from fgen.geom import footprint, mining, pole
 from fgen.geom.belt import Lane
 from fgen.geom.vec import Direction, Tile, Vec2
 from fgen.layout import transform as tf
-from fgen.layout.model import Interface, Layout, Placement, RateProfile, Unit
+from fgen.layout.model import (
+    Interface,
+    Layout,
+    Placement,
+    PortGroup,
+    PortSpace,
+    RateProfile,
+    Unit,
+)
 from fgen.layout.render import to_ascii
 from fgen.layout.validate import Violation, validate_unit
 from fgen.terrain.model import Area, Patch, Terrain, background, bounds_of
@@ -1043,7 +1051,7 @@ class MiningPatch:
         meta["suggestion_changes"] = out
         meta["suggestions"] = [_fmt(c) for c in out]
         meta["suggestion_notes"] = notes
-        return Unit(unit.layout, unit.interfaces, meta)
+        return replace(unit, meta=meta)
 
     def _unit(
         self,
@@ -1058,7 +1066,8 @@ class MiningPatch:
         product = gd.resource(p.resource).product
         cap = tp.belt_lane_capacity(gd, p.belt)
         ifaces: list[Interface] = []
-        for b in res.belts:
+        groups: list[PortGroup] = []
+        for k, b in enumerate(res.belts):
             lanes = [lane for lane, n in b["lanes"].items() if n]
             lane = "both" if len(lanes) == 2 else lanes[0]
             per = ", ".join(
@@ -1079,8 +1088,15 @@ class MiningPatch:
                         f"{per}; each lane carries at most {cap:g}/s on {p.belt}",
                         "downstream keeps the belt moving",
                     ],
+                    rate_profile=RateProfile.fixed(
+                        b["rate"], {ln: n * rate for ln, n in b["lanes"].items() if n}
+                    ),
+                    entity=p.belt,
+                    port_group=f"belt{k}",
+                    space=PortSpace.item("direct"),
                 )
             )
+            groups.append(PortGroup(f"belt{k}"))
         if res.poles:
             first = min(res.poles, key=lambda q: (q.position.x, q.position.y))
             ifaces.append(
@@ -1093,9 +1109,10 @@ class MiningPatch:
                     None,
                     "input",
                     [f"connect a {p.pole}-compatible wire to this pole"],
+                    entity=p.pole,
                 )
             )
-        unit = Unit(Layout(res.placements), ifaces, {})
+        unit = Unit(Layout(res.placements), ifaces, {}, tuple(groups))
         dropped = res.dropped
         if rot is not None:
             back = _INVERSE[rot]
@@ -1148,9 +1165,10 @@ class MiningPatch:
                     if t in dry_by_tile:
                         v = dry_by_tile[t]
                         bound = v if bound is None else min(bound, v)
-                i = replace(i, rate_profile=RateProfile(i.rate, bound))
+                assert i.rate_profile is not None
+                i = replace(i, rate_profile=replace(i.rate_profile, depletion_s_lower_bound=bound))
             new_ifaces.append(i)
-        unit = Unit(unit.layout, new_ifaces, unit.meta)
+        unit = replace(unit, interfaces=new_ifaces)
         reasons: dict[str, int] = {}
         for d in dropped:
             reasons[d["reason"]] = reasons.get(d["reason"], 0) + 1
@@ -1191,7 +1209,7 @@ class MiningPatch:
             "suggestions": [],
             "suggestion_changes": [],
         }
-        return Unit(unit.layout, unit.interfaces, meta)
+        return replace(unit, meta=meta)
 
     def invariants(
         self, unit: Unit, gd: GameData, terrain: Terrain | None = None

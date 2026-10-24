@@ -12,7 +12,17 @@ from dataclasses import replace
 
 from fgen.data.schema import GameData
 from fgen.geom.vec import Direction, Tile, Vec2
-from fgen.layout.model import Interface, LaneMaterial, LaneSpec, Layout, Pose, Predicate, Unit
+from fgen.layout.model import (
+    Interface,
+    LaneMaterial,
+    LaneSpec,
+    Layout,
+    PortGroup,
+    Pose,
+    Predicate,
+    RateProfile,
+    Unit,
+)
 
 type _Fn[T] = Callable[[T], T]
 
@@ -31,6 +41,13 @@ def _swap_requires(reqs: tuple[Predicate, ...]) -> tuple[Predicate, ...]:
     )
 
 
+def _swap_profile(rp: RateProfile | None) -> RateProfile | None:
+    if rp is None or not rp.lanes:
+        return rp
+    lanes = tuple(sorted((_swap_lane(ln), v) for ln, v in rp.lanes))  # type: ignore[misc]
+    return replace(rp, lanes=lanes)  # type: ignore[arg-type]
+
+
 def _map_iface(i: Interface, tile: _Fn[Tile], d: _Fn[Direction], swap: bool) -> Interface:
     return replace(
         i,
@@ -38,7 +55,12 @@ def _map_iface(i: Interface, tile: _Fn[Tile], d: _Fn[Direction], swap: bool) -> 
         direction=d(i.direction),
         lane=_swap_lane(i.lane) if swap else i.lane,
         requires=_swap_requires(i.requires) if swap else i.requires,
+        rate_profile=_swap_profile(i.rate_profile) if swap else i.rate_profile,
     )
+
+
+def _map_group(g: PortGroup, swap: bool) -> PortGroup:
+    return replace(g, requires=_swap_requires(g.requires)) if swap else g
 
 
 def _map_layout(layout: Layout, pos: _Fn[Vec2], d: _Fn[Direction]) -> Layout:
@@ -53,7 +75,8 @@ def _map_unit(unit: Unit, pos: _Fn[Vec2], tile: _Fn[Tile], d: _Fn[Direction], sw
     for key in GEOMETRIC_META_KEYS:
         if key in meta:
             meta[key] = [tile(t) for t in meta[key]]
-    return Unit(_map_layout(unit.layout, pos, d), ifaces, meta)
+    groups = tuple(_map_group(g, swap) for g in unit.groups)
+    return Unit(_map_layout(unit.layout, pos, d), ifaces, meta, groups)
 
 
 def translate[T: (Layout, Unit)](obj: T, dx: int, dy: int) -> T:

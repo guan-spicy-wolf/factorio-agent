@@ -1,6 +1,7 @@
 """Pole chains joining every power interface of a site (plan-phase3a §3.4).
 
-Each power interface is a pole of its unit (``Interface.tile`` = the pole's tile). The
+Each power interface is a pole of its unit (``Interface.tile`` = the pole's tile,
+``Interface.entity`` = the pole). The
 interfaces are joined by a Euclidean minimum spanning tree (Kruskal); each tree edge
 already in wire reach needs nothing, otherwise a chain of poles is searched with A*
 over free tiles, one hop = one pole, a hop never longer than the wire reach of the two
@@ -27,23 +28,15 @@ _EPS = 1e-9
 
 
 def power_poles(site: Any, gd: GameData) -> list[tuple[str, str, Vec2]]:
-    """(endpoint label, pole name, centre) of every power interface in the site."""
+    """(endpoint label, pole name, centre) of every power interface in the site, from the
+    contract: ``entity`` is the pole, ``tile`` its tile (``position.floor()``)."""
     out = []
     for ep, i in site.interfaces():
         if i.kind != "power":
             continue
-        lay = site.world(ep.unit).layout
-        p = next(
-            (
-                q
-                for q in lay.placements
-                if gd.entity(q.name).type == "electric-pole" and i.tile in q.tiles(gd)
-            ),
-            None,
-        )
-        if p is None:
-            raise RouteError(str(ep), f"no pole under the power interface {i.tile}")
-        out.append((str(ep), p.name, p.position))
+        if i.entity is None or gd.entity(i.entity).type != "electric-pole":
+            raise RouteError(str(ep), f"power interface {i.tile} names no electric pole")
+        out.append((str(ep), i.entity, footprint.center_at_tile(gd, i.entity, i.tile)))
     return out
 
 

@@ -131,10 +131,15 @@ M1–M6 全部完成（2026-10-24，headless 2.1.23）。测试 261 个：不起
 连接算法实际用到、但契约里没有的东西（建议下一阶段加进 `Interface`）：
 
 1. **端口下的实体**：带等级（决定路由用什么带、地下带跨度、道容量）和电接口的杆种（决定拉线距离）都是从单元布局里“端口格上是什么实体”反查的。应加 `entity`（或 `belt` / `pole`）字段。
+   **已实现（阶段 6a）**：`Interface.entity: str | None`——物品口是口格上的带类实体（带等级），电口是杆，液体口是承载连接的实体。路由器（消费者桩用的带、道容量、慢带警告）、电杆链（杆种与中心：`geom.footprint.center_at_tile(entity, tile)`）、夹具（源/汇用什么带、电源夹具用什么杆）都只读它；`route.belt.belt_at` 已删除。液体路由判断"自己的连接"也不再扫单元布局里的全部液体连接，只取链路两端接口（格 + 朝外方向）。不变量 `contract.entity` 检查它与口格上的实体一致。
 2. **按道的速率**：采矿口 `lane="both"` 只给总速率，左右道各几台钻在 `meta` 里；直连时只能查整带容量，查不了单道。应加 `lane_rates`（或 `RateProfile` 按道）。
+   **已实现（阶段 6a）**：`RateProfile.lanes`（按道的固定速率，相加等于 `initial`；按需供给时为每道上限），`Interface.lane_rate(lane)` 读取。采矿口按左右道钻机数填，冶炼列输出只有远道，源夹具两道各为道容量。路由器直连时按生产者的分道速率计入消费者各道（`both` 口不再按"每道至多一半"估算，只在生产者没给分道时才退回这个估算），侧向汇入时整股进所汇入的道。不变量 `contract.rate` 检查分道速率之和与所用道。
 3. **按需供给**：夹具源的 `rate=None` 被约定为“要多少给多少”。这是语义重载，应在 `RateProfile` 里显式区分固定产率和按需（含上限）。
+   **已实现（阶段 6a）**：`RateProfile.supply`：`"fixed"`（`initial` = `Interface.rate`）或 `"on_demand"`（`limit` 为上限，可为 None；`Interface.rate` 必须为 None）。源/汇夹具、液体夹具填 `on_demand`。路由器只认 `on_demand()`：没有画像、`rate=None` 的口不再被当成无限供给（`test_rate_none_is_not_on_demand`）。
 4. **同一条带的多个口**：冶炼列的矿口和煤口是同一格上的两个接口，路由器靠“同格”把它们归成一个消费者、共用一个汇入桩。应有显式的“端口/带”分组，道要求挂在组上。
+   **已实现（阶段 6a）**：`Interface.port_group` 引用 `Unit.groups` 里的 `PortGroup(name, requires)`；带道要求 `LaneMaterial` 挂在组上（冶炼列的 `feed` 组：左道矿、右道煤），每口自己的要求（`MinRate`、`Compressed`）留在口上。路由器按 `(单元, 组)` 归消费者，不再按格；校验报告里组要求记为 `row/feed`。镜像变换同时翻转组要求的道。不变量 `contract.group` 检查组存在且同组的口在同一格同一方向。
 5. **端口前的空间要求**：侧向汇入需要在消费者上游补 2 格直带桩，再加两侧的汇入格；契约没说口前要多少空格、能不能直接在单元自己的带上侧向汇入。放置规则只好按固定的 `PORT_CLEARANCE` 留空。应加 `clearance` 或 `approach`（允许的进入方式与所需格数）。
+   **已实现（阶段 6a）**：`Interface.space = PortSpace(approach, upstream)`：`approach` ∈ `direct` / `side` / `both`，`upstream` 是口前（输入口上游、输出口下游）要留的直线空格数。路由器 `link_mode` 按 `approach` 与 `lane` 决定直连或侧向汇入（`side` 但 `upstream` 不够放桩、或 `side` 口不指定单道都是 `Infeasible`），`reserve_ports` 保留 `upstream` 格；放置规则 `port_tiles` 留 `upstream` 格。`PORT_CLEARANCE`、`RESERVE` 常量已删除。约定数值 `PortSpace.item`：直连 2（路由第一节带 + 1 格引导），侧向汇入 3（`SIDE_LOAD_STUB` 2 格桩 + 1 格引导）。改成按口给数后两个整站的实体逐个相同（离线指纹），实测不变。
 6. **液体口约定**：液体口的 `tile` = 带连接的实体格、`direction` = 朝外，输入输出同一约定（物品口的输入方向却是流向）。现在只写在 `route/pipe.py` 的说明里；液体还缺流量（`MinRate` 对液体未校验）和温度。
 7. **电力需求**：电接口没有功率，电源夹具是无限电，路由只管连通。真实部署要按功率选电源和杆。
 8. **启动/缓冲时间**：真实地图整站在供需相等时要 120 秒才稳定（平地 60 秒），契约里没有“填满需要多久/多少缓冲”，只能在实测里摸。`rate_profile` 只有初始速率和采空下界，本阶段没用到衰减曲线本身。

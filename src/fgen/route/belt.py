@@ -27,6 +27,7 @@ The checks on rates and lanes are in :func:`consumer_report`.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -36,13 +37,12 @@ from fgen.gen.base import Infeasible
 from fgen.geom import belt as beltgeom
 from fgen.geom.belt import Lane
 from fgen.geom.vec import Direction, Tile
-from fgen.layout.model import Interface, Layout, Placement
+from fgen.layout.model import SIDE_LOAD_STUB, Interface, Placement, PortGroup, Predicate
 from fgen.route.astar import NoPath, astar
 from fgen.route.grid import RouteGrid
 from fgen.site.model import Endpoint, Link
 
-STUB = 2  # straight tiles added upstream of a side-loaded consumer
-RESERVE = 2  # tiles kept clear in front of every item port
+STUB = SIDE_LOAD_STUB  # straight tiles added upstream of a side-loaded consumer
 _EPS = 1e-9
 
 
@@ -75,14 +75,6 @@ def underground_for(gd: GameData, belt: str) -> str | None:
     return None
 
 
-def belt_at(gd: GameData, layout: Layout, t: Tile) -> str | None:
-    for p in layout.placements:
-        e = gd.entities.get(p.name)
-        if e is not None and e.type in beltgeom.BELT_TYPES and t in p.tiles(gd):
-            return p.name
-    return None
-
-
 def belt_placement(gd: GameData, name: str, t: Tile, d: Direction, **extra: Any) -> Placement:
     return Placement(name, t.center(), d, dict(extra))
 
@@ -99,6 +91,8 @@ class Consumer:
     belt: str
     ifaces: list[tuple[Endpoint, Interface]] = field(default_factory=list)
     links: list[tuple[Link, Literal["direct", "side"], Lane | None]] = field(default_factory=list)
+    group: PortGroup | None = None  # the port group (lane requirements of the belt)
+    label: str = ""  # "unit/group" (or the endpoint) for reports
 
     @property
     def side_loaded(self) -> bool:
@@ -118,21 +112,35 @@ class Consumer:
 
 
 def link_mode(dst: Interface) -> tuple[Literal["direct", "side"], Lane | None]:
-    if dst.lane in ("left", "right"):
-        return "side", dst.lane
-    return "direct", None
+    """How a link joins the input ``dst``, from its contract: a side-load onto the lane it
+    names when its ``space`` allows side approach, else straight in."""
+    sp = dst.space
+    if sp is None:
+        raise Infeasible(f"item input at {dst.tile} has no space (approach) in its contract")
+    if dst.lane in ("left", "right") and sp.approach in ("side", "both"):
+        if sp.upstream < STUB:
+            raise Infeasible(
+                f"input at {dst.tile}: a side-load needs {STUB} tiles in front, the port "
+                f"leaves {sp.upstream}"
+            )
+        return "side", dst.lane  # type: ignore[return-value]
+    if sp.approach in ("direct", "both"):
+        return "direct", None
+    raise Infeasible(f"input at {dst.tile} takes only side-loads but names no single lane")
 
 
 def reserve_ports(grid: RouteGrid, ports: Iterable[tuple[Endpoint, Interface]]) -> None:
-    """Keep ``RESERVE`` tiles in front of every item output / behind every item input,
-    and the tile outside every fluid connection."""
+    """Keep the ``space.upstream`` tiles in front of every item output / behind every
+    item input, and the tile outside every fluid connection."""
     for ep, i in ports:
         if i.kind == "fluid":  # the tile outside the connection
             grid.reserve([i.tile.neighbor(i.direction)], str(ep))
         if i.kind != "item":
             continue
+        if i.space is None:
+            raise Infeasible(f"{ep}: item port has no space in its contract")
         d = i.direction if i.role == "output" else i.direction.opposite
-        grid.reserve((i.tile.neighbor(d, k) for k in range(1, RESERVE + 1)), str(ep))
+        grid.reserve((i.tile.neighbor(d, k) for k in range(1, i.space.upstream + 1)), str(ep))
 
 
 # ---- path search -------------------------------------------------------------------
@@ -235,9 +243,11 @@ def consumer_report(
     gd: GameData,
     consumer: Consumer,
     supplies: list[Supply],
-    producer_belts: dict[str, str | None],
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
-    """Check the consumer's ``requires`` against what the links bring.
+    """Check the consumer's ``requires`` (its port group's and each port's) against what
+    the links bring, from the producers' contracts only: per-lane fixed rates
+    (``RateProfile.lanes``), on-demand supply with its limit, the producer's belt
+    (``Interface.entity``).
 
     Returns ``(checks, problems, warnings)``: ``checks`` one dict per predicate
     (``ok`` None for ``Compressed``, which is only recorded); ``problems`` are capacity
@@ -250,21 +260,31 @@ def consumer_report(
     belt_cap = beltgeom.items_per_second(gd, consumer.belt)
     materials: dict[Lane, set[str]] = {"left": set(), "right": set()}
     fixed: dict[Lane, float] = {"left": 0.0, "right": 0.0}
-    both_fixed = 0.0
-    elastic: dict[Lane, bool] = {"left": False, "right": False}
+    both_fixed = 0.0  # fixed 'both' producers without a per-lane split
+    elastic: dict[Lane, float] = {"left": 0.0, "right": 0.0}  # on-demand limits
     for s in supplies:
-        m = s.producer.material
-        lanes = (s.lane,) if s.mode == "side" else _lanes_of(s.producer)
+        prod = s.producer
+        lanes = (s.lane,) if s.mode == "side" else _lanes_of(prod)
         for ln in lanes:
-            if m is not None:
-                materials[ln].add(m)  # type: ignore[index]
-            if s.producer.rate is None:
-                elastic[ln] = True  # type: ignore[index]
-        r = s.producer.rate
+            if prod.material is not None:
+                materials[ln].add(prod.material)  # type: ignore[index]
+        rp = prod.rate_profile
+        if prod.on_demand():
+            assert rp is not None
+            for ln in lanes:
+                lim = rp.limit if s.mode == "side" else prod.lane_rate(ln)  # type: ignore[arg-type]
+                elastic[ln] += math.inf if lim is None else lim  # type: ignore[index]
+            continue
+        r = prod.fixed_rate()
         if r is None:
             continue
-        if len(lanes) == 1:
-            fixed[lanes[0]] += r  # type: ignore[index]
+        if s.mode == "side":
+            fixed[s.lane] += r  # type: ignore[index]
+            continue
+        split = {ln: prod.lane_rate(ln) for ln in ("left", "right")}
+        if all(v is not None for v in split.values()):
+            for ln, v in split.items():
+                fixed[ln] += v or 0.0  # type: ignore[index]
         else:
             both_fixed += r
     problems: list[str] = []
@@ -279,7 +299,7 @@ def consumer_report(
     if total > belt_cap + _EPS:
         problems.append(f"{total:g}/s into one {consumer.belt} ({belt_cap:g}/s)")
     for s in supplies:
-        pb = producer_belts.get(s.link.label)
+        pb = s.producer.entity
         if pb is not None and (gd.entity(pb).speed or 0) < (gd.entity(consumer.belt).speed or 0):
             warnings.append(
                 f"{s.link.label}: producer belt {pb} is slower than the consumer's {consumer.belt}"
@@ -288,52 +308,54 @@ def consumer_report(
     def supplied(lanes: tuple[Lane, ...]) -> float:
         out = 0.0
         for ln in lanes:
-            out += lane_cap if elastic[ln] else fixed[ln]
+            out += min(lane_cap, fixed[ln] + elastic[ln]) if elastic[ln] else fixed[ln]
         if len(lanes) == 2:
             out += both_fixed
             out = min(out, belt_cap)
         else:
-            # a 'both' producer feeding directly may put up to half on each lane
+            # a 'both' producer without a lane split may put up to half on each lane
             out += both_fixed / 2
         return out
 
-    checks: list[dict[str, Any]] = []
+    reqs: list[tuple[str, Predicate, Interface | None]] = []
+    if consumer.group is not None:
+        reqs += [(consumer.label, r, None) for r in consumer.group.requires]
     for ep, i in consumer.ifaces:
-        for r in i.requires:
-            if isinstance(r, LaneMaterial):
-                got = sorted(materials[r.lane])
-                ok = set(got) <= {r.material}
-                checks.append(
-                    {
-                        "interface": str(ep),
-                        "predicate": f"LaneMaterial({r.lane}, {r.material})",
-                        "ok": ok,
-                        "detail": f"{r.lane} lane gets {got or 'nothing'}",
-                    }
+        reqs += [(str(ep), r, i) for r in i.requires]
+    checks: list[dict[str, Any]] = []
+    for who, r, i in reqs:
+        if isinstance(r, LaneMaterial):
+            got = sorted(materials[r.lane])
+            ok = set(got) <= {r.material}
+            checks.append(
+                {
+                    "interface": who,
+                    "predicate": f"LaneMaterial({r.lane}, {r.material})",
+                    "ok": ok,
+                    "detail": f"{r.lane} lane gets {got or 'nothing'}",
+                }
+            )
+            if not ok:
+                problems.append(
+                    f"{who}: {r.lane} lane must carry only {r.material}, links bring {got}"
                 )
-                if not ok:
-                    problems.append(
-                        f"{ep}: {r.lane} lane must carry only {r.material}, links bring {got}"
-                    )
-                elif not got:
-                    warnings.append(f"{ep}: nothing arrives on the {r.lane} lane")
-            elif isinstance(r, MinRate):
-                got = supplied(_lanes_of(i))
-                ok = got + _EPS >= r.value
-                checks.append(
-                    {
-                        "interface": str(ep),
-                        "predicate": f"MinRate({r.value:g})",
-                        "ok": ok,
-                        "detail": f"links supply {got:g}/s",
-                    }
-                )
-                if not ok:
-                    warnings.append(f"{ep}: needs {r.value:g}/s, links supply {got:g}/s")
-            elif isinstance(r, Compressed):
-                checks.append(
-                    {"interface": str(ep), "predicate": "Compressed", "ok": None, "detail": ""}
-                )
+            elif not got:
+                warnings.append(f"{who}: nothing arrives on the {r.lane} lane")
+        elif isinstance(r, MinRate):
+            got_rate = supplied(_lanes_of(i) if i is not None else ("left", "right"))
+            ok = got_rate + _EPS >= r.value
+            checks.append(
+                {
+                    "interface": who,
+                    "predicate": f"MinRate({r.value:g})",
+                    "ok": ok,
+                    "detail": f"links supply {got_rate:g}/s",
+                }
+            )
+            if not ok:
+                warnings.append(f"{who}: needs {r.value:g}/s, links supply {got_rate:g}/s")
+        elif isinstance(r, Compressed):
+            checks.append({"interface": who, "predicate": "Compressed", "ok": None, "detail": ""})
     return checks, problems, warnings
 
 

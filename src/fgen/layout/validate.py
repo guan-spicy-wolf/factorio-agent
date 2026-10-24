@@ -17,6 +17,18 @@ Checked codes:
                               is no item interface
 ``drill.no_ore``              no minable resource tile in a drill's search area (only
                               checked when ``resources`` is given)
+
+Contract checks (``validate_unit`` only: they need the unit's port groups; phase 6a):
+
+``contract.entity``           an item / power port names no entity, or not the belt-like
+                              entity / pole that stands on its tile
+``contract.space``            an item port without ``space``, or ``side`` approach on a
+                              port that names no single lane
+``contract.rate``             ``rate`` disagrees with ``rate_profile`` (fixed: ``initial``;
+                              on-demand: ``rate`` must be None), or per-lane rates do not
+                              add up to ``initial`` / name a lane the port does not use
+``contract.group``            ``port_group`` names no group of the unit, or one group's
+                              ports are not on one tile and direction
 """
 
 from __future__ import annotations
@@ -337,8 +349,9 @@ def validate(
 def validate_unit(
     unit: Unit, gd: GameData, resources: Mapping[Tile, tuple[str, int]] | None = None
 ) -> list[Violation]:
-    """``validate`` with the unit's interfaces and ``meta['belt_terminals']``."""
-    return validate(
+    """``validate`` with the unit's interfaces and ``meta['belt_terminals']``, plus the
+    contract checks (``contract.*``)."""
+    out = validate(
         unit.layout,
         gd,
         unit.interfaces,
@@ -346,3 +359,81 @@ def validate_unit(
         fluids=unit.meta.get("fluids"),
         resources=resources,
     )
+    return out + check_contract(unit, gd)
+
+
+_PORT_ENTITY_TYPES = {
+    "item": frozenset({"transport-belt", "underground-belt", "splitter", "loader", "loader-1x1"}),
+    "power": frozenset({"electric-pole"}),
+}
+
+
+def check_contract(unit: Unit, gd: GameData) -> list[Violation]:
+    """The interface fields the router reads agree with the unit (``contract.*``)."""
+    out: list[Violation] = []
+    at: dict[Tile, list[str]] = {}
+    for p in unit.layout.placements:
+        if p.name in gd.entities:
+            for t in p.tiles(gd):
+                at.setdefault(t, []).append(p.name)
+    groups = {g.name for g in unit.groups}
+    first: dict[str, tuple[Tile, Direction]] = {}
+    for k, i in enumerate(unit.interfaces):
+        where = frozenset({i.tile})
+        types = _PORT_ENTITY_TYPES.get(i.kind)
+        if types is not None:
+            here = [n for n in at.get(i.tile, []) if gd.entity(n).type in types]
+            if i.entity is None or i.entity not in here:
+                out.append(
+                    Violation(
+                        "contract.entity",
+                        f"interface {k} ({i.kind} at {i.tile}) names {i.entity!r}, "
+                        f"the tile holds {here or 'no such entity'}",
+                        where,
+                    )
+                )
+        if i.kind == "item":
+            if i.space is None:
+                out.append(
+                    Violation("contract.space", f"interface {k}: item port without space", where)
+                )
+            elif i.space.approach == "side" and i.lane not in ("left", "right"):
+                out.append(
+                    Violation(
+                        "contract.space", f"interface {k}: side approach on lane {i.lane}", where
+                    )
+                )
+        rp = i.rate_profile
+        if rp is not None:
+            bad = ""
+            if rp.supply == "fixed" and (
+                rp.initial is None or i.rate is None or abs(rp.initial - i.rate) > 1e-9
+            ):
+                bad = f"rate {i.rate} vs profile initial {rp.initial}"
+            elif rp.supply == "on_demand" and i.rate is not None:
+                bad = f"on-demand port with a fixed rate {i.rate}"
+            elif rp.lanes:
+                used = {"left", "right"} if i.lane in (None, "both") else {i.lane}
+                if not {ln for ln, _ in rp.lanes} <= used:
+                    bad = f"per-lane rates {dict(rp.lanes)} on a {i.lane} port"
+                elif (
+                    rp.supply == "fixed"
+                    and abs(sum(v for _, v in rp.lanes) - (rp.initial or 0)) > 1e-9
+                ):
+                    bad = f"per-lane rates {dict(rp.lanes)} do not add up to {rp.initial}"
+            if bad:
+                out.append(Violation("contract.rate", f"interface {k}: {bad}", where))
+        if i.port_group is not None:
+            if i.port_group not in groups:
+                out.append(
+                    Violation("contract.group", f"interface {k}: no group {i.port_group!r}", where)
+                )
+            elif first.setdefault(i.port_group, (i.tile, i.direction)) != (i.tile, i.direction):
+                out.append(
+                    Violation(
+                        "contract.group",
+                        f"interface {k}: group {i.port_group!r} spans more than one port tile",
+                        where,
+                    )
+                )
+    return out

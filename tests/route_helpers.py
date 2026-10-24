@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from fgen.data.schema import GameData
 from fgen.geom.vec import Direction, Tile
-from fgen.layout.model import Interface, LaneMaterial, Layout, MinRate, Placement, Unit
+from fgen.layout.model import (
+    Interface,
+    LaneMaterial,
+    Layout,
+    MinRate,
+    Placement,
+    PortGroup,
+    PortSpace,
+    RateProfile,
+    Unit,
+)
 from fgen.terrain.model import Terrain, area_tiles
 
 E = Direction.E
@@ -23,12 +33,28 @@ def belt_line(
     extra_ifaces: list[Interface] | None = None,
 ) -> Unit:
     """``n`` east-flowing belts on row 0 starting at (0, 0). An output unit's port is the
-    last tile, an input unit's the first (its last tile is a declared terminal)."""
+    last tile, an input unit's the first (its last tile is a declared terminal).
+    ``rate=None``: on-demand supply (no limit of its own)."""
     ps = [Placement(belt, Tile(x, 0).center(), E) for x in range(n)]
     tile = Tile(n - 1, 0) if role == "output" else Tile(0, 0)
-    i = Interface("item", material, tile, E, lane, rate, role, requires=requires)
+    profile = RateProfile.on_demand() if rate is None else None
+    approach = "both" if role == "input" and lane in ("left", "right") else "direct"
+    i = Interface(
+        "item",
+        material,
+        tile,
+        E,
+        lane,
+        rate,
+        role,
+        requires=requires,
+        rate_profile=profile,
+        entity=belt,
+        port_group="belt",
+        space=PortSpace.item(approach),
+    )
     meta = {"belt_terminals": [Tile(n - 1, 0)]} if role == "input" else {}
-    return Unit(Layout(ps), [i, *(extra_ifaces or [])], meta)
+    return Unit(Layout(ps), [i, *(extra_ifaces or [])], meta, (PortGroup("belt"),))
 
 
 def ore_and_coal_input(gd: GameData, n: int = 6, ore_rate: float = 5.0) -> Unit:
@@ -41,7 +67,10 @@ def ore_and_coal_input(gd: GameData, n: int = 6, ore_rate: float = 5.0) -> Unit:
         "left",
         ore_rate,
         "input",
-        requires=(LaneMaterial("left", "iron-ore"), MinRate(ore_rate)),
+        requires=(MinRate(ore_rate),),
+        entity="transport-belt",
+        port_group="feed",
+        space=PortSpace.item("both"),
     )
     coal = Interface(
         "item",
@@ -51,10 +80,14 @@ def ore_and_coal_input(gd: GameData, n: int = 6, ore_rate: float = 5.0) -> Unit:
         "right",
         0.5,
         "input",
-        requires=(LaneMaterial("right", "coal"), MinRate(0.5)),
+        requires=(MinRate(0.5),),
+        entity="transport-belt",
+        port_group="feed",
+        space=PortSpace.item("both"),
     )
     ps = [Placement("transport-belt", Tile(x, 0).center(), E) for x in range(n)]
-    return Unit(Layout(ps), [ore, coal], {"belt_terminals": [Tile(n - 1, 0)]})
+    group = PortGroup("feed", (LaneMaterial("left", "iron-ore"), LaneMaterial("right", "coal")))
+    return Unit(Layout(ps), [ore, coal], {"belt_terminals": [Tile(n - 1, 0)]}, (group,))
 
 
 def flat(x0: int, y0: int, x1: int, y1: int, **kw) -> Terrain:

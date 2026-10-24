@@ -6,9 +6,12 @@ so they come last). If a belt or pipe link fails, the other order (pipes first, 
 failing link first) is tried once; if that fails too, :class:`RouteError` names the
 link and the tile closest to its goal.
 
-The router reads only interface contracts (tile, direction, lane, material, rate,
-``requires``) plus the entity under each port (to learn the belt tier and the pole
-type). The result is a :class:`Connection`: the routed entities as one ``Layout``, per
+The router reads only interface contracts: tile, direction, lane, material, rate and
+``rate_profile`` (per-lane rates, fixed or on-demand supply), ``requires`` (the port's
+and its port group's), ``entity`` (belt tier, pole type), ``port_group`` (which inputs
+share one belt) and ``space`` (approach and tiles kept free); never the units' layouts
+for port facts (the layouts only mark which tiles are taken). The result is a
+:class:`Connection`: the routed entities as one ``Layout``, per
 link details, the contract checks, warnings, and ``validate`` run over the whole site
 (units + routes).
 """
@@ -20,7 +23,6 @@ from typing import Any
 
 from fgen.data.schema import GameData
 from fgen.gen.base import Infeasible
-from fgen.geom.vec import Tile
 from fgen.layout.model import Interface, Layout, Placement
 from fgen.layout.validate import Violation, validate
 from fgen.route import belt as rbelt
@@ -105,23 +107,35 @@ def build_grid(site: Site, gd: GameData, bounds: Area | None, costs: Costs | Non
     return g
 
 
-def _consumers(site: Site, gd: GameData, links: list[Link]) -> dict[Tile, rbelt.Consumer]:
-    out: dict[Tile, rbelt.Consumer] = {}
+def consumer_key(site: Site, ep: Endpoint) -> tuple[str, str]:
+    """A consumer is one belt: the input's port group in its unit (or the port alone)."""
+    i = site.interface(ep)
+    return ep.unit, i.port_group or f"#{ep.iface}"
+
+
+def _consumers(
+    site: Site, gd: GameData, links: list[Link]
+) -> dict[tuple[str, str], rbelt.Consumer]:
+    out: dict[tuple[str, str], rbelt.Consumer] = {}
     for ln in links:
         dst = site.interface(ln.dst)
-        c = out.get(dst.tile)
+        key = consumer_key(site, ln.dst)
+        c = out.get(key)
         if c is None:
-            lay = site.world(ln.dst.unit).layout
-            name = rbelt.belt_at(gd, lay, dst.tile)
-            if name is None:
-                raise rbelt.RouteError(ln.label, f"no belt under the consumer port {dst.tile}")
-            c = rbelt.Consumer(dst.tile, dst.direction, rbelt.plain_belt(gd, name))
+            if dst.entity is None:
+                raise rbelt.RouteError(ln.label, f"consumer port {dst.tile} names no belt entity")
+            c = rbelt.Consumer(dst.tile, dst.direction, rbelt.plain_belt(gd, dst.entity))
             c.ifaces = [
                 (ep, i)
                 for ep, i in site.interfaces()
-                if ep.unit == ln.dst.unit and i.kind == "item" and i.tile == dst.tile
+                if i.kind == "item" and consumer_key(site, ep) == key
             ]
-            out[dst.tile] = c
+            for ep, i in c.ifaces:
+                if (i.tile, i.direction) != (dst.tile, dst.direction):
+                    raise Infeasible(f"port group {key}: {ep} is not on the group's port tile")
+            c.group = site.world(ln.dst.unit).group(dst.port_group)
+            c.label = f"{key[0]}/{key[1]}"
+            out[key] = c
         mode, lane = rbelt.link_mode(dst)
         c.links.append((ln, mode, lane))
     for c in out.values():
@@ -135,21 +149,18 @@ def _consumers(site: Site, gd: GameData, links: list[Link]) -> dict[Tile, rbelt.
 
 
 def _belt_checks(
-    site: Site, gd: GameData, consumers: dict[Tile, rbelt.Consumer], conn: Connection
+    site: Site, gd: GameData, consumers: dict[tuple[str, str], rbelt.Consumer], conn: Connection
 ) -> None:
     for c in consumers.values():
         supplies = []
-        producer_belts: dict[str, str | None] = {}
         for ln, mode, lane in c.links:
-            src = site.interface(ln.src)
-            supplies.append(rbelt.Supply(ln, src, mode, lane))
-            producer_belts[ln.label] = rbelt.belt_at(gd, site.world(ln.src.unit).layout, src.tile)
-        checks, problems, warnings = rbelt.consumer_report(gd, c, supplies, producer_belts)
+            supplies.append(rbelt.Supply(ln, site.interface(ln.src), mode, lane))
+        checks, problems, warnings = rbelt.consumer_report(gd, c, supplies)
         conn.checks += checks
         conn.warnings += warnings
         if problems:
             need = max(
-                (s.producer.rate or 0.0) for s in supplies
+                (s.producer.fixed_rate() or 0.0) for s in supplies
             )  # rough: at least the largest single producer
             raise Infeasible("; ".join(problems), rbelt.capacity_suggestions(gd, c, need))
 
@@ -159,7 +170,7 @@ def _route_belts(
     gd: GameData,
     grid: RouteGrid,
     links: list[Link],
-    consumers: dict[Tile, rbelt.Consumer],
+    consumers: dict[tuple[str, str], rbelt.Consumer],
     conn: Connection,
 ) -> None:
     for c in consumers.values():
@@ -179,7 +190,7 @@ def _route_belts(
             grid.reserve([c.approach(lane)], str(ln.dst))
     for ln in links:
         src, dst = site.interface(ln.src), site.interface(ln.dst)
-        c = consumers[dst.tile]
+        c = consumers[consumer_key(site, ln.dst)]
         mode, lane = rbelt.link_mode(dst)
         if mode == "side":
             assert lane is not None

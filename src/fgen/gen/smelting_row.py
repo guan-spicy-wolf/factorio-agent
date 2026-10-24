@@ -38,11 +38,15 @@ from fgen.layout.model import (
     Layout,
     MinRate,
     Placement,
+    PortGroup,
+    PortSpace,
     Predicate,
     RateProfile,
     Unit,
 )
 from fgen.layout.validate import Violation, validate_unit
+
+FEED, OUT = "feed", "out"  # port groups: the input belt (ore + fuel lanes), the output belt
 
 _EPS = 1e-9
 FLOW = Direction.E  # belts flow east in the canonical orientation
@@ -424,8 +428,13 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
     need_ore = p.target_rate * plan.ingredient_rate / plan.rate
     need_fuel = p.target_rate * plan.fuel_rate / plan.rate
     ore_req: list[Predicate] = [MinRate(need_ore), Compressed()]
+    # lane requirements of the shared input belt hang on its port group
+    feed_req: list[Predicate] = []
     if p.fuel_lane:
-        ore_req.insert(0, LaneMaterial("left", plan.ingredient))
+        feed_req.append(LaneMaterial("left", plan.ingredient))
+        if plan.burner:
+            feed_req.append(LaneMaterial("right", p.fuel))
+    in_space = PortSpace.item("both")  # the row's belt starts at the port: either works
     ifaces.append(
         Interface(
             "item",
@@ -441,6 +450,12 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 f"{feed_rate:g}/s"
             ],
             requires=tuple(ore_req),
+            rate_profile=RateProfile.fixed(
+                feed_rate, {ore_lane: feed_rate} if ore_lane != "both" else None
+            ),
+            entity=p.belt,
+            port_group=FEED,
+            space=in_space,
         )
     )
     if p.fuel_lane:
@@ -459,7 +474,14 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 plan.total * plan.fuel_rate if plan.burner else 0.0,
                 "input",
                 fuel_assumptions,
-                requires=(LaneMaterial("right", p.fuel), MinRate(need_fuel)) if plan.burner else (),
+                requires=(MinRate(need_fuel),) if plan.burner else (),
+                rate_profile=RateProfile.fixed(
+                    plan.total * plan.fuel_rate if plan.burner else 0.0,
+                    {"right": plan.total * plan.fuel_rate if plan.burner else 0.0},
+                ),
+                entity=p.belt,
+                port_group=FEED,
+                space=in_space,
             )
         )
     ifaces.append(
@@ -472,7 +494,12 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
             plan.per_side * plan.rate,
             "output",
             [f"{product} on the {out_lane} (far) lane only; downstream must keep it moving"],
-            rate_profile=RateProfile(plan.per_side * plan.rate),
+            rate_profile=RateProfile.fixed(
+                plan.per_side * plan.rate, {out_lane: plan.per_side * plan.rate}
+            ),
+            entity=p.belt,
+            port_group=OUT,
+            space=PortSpace.item("direct"),
         )
     )
     if poles:
@@ -487,10 +514,12 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 None,
                 "input",
                 [f"connect a {p.pole}-compatible wire to this pole"],
+                entity=p.pole,
             )
         )
     meta = {"belt_terminals": [Tile(length - 1, y_belt_in)]}
-    return Unit(Layout(placements), ifaces, meta), y_belt_in
+    groups = (PortGroup(FEED, tuple(feed_req)), PortGroup(OUT))
+    return Unit(Layout(placements), ifaces, meta, groups), y_belt_in
 
 
 def _pole_alternatives(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> list[dict[str, Any]]:
@@ -538,10 +567,14 @@ class SmeltingRow:
                 {},
             )
             mirrored = tf.translate(tf.mirror_y(rest), 0, 2 * y_in + 1)
+            # the mirrored output belt is a belt of its own: its own port group
+            out2 = f"{OUT}-mirrored"
             unit = Unit(
                 Layout(half.layout.placements + mirrored.layout.placements),
-                half.interfaces + [i for i in mirrored.interfaces if i.kind != "power"],
+                half.interfaces
+                + [replace(i, port_group=out2) for i in mirrored.interfaces if i.kind != "power"],
                 dict(half.meta),
+                (*half.groups, PortGroup(out2)),
             )
         lo, _ = unit.layout.bounds(gd)
         unit = tf.translate(unit, -lo.x, -lo.y)
@@ -556,7 +589,7 @@ class SmeltingRow:
             "belt_terminals": [t.translate(-lo.x, -lo.y) for t in half.meta["belt_terminals"]],
             "icon": tp.main_product(gd, p.recipe)[0],
         }
-        unit = Unit(unit.layout, unit.interfaces, meta)
+        unit = replace(unit, meta=meta)
         violations = self.invariants(unit, gd)
         if violations:
             detail = "; ".join(f"{v.code}: {v.message}" for v in violations[:5])

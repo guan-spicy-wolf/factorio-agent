@@ -88,6 +88,13 @@ DIRECTIONLESS_TYPES = frozenset(
 )
 
 
+def center_at_tile(gd: GameData, name: str, tile: Tile, direction: Direction = Direction.N) -> Vec2:
+    """Centre of ``name`` whose ``position.floor()`` is ``tile`` (how interfaces name an
+    entity's tile, e.g. a pole's): the anchor is ``size // 2`` tiles up-left of it."""
+    w, h = size(gd, name, direction)
+    return center_for_tile_anchor(gd, name, Tile(tile.x - w // 2, tile.y - h // 2), direction)
+
+
 def direction_matters(gd: GameData, name: str, recipe: str | None = None) -> bool:
     """Whether an entity's direction is meaningful (kept by the game).
 
