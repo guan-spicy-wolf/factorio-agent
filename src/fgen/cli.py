@@ -61,20 +61,90 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _smelting_params(args: argparse.Namespace) -> SmeltingRowParams:
+    d = SmeltingRowParams()
     return SmeltingRowParams(
         recipe=args.recipe,
         furnace=args.furnace,
         target_rate=args.rate,
-        belt=args.belt,
+        belt=args.belt or d.belt,
         inserter=args.inserter,
-        pole=args.pole,
+        pole=args.pole or d.pole,
         sides=args.sides,
         fuel_lane=not args.no_fuel_lane,
         fuel=args.fuel,
     )
 
 
+def _mining_params(args: argparse.Namespace):  # -> (Case, MiningPatchParams)
+    from dataclasses import replace
+
+    from fgen.gen.mining_sweep import CASES
+
+    case = next((c for c in CASES if c.name == args.case), None)
+    if case is None:
+        raise ValueError(f"unknown case {args.case!r}; one of {[c.name for c in CASES]}")
+    over = {
+        k: v
+        for k, v in {
+            "resource": args.resource,
+            "drill": args.drill,
+            "belt": args.belt,
+            "pole": args.pole,
+            "axis": args.axis,
+            "flow": args.flow,
+            "max_belts": args.max_belts,
+            "min_ore_tiles_per_drill": args.min_ore,
+        }.items()
+        if v is not None
+    }
+    return case, replace(case.params, **over)
+
+
+def cmd_gen_mining(args: argparse.Namespace) -> int:
+    from fgen.gen.mining_patch import generate as generate_mining
+    from fgen.gen.mining_patch import render
+    from fgen.gen.mining_sweep import case_terrain
+    from fgen.gen.sweep import format_interface
+    from fgen.layout.render import TERRAIN_LEGEND
+
+    gd = _gd(args)
+    case, params = _mining_params(args)
+    patch, terrain = case_terrain(case)
+    try:
+        unit = generate_mining(params, gd, patch, terrain)
+    except Infeasible as exc:
+        print(f"infeasible: {exc.reason}", file=sys.stderr)
+        for s in exc.suggestions:
+            print(f"  try: {s}", file=sys.stderr)
+        return 2
+    m = unit.meta
+    if args.json:
+        meta = {k: v for k, v in m.items() if k != "dropped_drills"}
+        print(json.dumps(meta, default=str, indent=2))
+    else:
+        print(f"{case.shape.describe()}: {patch.describe()}")
+        print(render(unit, gd, terrain))
+        print(LEGEND)
+        print(TERRAIN_LEGEND)
+        print("interfaces:")
+        for i in unit.interfaces:
+            print("  " + format_interface(i).replace("\n", "\n  "))
+        a = m["anchor"]
+        hours = a["est_depletion_s"] / 3600
+        print(
+            f"drills {a['drills']} x {m['drill_rate']:g}/s = {a['rate']:g}/s, poles {m['poles']}, "
+            f"dropped {m['dropped_by_reason'] or '-'}, depletion ~{hours:.1f} h"
+        )
+        for s in m["suggestions"]:
+            print(f"  suggestion: {s}")
+        print()
+    print(codec.encode(unit_to_blueprint(unit, gd, label=f"mining {case.name}")))
+    return 0
+
+
 def cmd_gen(args: argparse.Namespace) -> int:
+    if args.family == "mining":
+        return cmd_gen_mining(args)
     gd = _gd(args)
     params = _smelting_params(args)
     try:
@@ -95,7 +165,47 @@ def cmd_gen(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sweep_mining(args: argparse.Namespace) -> int:
+    from fgen.gen import mining_sweep
+
+    gd = _gd(args)
+    out = Path(args.out_dir)
+    real = None
+    if args.real_map:
+        import json as _json
+
+        from fgen.sim import mining
+        from fgen.sim.server import REPO_CONFIG, HeadlessServer
+
+        seed = _json.loads((REPO_CONFIG / mining.ORE_MAP).read_text()).get("seed")
+        with HeadlessServer(map_gen_settings=mining.ORE_MAP) as srv:
+            real = mining.real_map_row(srv, gd, seed=seed)
+        print(
+            f"real map: {real['shape']}; measured {real['measured']['sink_throughput']}",
+            file=sys.stderr,
+        )
+    if args.measure:
+        from fgen.sim import mining
+        from fgen.sim.server import HeadlessServer
+
+        with _server(args) as srv:
+            measure = mining.painted_measurer(srv, gd)
+
+            def logged(case, unit, terrain):
+                m = measure(case, unit, terrain)
+                print(f"measured {case.name}: {m['sink_throughput']}", file=sys.stderr)
+                return m
+
+            jsonl, md = mining_sweep.write(gd, out, logged, real)
+    else:
+        jsonl, md = mining_sweep.write(gd, out, None, real)
+    print(f"wrote {jsonl} and {md}")
+    return 0
+
+
 def cmd_sweep(args: argparse.Namespace) -> int:
+    if args.family == "mining":
+        return cmd_sweep_mining(args)
     gd = _gd(args)
     if not args.measure:
         jsonl, md = write_characterization(gd, Path(args.out_dir))
@@ -177,14 +287,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_validate)
 
     d = SmeltingRowParams()
-    p = sub.add_parser("gen", help="run a generator")
-    p.add_argument("family", choices=["smelting"])
+    p = sub.add_parser("gen", help="run a generator (mining: on a painted case, see --case)")
+    p.add_argument("family", choices=["smelting", "mining"])
     p.add_argument("--rate", type=float, default=d.target_rate)
     p.add_argument("--recipe", default=d.recipe)
     p.add_argument("--furnace", default=d.furnace)
-    p.add_argument("--belt", default=d.belt)
+    p.add_argument("--belt", default=None, help=f"default {d.belt}")
     p.add_argument("--inserter", default=d.inserter)
-    p.add_argument("--pole", default=d.pole)
+    p.add_argument("--pole", default=None, help=f"default {d.pole}")
+    p.add_argument("--case", default="rect-2belt", help="mining: painted case name")
+    p.add_argument("--resource", default=None, help="mining")
+    p.add_argument("--drill", default=None, help="mining")
+    p.add_argument("--axis", choices=["x", "y"], default=None, help="mining")
+    p.add_argument("--flow", choices=["+", "-"], default=None, help="mining")
+    p.add_argument("--max-belts", type=int, default=None, help="mining")
+    p.add_argument("--min-ore", type=int, default=None, help="mining: min_ore_tiles_per_drill")
     p.add_argument("--sides", type=int, default=d.sides)
     p.add_argument("--fuel", default=d.fuel)
     p.add_argument("--no-fuel-lane", action="store_true")
@@ -192,7 +309,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_gen)
 
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
-    p.add_argument("family", choices=["smelting"])
+    p.add_argument("family", choices=["smelting", "mining"])
+    p.add_argument("--real-map", action="store_true", help="mining: end-to-end run on the ore map")
     p.add_argument("--out-dir", default="characterization")
     p.add_argument("--measure", action="store_true", help="measure each unit in headless")
     p.add_argument("--warmup", type=float, default=60.0, help="warm-up, game seconds")

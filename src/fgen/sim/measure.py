@@ -76,6 +76,9 @@ script.on_nth_tick({PROBE_TICKS}, function(ev)
         m.no_ingredients = m.no_ingredients + 1
       end
       if e.status == defines.entity_status.no_fuel then m.no_fuel = m.no_fuel + 1 end
+      if e.type == 'mining-drill' and not m.mining_target and e.mining_target then
+        m.mining_target = e.mining_target.position
+      end
       local st = names[e.status] or tostring(e.status)
       m.status[st] = (m.status[st] or 0) + 1
     end
@@ -92,7 +95,7 @@ READ_LOG = (
     "local ms = {}\n"
     "for k, m in ipairs(H.machines) do ms[k] = {position=m.position, probes=m.probes, "
     "source_empty=m.source_empty, no_ingredients=m.no_ingredients, no_fuel=m.no_fuel, "
-    "status=m.status} end\n"
+    "status=m.status, mining_target=m.mining_target} end\n"
     "local sinks = {}\n"
     "for k, s in ipairs(H.sinks) do sinks[k] = {item=s.item, total=s.total, "
     "first_tick=s.first_tick} end\n"
@@ -152,7 +155,8 @@ class RconCharacterizer:
             area = world_area(unit.layout, gd, self.origin)
             start = srv.tick()
             n = srv.rcon.lua_json(_setup_logging(machine, area, sample_ticks, start))["machines"]
-            nets = self._power_check(area)
+            consumer = "inserter" if machine != "mining-drill" else machine
+            nets = self._power_check(area, consumer)
             srv.set_speed(speed)
             measure_from = start + round(warmup_s * tps)
             srv.rcon.lua(f"storage.fgen_harness.measure_from = {measure_from}")
@@ -174,14 +178,15 @@ class RconCharacterizer:
         )
         return out
 
-    def _power_check(self, area: lua.Area) -> dict[str, Any]:
-        """Electric networks of the unit's inserters (by area; ``unit_number`` lookup
-        does not cover inserters) and whether the harness pole is on one of them."""
+    def _power_check(self, area: lua.Area, consumer: str = "inserter") -> dict[str, Any]:
+        """Electric networks of the unit's ``consumer`` entities (by area; ``unit_number``
+        lookup does not cover inserters) and whether the harness pole is on one of them.
+        Keys keep the phase-1 names (``inserter_networks`` ...) whatever ``consumer`` is."""
         out = self.srv.rcon.lua_json(
             lua.PRELUDE
             + "local nets, unpowered = {}, 0\n"
             + f"for _, e in pairs(S.find_entities_filtered{{area={lua.area_lit(area)}, "
-            + "type='inserter'}) do\n"
+            + f"type={lua.lit(consumer)}}}) do\n"
             + "  local n = e.electric_network_id\n"
             + "  if n then nets[tostring(n)] = true else unpowered = unpowered + 1 end\n"
             + "end\n"
@@ -217,14 +222,27 @@ class RconCharacterizer:
         if missing:
             raise RuntimeError(f"missing sample snapshots at ticks {missing[:3]}")
         rates = []
+        n_sinks = len(snaps[ticks[0]]) if ticks else 0
+        per_sink: list[list[float]] = [[] for _ in range(n_sinks)]
         for a, b in itertools.pairwise(ticks):
             moved = sum(snaps[b]) - sum(snaps[a])
             rates.append(moved / ((b - a) / tps))
+            for k in range(n_sinks):
+                per_sink[k].append((snaps[b][k] - snaps[a][k]) / ((b - a) / tps))
         sinks = _lst(log["sinks"])
         first_ticks = [s.get("first_tick") for s in sinks if s.get("first_tick") is not None]
         input_starved, fuel_starved, source_empty = [], [], []
         status: dict[str, int] = {}
+        per_machine: list[dict[str, Any]] = []
         for m in _lst(log["machines"]):
+            tgt = m.get("mining_target")
+            per_machine.append(
+                {
+                    "position": [float(m["position"]["x"]), float(m["position"]["y"])],
+                    "status": {k: int(v) for k, v in (m["status"] or {}).items()},
+                    "mining_target": None if not tgt else [float(tgt["x"]), float(tgt["y"])],
+                }
+            )
             probes = int(m["probes"]) or 1
             # share of probes in which the machine could not start for lack of input
             # (status no_ingredients) or fuel (no_fuel)
@@ -243,6 +261,10 @@ class RconCharacterizer:
         return {
             "throughput": statistics.median(rates) if rates else 0.0,
             "samples": [round(r, 4) for r in rates],
+            # per harness sink, in the order of the unit's output interfaces
+            "sink_throughput": [statistics.median(r) if r else 0.0 for r in per_sink],
+            "sink_samples": [[round(x, 4) for x in r] for r in per_sink],
+            "machine_detail": per_machine,
             "startup_ticks": (min(first_ticks) - start) if first_ticks else None,
             "window_ticks": [first - start, end - start],  # relative to deployment
             "sample_s": sample_ticks / tps,

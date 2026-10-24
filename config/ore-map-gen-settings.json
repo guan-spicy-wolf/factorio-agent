@@ -1,0 +1,72 @@
+{
+  "_comment": "Normal map for fgen phase-2 end-to-end mining tests: default resources, water, trees, rocks and cliffs; no enemies (enemy-base size 0, peaceful); fixed seed.",
+  "width": 0,
+  "height": 0,
+  "starting_area": 1,
+  "peaceful_mode": true,
+  "autoplace_controls": {
+    "coal": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "stone": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "copper-ore": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "iron-ore": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "uranium-ore": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "crude-oil": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "water": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "trees": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "rocks": {
+      "frequency": 1,
+      "size": 1,
+      "richness": 1
+    },
+    "enemy-base": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    }
+  },
+  "cliff_settings": {
+    "name": "cliff",
+    "cliff_elevation_0": 10,
+    "cliff_elevation_interval": 40,
+    "richness": 1
+  },
+  "starting_points": [
+    {
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "seed": 20261024
+}

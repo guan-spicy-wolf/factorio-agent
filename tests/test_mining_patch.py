@@ -251,3 +251,36 @@ def test_drill_invariants(gd):
     assert "drill.no_ore" in codes
     # without resources the ore check is skipped
     assert "drill.no_ore" not in {v.code for v in validate(ok, gd)}
+
+
+def test_mining_sweep_writes_contracts(gd, tmp_path):
+    from fgen.gen import mining_sweep
+
+    jsonl, md = mining_sweep.write(gd, tmp_path)
+    import json
+
+    rows = [json.loads(line) for line in jsonl.read_text().splitlines()]
+    assert [r["case"] for r in rows] == [c.name for c in mining_sweep.CASES]
+    for r in rows:
+        assert r["measured"] is None
+        assert r["contract"]["total"] == pytest.approx(
+            r["contract"]["drills"]
+            * mining.drill_rate(gd, r["params"]["drill"], r["params"]["resource"])
+        )
+    text = md.read_text()
+    assert "## Summary" in text and "## l-shape" in text and ":::" in text
+    # a measurement survives a re-run while the blueprint is unchanged
+    rows[0]["measured"] = {"sink_throughput": [1.0], "deviation": [0.0]}
+    jsonl.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    mining_sweep.write(gd, tmp_path)
+    again = [json.loads(line) for line in jsonl.read_text().splitlines()]
+    assert again[0]["measured"] == rows[0]["measured"]
+
+
+def test_cli_gen_mining(capsys):
+    from fgen.cli import main
+
+    assert main(["gen", "mining", "--case", "l-shape", "--pole", "medium-electric-pole"]) == 0
+    out = capsys.readouterr().out
+    assert "D" in out and ":" in out and "output item" in out
+    assert main(["gen", "mining", "--case", "rect-1belt", "--drill", "pumpjack"]) == 2

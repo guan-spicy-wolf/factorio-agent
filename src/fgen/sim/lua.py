@@ -74,12 +74,14 @@ def terrain_report(a: Area) -> str:
     )
 
 
-def clear_area(a: Area) -> str:
-    """Destroy every entity in the area except characters; returns how many."""
+def clear_area(a: Area, *, keep_resources: bool = True) -> str:
+    """Destroy every entity in the area except characters (and, by default, resource
+    entities such as painted ore); returns how many."""
+    keep = "e.type ~= 'character'" + (" and e.type ~= 'resource'" if keep_resources else "")
     return (
         PRELUDE
         + f"local n = 0\nfor _, e in pairs(S.find_entities_filtered{{area={area_lit(a)}}}) do\n"
-        + "  if e.valid and e.type ~= 'character' then e.destroy(); n = n + 1 end\nend\n"
+        + f"  if e.valid and {keep} then e.destroy(); n = n + 1 end\nend\n"
         + emit("{destroyed=n}")
     )
 
