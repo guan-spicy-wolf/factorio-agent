@@ -16,6 +16,9 @@ from fgen.layout.model import LaneSpec, Layout, Unit
 
 type _Fn[T] = Callable[[T], T]
 
+# Unit.meta entries that are lists of tiles and must move with the layout.
+GEOMETRIC_META_KEYS = ("belt_terminals",)
+
 
 def _swap_lane(lane: LaneSpec) -> LaneSpec:
     return {"left": "right", "right": "left"}.get(lane, lane)  # type: ignore[return-value]
@@ -37,7 +40,11 @@ def _map_unit(unit: Unit, pos: _Fn[Vec2], tile: _Fn[Tile], d: _Fn[Direction], sw
         )
         for i in unit.interfaces
     ]
-    return Unit(_map_layout(unit.layout, pos, d), ifaces, dict(unit.meta))
+    meta = dict(unit.meta)
+    for key in GEOMETRIC_META_KEYS:
+        if key in meta:
+            meta[key] = [tile(t) for t in meta[key]]
+    return Unit(_map_layout(unit.layout, pos, d), ifaces, meta)
 
 
 def translate[T: (Layout, Unit)](obj: T, dx: int, dy: int) -> T:

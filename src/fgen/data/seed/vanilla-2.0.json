@@ -4,7 +4,9 @@
   "_constants": {
     "ticks_per_second": 60,
     "belt_items_per_tile": 8,
-    "belt_lanes": 2
+    "belt_lanes": 2,
+    "inserter_base_hand_size": 1,
+    "recipe_default_energy_required": 0.5
   },
   "transport-belt": {
     "transport-belt": {"name": "transport-belt", "type": "transport-belt", "collision_box": [[-0.4, -0.4], [0.4, 0.4]], "flags": ["placeable-neutral", "player-creation"], "speed": 0.03125},

@@ -211,6 +211,7 @@ def test_load_dump_fragment(tmp_path: Path) -> None:
     old = gd.recipe("old-style")
     assert old.ingredients == (("a", 1.0),) and old.results == (("c", 1.0),)
     assert old.category == "crafting"
+    assert old.energy_required == gd.constants["recipe_default_energy_required"]
     # constants fall back to the seed file
     assert gd.constants == load_seed().constants
 

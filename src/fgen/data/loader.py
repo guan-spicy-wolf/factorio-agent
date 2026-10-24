@@ -220,14 +220,14 @@ def _products(raw: Mapping[str, Any], key: str) -> tuple[tuple[str, float], ...]
     return tuple(out)
 
 
-def _recipe(raw: Mapping[str, Any]) -> RecipeProto:
+def _recipe(raw: Mapping[str, Any], default_energy: float) -> RecipeProto:
     results = _products(raw, "results")
     if not results and "result" in raw:  # 1.1 short form
         results = ((raw["result"], float(raw.get("result_count", 1))),)
     return RecipeProto(
         name=raw["name"],
         category=raw.get("category", "crafting"),
-        energy_required=float(raw.get("energy_required", 0.5)),
+        energy_required=float(raw.get("energy_required", default_energy)),
         ingredients=_products(raw, "ingredients"),
         results=results,
     )
@@ -255,7 +255,10 @@ def from_raw(
     for proto_type in _ENTITY_FIELDS:
         for name, proto in (raw.get(proto_type) or {}).items():
             entities[name] = _entity({"name": name, "type": proto_type, **proto})
-    recipes = {n: _recipe({"name": n, **r}) for n, r in (raw.get("recipe") or {}).items()}
+    default_energy = float(constants["recipe_default_energy_required"])
+    recipes = {
+        n: _recipe({"name": n, **r}, default_energy) for n, r in (raw.get("recipe") or {}).items()
+    }
     items = {n: _item({"name": n, **i}) for n, i in (raw.get("item") or {}).items()}
     return GameData(
         entities=entities,
