@@ -1,6 +1,6 @@
-# fgen — Factorio 蓝图生成器库（阶段 1：headless 测试场与实测）
+# fgen — Factorio 蓝图生成器库（阶段 2：采矿锚定单元）
 
-agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）与 `docs/plan-phase1.md`（headless 测试场），数值与约定的核对状态见 `docs/VERIFY.md`。
+agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）与 `docs/plan-phase2.md`（采矿锚定单元），数值与约定的核对状态见 `docs/VERIFY.md`。
 
 阶段 1 起可以连 Factorio headless（当前 2.1.23，默认开启 space-age/quality/elevated-rails/recycler）：`fgen.sim` 有 RCON 客户端、服务器管理、蓝图部署与读回、测试夹具（harness）、实测与 VERIFY 检查。没有二进制时 `fgen.sim.protocol` 的 `NotAvailable*` 仍是默认，所有 headless 测试自动 skip。
 
@@ -15,6 +15,8 @@ uv run fgen gen smelting --rate 7.5                       # ASCII + 接口契约
 uv run fgen gen smelting --rate 15 --belt fast-transport-belt
 uv run fgen gen smelting --rate 5 --furnace electric-furnace --pole medium-electric-pole --sides 2
 uv run fgen sweep smelting                                # 写 characterization/smelting_row.{jsonl,md}
+uv run fgen gen mining --case l-shape [--pole medium-electric-pole --axis y ...]   # 画好的矿区上铺钻机
+uv run fgen sweep mining                                  # 写 characterization/mining_patch.{jsonl,md}
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
 uv run fgen render <蓝图字符串或文件> [--rulers]
@@ -26,10 +28,12 @@ uv run fgen validate <蓝图字符串或文件>
 二进制位置：`$FACTORIO_DIR/bin/x64/factorio`（默认 `~/factorio`；`bin/headless.sh install` 下载，`bin/headless.sh dump` 按 `FGEN_MODS` 指定的 mod 组合导出，默认全开）。
 
 ```sh
-uv run pytest -m "not headless"     # 不启动服务器，约 10 秒
-uv run pytest -m headless           # 35 个，需要二进制；约 30 秒（4 核容器实测）
+uv run pytest -m "not headless"     # 180 个，不启动服务器，约 20 秒
+uv run pytest -m headless           # 45 个，需要二进制；约 60 秒（4 核容器实测）
 uv run fgen verify                  # VERIFY.md 的 9 项实机检查，JSON 一行一项，约 15 秒
 uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characterization/，约 2 分钟
+uv run fgen sweep mining --measure     # 7 个画矿形状实测，约 30 秒
+uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-settings.json）端到端，约 15 秒
 ```
 
 - 服务器：`HeadlessServer`（`fgen.sim.server`）在临时目录里建平地存档（`config/test-*.json`，mod 组合取 `DEFAULT_MODS`），`--start-server` 并等 RCON 就绪；退出时 `/quit`，超时再 terminate/kill，并用 `PR_SET_PDEATHSIG` 保证 Python 进程死掉时服务器也被杀。一次只起一个实例：pytest 每个测试模块一个服务器（`tests/conftest.py` 的 `server` fixture），按模块顺序运行。
@@ -46,6 +50,8 @@ uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characteriz
 | `fgen.sim.measure` | `RconCharacterizer.measure(unit, warmup_s, sample_s, samples, speed)` |
 | `fgen.sim.verify` | VERIFY.md 条目的实机检查，`fgen verify` |
 | `fgen.layout.compare` | 忽略顺序与浮点误差的布局比较（往返测试用） |
+| `fgen.sim.terrain` | `RconTerrain`：资源、可建（瓦片碰撞层 vs 参考实体碰撞层）、水、已占格、`snapshot(area) -> Terrain`；`paint` 画矿、`set_tiles` 造湖 |
+| `fgen.sim.mining` | 采矿单元实测：画矿 → 部署 → 每条带一个汇；正常地图上找最近铁矿端到端 |
 
 所有子命令都接受 `--data data-raw-dump.json`（放在子命令前），用真实 dump 代替种子数据。
 
@@ -54,10 +60,11 @@ uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characteriz
 | 模块 | 内容 |
 | --- | --- |
 | `fgen.data` | `schema.py` 镜像 `data.raw` 字段名的 dataclass；`loader.py` 的 `load_seed()` / `load_dump(path)` / `fields_used()`；`seed/vanilla-2.0.json` 手写种子数据（含引擎常数），**唯一允许出现数字的地方** |
-| `fgen.geom` | 纯函数几何：`Direction`（16 向）/`Vec2`/`Tile`、占地、爪子取放格、电杆覆盖与拉线、带容量与带道、液体连接点 |
+| `fgen.geom` | 纯函数几何：`Direction`（16 向）/`Vec2`/`Tile`、占地、爪子取放格、电杆覆盖与拉线、带容量与带道、液体连接点、钻机搜索区/出料格/出料带道/产率（`mining`） |
 | `fgen.layout` | `Placement`/`Interface`/`Layout`/`Unit`；平移/旋转/镜像；`validate()`（违例列表，不抛异常）；`to_ascii()` |
 | `fgen.blueprint` | 字符串编解码、`unit_to_blueprint`、`blueprint_to_layout` |
-| `fgen.gen` | `Generator` 协议与 `Infeasible`；`throughput`（解析吞吐模型、`predict`）；`smelting_row`（带供料行 → 冶炼列）；`sweep`（特征化） |
+| `fgen.gen` | `Generator` 协议与 `Infeasible`；`throughput`（解析吞吐模型、`predict`）；`smelting_row`（带供料行 → 冶炼列）；`sweep`（特征化）；`mining_patch`（钻机铺矿，锚定单元）；`mining_sweep`（采矿特征化） |
+| `fgen.terrain` | `model`：`Terrain` 快照（可建/资源/水/已占）、4 邻接矿区分块 `patches`、`nearest_patch`、渲染背景；`paint`：矩形/L 形/挖洞/随机 blob 形状 |
 | `fgen.sim` | 服务器相关：协议与 `NotAvailable` 默认值、RCON、部署、实测（见上节） |
 
 ## 约定（摘要，全文见任务书 §3）
@@ -71,6 +78,16 @@ uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characteriz
 ## 冶炼列生成器
 
 参数见 `fgen.gen.smelting_row.SmeltingRowParams`。炉数、行长、行偏移（由爪子取放向量推出）、炉步长（由占地推出）、电杆行数与间隔（由 `supply_area_distance` 与 `maximum_wire_distance` 推出：一排电杆的供电区能覆盖上下两排爪子就只放一排，否则两排都放）全部从游戏数据派生。换电杆或熔炉只改参数。5 / 7.5 / 15 板/秒的渲染见 `characterization/smelting_row.md`。
+
+## 采矿生成器（锚定单元）
+
+`fgen.gen.mining_patch.generate(params, gd, patch, terrain)`：输入是 `Terrain` 快照与其中一个 `Patch`（生成器不碰 RCON；单元测试用 `Terrain.from_resources` 手写地形），输出的 `Unit` 用**世界坐标**（部署原点 (0,0)），`meta["anchor"]` 记录矿种、矿区边界、总矿量、钻机数、总产率与粗略枯竭时间。
+
+- 排法：沿 `axis` 铺带子行，两侧各一排钻机面向带子（出料格由 `vector_to_place_result` 推出，实测落在钻机一侧的近道），带子周期 = 两排钻机 + 1；网格相位（周期 × 钻机宽）逐个试，取钻机最多的。带子统一流向 `flow` 一端，每条带末端是一个输出接口（`lane` 两侧都有钻机时为 `both`，`rate` = 钻机数 × `mining_speed / mining_time`）；不合流。
+- 电杆放在钻机行里，占一个钻位：先找槽内能同时覆盖两侧钻机行、且隔一个周期仍在拉线距离内的位置（只放一侧），否则两侧都放；沿带子的槽位由供电区与拉线距离的贪心扫描决定，各带子行用同一组槽位以便纵向连线。
+- 每条道只装一侧钻机：超过道容量时从上游端截断，记进 `meta["dropped_drills"]`（原因 `lane_capacity`），`meta["suggestions"]` 给出能保住它们的带等级或换轴向。其他原因：`pole_slot`、`belt_blocked`（带子要穿过不可建格）、`max_belts`、`low_ore`（`min_ore_amount_per_drill`）、`mixed_resource`（搜索区里有别的矿，`allow_mixed=False`）。
+- 不变量：`layout.validate` 加 `drill.output_blocked`、`drill.no_ore`（给了 `resources` 时），生成器另查 `terrain.unbuildable`。渲染时 `:` 是矿、`,` 别的矿、`~` 水、`x` 不可建。
+- 实测：画矿的 7 个形状每条带实测产率与契约完全一致（0% 偏差）；真实地图 seed 20261024 最近铁矿（352 格）32 台钻、5 条带，契约 16/s，实测 16/s。见 `characterization/mining_patch.md`。
 
 ## 测试样本
 

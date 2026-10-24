@@ -122,5 +122,31 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 爪子吞吐估算（带到炉/带到箱） | 冶炼列里爪子从不成为瓶颈 | 单爪从满带取到箱子测 60 秒，各爪种、带速各一组 |
 | `mirror` 字段 | 种子集里没有不对称实体 | 阶段 5（化工厂） |
 | 组装机方向（流体配方） | `direction_matters` 对流体配方组装机保留方向，但种子里没有流体配方，未实测 | 阶段 5 |
-| 采矿机（电钻）放置 | 平地测试场没有资源，蓝图里的电钻建不出来（ghost 不生成）；往返测试因此不含电钻 | 阶段 2 在测试场里用 `surface.create_entity{name='iron-ore', amount=...}` 铺矿再测 |
+| ~~采矿机（电钻）放置~~ | ~~平地测试场没有资源，蓝图里的电钻建不出来~~ → 已核对（2.1.23），见 §9 | — |
 
+
+## 9. 采矿（阶段 2，2.1.23 实机）
+
+核对脚本是阶段 2 开头的一次性 `/sc` 探测（结论落在 `src/fgen/geom/mining.py`、`src/fgen/sim/terrain.py` 的 docstring 里），之后由 headless 测试 `tests/test_sim_terrain.py`、`tests/test_sim_mining.py`、`tests/test_sim_real_map.py` 持续覆盖。
+
+| 条目 | 结论 | 所在文件 | 核对方法 | 状态 |
+| --- | --- | --- | --- | --- |
+| 种子：`resource` 与大钻 | `resource` 原型读 `minable.mining_time`、`minable.result`（或 `results[]`）、`category`（缺省 `basic-solid`）、`infinite`、`minable.required_fluid`；矿 `mining_time` 1，铀矿 2 且要硫酸，原油 `basic-fluid`/`infinite`。钻机另读 `resource_categories`、`drops_full_belt_stacks`。大钻 5×5、`mining_speed` 2.5、半径 6.49、出料向量 (0,-2.85)、`resource_categories` 含 `hard-solid`。2.1 的电钻原型多了 `input_fluid_box`（采铀用），fgen 不读 | `data/loader.py`、`scripts/extract_seed.py`（`ADD` 表） | dump 重新生成种子 | 已核对（2.1.23 dump） |
+| 出料落格 | 出料点 = 中心 + 旋转后的 `vector_to_place_result`，落在其所在格：N 向电钻在 (5.5,5.5) 的 `drop_position` 是 (5.5,3.65)，即足迹正前方一格、中间列；E/S/W 同理（旋转） | `geom/mining.py` | `drop_position` 读数 + 前方放带看物品 | 已核对 |
+| 出料带道 | 落在**钻机一侧的近道**（出料点在带格里离钻机近的那半边，偏离中线 0.15 格）：N 向钻在东流带下方 → right（南）道；S 向钻在上方 → left（北）道；E 向钻在南流带西侧 → right（西）道。所以两侧钻机各占一道，带容量按道算 | `geom/mining.py` `drop_lane`、`gen/mining_patch.py` | 600 tick 后读 `get_transport_line(left/right).get_item_count()` | 已核对 |
+| 钻机状态名 | `defines.entity_status`：`working`、`no_minable_resources`、`waiting_for_space_in_destination`（带满）、`no_power`、`low_power`；代码只用名字 | `sim/measure.py` | 遍历 `defines.entity_status` | 已核对 |
+| 搜索区边界 | 资源格**中心**落在以钻机中心为心、半边长 `resource_searching_radius` 的正方形里才算：电钻 2.49 → 相对中心格偏移 -2..2（5×5）在内，偏移 3 不在（正/负方向、对角都测过）；大钻 6.49 → 偏移 6 在、7 不在（13×13）。正方形边（2.99）伸进偏移 2 那格 0.99 格，到不了偏移 3 那格——"半格"问题不存在 | `geom/mining.py` `search_range` | 单格矿放在不同偏移，看 `status` 与 `mining_target` | 已核对 |
+| 运行时原型字段名 | `LuaEntityPrototype` 没有 `resource_searching_radius`（运行时叫 `mining_drill_radius`）；fgen 只在数据层读原型 dump 的名字 | — | `/sc` 读取报错 | 已核对 |
+| tile 碰撞层格式 | `LuaTilePrototype.collision_mask` 是 `{layers = {名字 = true, ...}}`（不再是列表）。草/土只有 `ground_tile`；`water`/`deepwater` 有 `water_tile`、`item`、`player`、`resource`、`floor`、`doodad`；`out-of-map` 另有 `out_of_map`、`object` 等。电钻碰撞层 `is_lower_object, is_object, item, meltable, object, player, water_tile`；带 `floor, meltable, object, transport_belt, water_tile`；小杆 `is_lower_object, is_object, item, object, player, water_tile` | `sim/terrain.py` | `serpent.line(prototypes.tile[...].collision_mask)` | 已核对 |
+| `find_tiles_filtered{collision_mask=列表}` | 匹配**含任一**层的格；"不可建" = 与参考实体（钻、带、杆）碰撞层的并集有交 | `sim/terrain.py` | 平地全可建、`set_tiles` 造的 water/deepwater 恰好被判为水且不可建；正常地图上 snapshot 的水 = `water`+`deepwater` 格数（1290），不可建格也正好是这些 | 已核对 |
+| 同步生成区块 | 同一条 `/sc` 里 `request_to_generate_chunks` + `force_generate_chunk_requests()` 之后 `is_chunk_generated` 立即为真 | `sim/lua.py` `generate_chunks` | 调用前后读 `is_chunk_generated` | 已核对 |
+| 画矿 | `create_entity{name='iron-ore', position={x+0.5,y+0.5}, amount=N}` 一格一个实体；`find_entities_filtered{type='resource'}` 读回位置与 `amount` 完全一致；同格再画需先销毁旧实体 | `sim/terrain.py` `paint` | `test_paint_and_read_back` | 已核对 |
+| 钻机经蓝图放置 | 有矿时蓝图 ghost 能建出并 revive；足迹下无矿但搜索区内有矿的钻机也能放 | `sim/deployer.py` | 7 个画矿形状部署 | 已核对 |
+| `mining_target` | 刚放下（还没跑 tick）时为 nil，开始采后才有值；实测里在探针中补记 | `sim/measure.py` | 读数 | 已核对 |
+| 单钻产率 | 无科技时 = `mining_speed / mining_time`：电钻 0.5/s；画矿 7 形状共 271 台钻、20 条带，每条带 6×20 秒样本全部与契约相等（0% 偏差）。一道 15 台（=黄带单道 7.5/s）时实测 7.5/s，仅有 4/7560 个探针见到 `waiting_for_space_in_destination` | `geom/mining.py` `drill_rate` | `fgen sweep mining --measure` | 已核对 |
+| 真实矿区边缘 | 正常地图起始区铁矿边缘格只有 2–90 矿，几秒就采空，钻机转 `no_minable_resources`；与相邻石矿重叠的钻机会混出石头。第一次端到端 5 条带偏差 -6%～-50%。生成器因此加了 `min_ore_amount_per_drill`（`low_ore`）与 `allow_mixed=False`（`mixed_resource`）；端到端把阈值抬到没有钻机会在实测窗口内采空（`first_dry_s_lower_bound`）后偏差 0% | `gen/mining_patch.py`、`sim/mining.py` | `fgen sweep mining --real-map` | 已核对 |
+| 树与石头的实体类型 | 树 `tree`、石头 `simple-entity`；端到端前在矿区周围销毁（seed 20261024 清了 150 个），悬崖 `cliff` 保留为障碍 | `sim/mining.py` | 销毁计数 | 部分核对（只看了计数，没逐类核对类型名覆盖了所有障碍） |
+| 已占格 | 非资源、非角色实体的 `bounding_box` 覆盖的格（钢箱 1 格、石炉 2×2 实测正确） | `sim/terrain.py` `occupied` | `test_occupied` | 已核对；树的碰撞盒很小，按 bounding_box 取整后只占 1 格（未逐棵核对） |
+| 正常地图生成配置 | `config/ore-map-gen-settings.json`（测试场配置去掉 elevation 常数、各项 size 1、enemy-base size 0、peaceful）在 2.1.23 上可建图；seed 20261024 出生点 ±150 内有铁/铜/煤/石各一块，最近铁矿 352 格、29×29、(-66,35) 起，总量 156978 | `config/ore-map-gen-settings.json` | `tests/test_sim_real_map.py` | 已核对 |
+| 大钻 `drops_full_belt_stacks` | 种子里有该字段；本阶段不用大钻实测，未核对无科技时是否真的按满叠放带、对道容量有何影响 | — | 大钻 + 带实测 | 未核对 |
+| `lua.clear_area` | 改为默认保留 `resource` 实体（否则实测前的清场会把画的矿一起删掉）；冶炼列实测不受影响 | `sim/lua.py` | 全部 headless 测试 | — |
