@@ -31,3 +31,6 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "headless: needs the Factorio headless binary ($FACTORIO_DIR); skipped when it is missing",
+]

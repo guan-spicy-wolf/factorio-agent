@@ -1,0 +1,75 @@
+{
+  "_comment": "Flat test field for fgen headless tests: no resources, water, trees, rocks, cliffs or enemies; elevation pinned to a constant so no lakes form (water size 0 alone still leaves lakes in 2.0.76).",
+  "width": 0,
+  "height": 0,
+  "starting_area": 1,
+  "peaceful_mode": true,
+  "autoplace_controls": {
+    "coal": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "stone": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "copper-ore": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "iron-ore": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "uranium-ore": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "crude-oil": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "water": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "trees": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "rocks": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    },
+    "enemy-base": {
+      "frequency": 1,
+      "size": 0,
+      "richness": 1
+    }
+  },
+  "cliff_settings": {
+    "name": "cliff",
+    "cliff_elevation_0": 10,
+    "cliff_elevation_interval": 40,
+    "richness": 0
+  },
+  "property_expression_names": {
+    "elevation": "10"
+  },
+  "starting_points": [
+    {
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "seed": 12345
+}
