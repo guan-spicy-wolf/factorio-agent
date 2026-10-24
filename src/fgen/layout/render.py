@@ -37,11 +37,17 @@ TYPE_CHARS: dict[str, str] = {
     "splitter": "S",
     "offshore-pump": "O",
     "storage-tank": "T",
+    "loader": "L",
+    "loader-1x1": "L",
+    "infinity-container": "I",
+    "electric-energy-interface": "E",
+    "infinity-pipe": "=",
 }
 
 LEGEND = (
     "legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furnace  "
-    "A machine  D drill  = pipe  c chest  O offshore pump  T tank  # overlap  ? unknown"
+    "A machine  D drill  = pipe  c chest  O offshore pump  T tank  L loader  I infinity chest  "
+    "E energy interface  # overlap  ? unknown"
 )
 TERRAIN_LEGEND = "terrain: : ore (mined resource)  , other resource  ~ water  x blocked/occupied"
 

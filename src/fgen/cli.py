@@ -203,9 +203,50 @@ def cmd_sweep_mining(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sweep_site(args: argparse.Namespace) -> int:
+    from fgen.gen import site_sweep as ss
+    from fgen.terrain.model import Terrain, area_tiles
+
+    gd = _gd(args)
+    rows = []
+    if args.measure:
+        from fgen.sim import site_measure
+
+        with _server(args) as srv:
+            row = site_measure.flat_row(srv, gd)
+        rows.append(row)
+        print(f"flat: {row['judged']}", file=sys.stderr)
+    else:
+        site = ss.flat_site(gd, Terrain(buildable=area_tiles(ss.FLAT_AREA)))
+        row, _ = ss.plan_row(ss.FLAT, site, gd, note=_site_note())
+        rows.append(row)
+    if args.real_map:
+        import json as _json
+
+        from fgen.sim import mining, site_measure
+        from fgen.sim.server import REPO_CONFIG, HeadlessServer
+
+        seed = _json.loads((REPO_CONFIG / mining.ORE_MAP).read_text()).get("seed")
+        with HeadlessServer(map_gen_settings=mining.ORE_MAP) as srv:
+            row = site_measure.real_map_row(srv, gd, seed=seed)
+        rows.append(row)
+        print(f"real map: {row['judged']}", file=sys.stderr)
+    jsonl, md = ss.write(Path(args.out_dir), rows, gd)
+    print(f"wrote {jsonl} and {md}")
+    return 0
+
+
+def _site_note() -> str:
+    from fgen.sim.site_measure import FLAT_NOTE
+
+    return FLAT_NOTE
+
+
 def cmd_sweep(args: argparse.Namespace) -> int:
     if args.family == "mining":
         return cmd_sweep_mining(args)
+    if args.family == "site":
+        return cmd_sweep_site(args)
     gd = _gd(args)
     if not args.measure:
         jsonl, md = write_characterization(gd, Path(args.out_dir))
@@ -309,8 +350,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_gen)
 
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
-    p.add_argument("family", choices=["smelting", "mining"])
-    p.add_argument("--real-map", action="store_true", help="mining: end-to-end run on the ore map")
+    p.add_argument("family", choices=["smelting", "mining", "site"])
+    p.add_argument(
+        "--real-map", action="store_true", help="mining/site: end-to-end run on the ore map"
+    )
     p.add_argument("--out-dir", default="characterization")
     p.add_argument("--measure", action="store_true", help="measure each unit in headless")
     p.add_argument("--warmup", type=float, default=60.0, help="warm-up, game seconds")

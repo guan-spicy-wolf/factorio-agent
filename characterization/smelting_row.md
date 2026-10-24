@@ -8,7 +8,7 @@ headless Factorio (`--measure`, see the comparison table at the end).
 Coordinates: x east, y south, rows labelled on the left, x mod 10 on top.
 All inserters face N (pick up from the north, drop to the south).
 
-legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furnace  A machine  D drill  = pipe  c chest  O offshore pump  T tank  # overlap  ? unknown
+legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furnace  A machine  D drill  = pipe  c chest  O offshore pump  T tank  L loader  I infinity chest  E energy interface  # overlap  ? unknown
 
 ## target_rate = 5/s
 

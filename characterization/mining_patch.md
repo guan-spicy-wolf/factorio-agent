@@ -5,7 +5,7 @@ Game data: seed 2.1.23. Contract = drills x `mining_speed / mining_time` per bel
 
 Painted cases: ore painted on the flat test field (`RconTerrain.paint`, 5000 per tile), unit built from its blueprint, each belt end feeds a loader + chest sink, free power. Measured per belt as the median of 20 s game-time samples after a 10 s warm-up. Tolerance |Δ| <= 5% per belt.
 
-Coordinates are world tiles (anchor unit). legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furnace  A machine  D drill  = pipe  c chest  O offshore pump  T tank  # overlap  ? unknown
+Coordinates are world tiles (anchor unit). legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furnace  A machine  D drill  = pipe  c chest  O offshore pump  T tank  L loader  I infinity chest  E energy interface  # overlap  ? unknown
 terrain: : ore (mined resource)  , other resource  ~ water  x blocked/occupied
 
 ## Summary

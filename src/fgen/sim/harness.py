@@ -185,6 +185,7 @@ class Harness:
     specs: list[dict[str, Any]] = field(default_factory=list)  # create_entity tables
     sources: list[tuple[int, str]] = field(default_factory=list)  # (spec index, item)
     sinks: list[tuple[int, str]] = field(default_factory=list)  # (spec index, item)
+    sink_units: list[str] = field(default_factory=list)  # fixture name per sink
     fluid_sources: list[tuple[int, str, float]] = field(default_factory=list)
     tiles: set[Tile] = field(default_factory=set)
     unit_numbers: list[int] = field(default_factory=list)
@@ -225,6 +226,7 @@ def fixture_specs(
             h.sources.append((base + fx["chest"], fx["item"]))
         elif fx["kind"] == "sink":
             h.sinks.append((base + fx["chest"], fx["item"] or ""))
+            h.sink_units.append(name)
         elif fx["kind"] == "power":
             if h.power_pole is None:
                 h.power_pole = base + fx["pole"]
