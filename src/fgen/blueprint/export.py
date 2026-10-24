@@ -7,6 +7,7 @@ from typing import Any
 
 from fgen.blueprint.codec import pack_version
 from fgen.data.schema import GameData
+from fgen.geom import pole
 from fgen.layout.model import Layout, Unit
 
 RESERVED_KEYS = frozenset({"entity_number", "name", "position", "direction"})
@@ -27,12 +28,25 @@ def entity_dicts(layout: Layout) -> list[dict[str, Any]]:
                 "entity_number": i,
                 "name": p.name,
                 "position": {"x": _num(p.position.x), "y": _num(p.position.y)},
-                # Always written, even for N (0): conservative, see VERIFY.md.
+                # Always written, even for N (0); 2.0.76 accepts it (fgen verify #5).
                 "direction": p.direction.to_blueprint(),
                 **p.extra,
             }
         )
     return out
+
+
+def pole_wires(layout: Layout, gd: GameData) -> list[list[int]]:
+    """2.0 blueprint-level ``wires``: ``[entity_number, connector, entity_number,
+    connector]`` per copper wire, a spanning tree over poles in wire reach."""
+    copper = int(gd.constant("wire_connector_pole_copper"))
+    idx = [
+        i
+        for i, p in enumerate(layout.placements)
+        if gd.entities.get(p.name) is not None and gd.entity(p.name).type == "electric-pole"
+    ]
+    poles = [(layout.placements[i].name, layout.placements[i].position) for i in idx]
+    return [[idx[a] + 1, copper, idx[b] + 1, copper] for a, b in pole.copper_tree(gd, poles)]
 
 
 def layout_to_blueprint(
@@ -45,6 +59,9 @@ def layout_to_blueprint(
         "entities": entity_dicts(layout),
         "version": pack_version(gd.version),
     }
+    wires = pole_wires(layout, gd)
+    if wires:
+        bp["wires"] = wires
     if icon is not None:
         bp["icons"] = [{"signal": {"type": "item", "name": icon}, "index": 1}]
     if label is not None:

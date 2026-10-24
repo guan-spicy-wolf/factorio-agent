@@ -99,3 +99,42 @@ def test_real_blueprints(path: Path) -> None:
 
     for orig, ours in zip(obj["blueprint"]["entities"], entity_dicts(layout), strict=True):
         assert {**orig, "direction": orig.get("direction", 0)} == ours
+
+
+def test_export_writes_pole_wires_as_spanning_tree(gd: GameData) -> None:
+    """2.0.76 does not auto-connect poles built from a blueprint (VERIFY.md, check 2),
+    so the exporter writes ``wires``: a spanning tree over poles in wire reach."""
+    from fgen.geom import pole as polegeom
+    from fgen.geom.vec import Vec2
+    from fgen.layout.model import Placement
+
+    name = "small-electric-pole"
+    reach = gd.entity(name).maximum_wire_distance
+    gap = int(reach)  # in reach
+    far = gap * 3  # out of reach of the first two
+    ps = [
+        Placement(name, Vec2(0.5, 0.5)),
+        Placement("inserter", Vec2(1.5, 0.5)),
+        Placement(name, Vec2(0.5 + gap, 0.5)),
+        Placement(name, Vec2(0.5 + gap, 0.5 + gap)),  # in reach of #3 only (diagonal)
+        Placement(name, Vec2(0.5 + far, 0.5)),
+    ]
+    bp = layout_to_blueprint(Layout(ps), gd)["blueprint"]
+    copper = gd.constant("wire_connector_pole_copper")
+    pairs = {(w[0], w[2]) for w in bp["wires"]}
+    assert all(w[1] == copper and w[3] == copper for w in bp["wires"])
+    assert pairs == {(1, 3), (3, 4)}  # entity numbers; #5 is isolated, #2 is no pole
+    # a tree: never more wires than poles - 1 per connected component
+    poles = [(p.name, p.position) for p in ps if p.name == name]
+    assert len(polegeom.copper_tree(gd, poles)) == 2
+    # wires survive the codec but are dropped by the Layout import
+    assert "wires" in codec.decode(codec.encode({"blueprint": bp}))["blueprint"]
+    assert blueprint_to_layout({"blueprint": bp}).placements == ps
+
+
+def test_export_without_poles_has_no_wires(gd: GameData) -> None:
+    from fgen.geom.vec import Vec2
+    from fgen.layout.model import Placement
+
+    bp = layout_to_blueprint(Layout([Placement("inserter", Vec2(0.5, 0.5))]), gd)
+    assert "wires" not in bp["blueprint"]

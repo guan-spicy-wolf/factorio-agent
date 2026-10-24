@@ -101,6 +101,31 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _server(args: argparse.Namespace):  # -> contextmanager yielding a HeadlessServer
+    from contextlib import nullcontext
+
+    from fgen.sim.server import HeadlessServer
+
+    if getattr(args, "attach", None):
+        return nullcontext(HeadlessServer.attach(int(args.attach), args.password))
+    return HeadlessServer()
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    from fgen.sim import verify
+
+    ids = [int(x) for x in args.ids.split(",")] if args.ids else None
+    gd = _gd(args)
+    with _server(args) as srv:
+        results = verify.run(srv, gd, ids, speed=args.speed)
+    for r in results:
+        print(json.dumps(r, sort_keys=True, default=str))
+    for r in results:
+        mark = {True: "holds", False: "DIFFERS", None: "n/a"}[r["holds"]]
+        print(f"[{r['id']}] {mark}: {r['item']}: {r['conclusion']}", file=sys.stderr)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fgen", description="Factorio blueprint generator")
     parser.add_argument("--data", help="data-raw-dump.json to use instead of the seed data")
@@ -142,6 +167,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("family", choices=["smelting"])
     p.add_argument("--out-dir", default="characterization")
     p.set_defaults(fn=cmd_sweep)
+
+    p = sub.add_parser("verify", help="run the in-game VERIFY.md checks (needs headless)")
+    p.add_argument("--ids", help="comma separated check ids (default: all)")
+    p.add_argument("--speed", type=float, default=10.0, help="game.speed while checking")
+    p.add_argument("--attach", metavar="PORT", help="use a running server's RCON port")
+    p.add_argument("--password", default="fgen", help="RCON password with --attach")
+    p.set_defaults(fn=cmd_verify)
     return parser
 
 

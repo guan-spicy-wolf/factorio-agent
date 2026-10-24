@@ -1,12 +1,13 @@
 {
-  "_provenance": "extracted from factorio 2.0.76 --dump-data by scripts/extract_seed.py",
+  "_provenance": "extracted from factorio 2.0.76 --dump-data (base mod only, see bin/headless.sh dump) by scripts/extract_seed.py",
   "_version": "2.0.76",
   "_constants": {
     "ticks_per_second": 60,
     "belt_items_per_tile": 8,
     "belt_lanes": 2,
     "inserter_base_hand_size": 1,
-    "recipe_default_energy_required": 0.5
+    "recipe_default_energy_required": 0.5,
+    "wire_connector_pole_copper": 5
   },
   "transport-belt": {
     "transport-belt": {
@@ -641,9 +642,7 @@
       "crafting_categories": [
         "crafting",
         "basic-crafting",
-        "advanced-crafting",
-        "electronics",
-        "pressing"
+        "advanced-crafting"
       ],
       "crafting_speed": 0.5,
       "energy_source": {
@@ -677,16 +676,7 @@
         "basic-crafting",
         "crafting",
         "advanced-crafting",
-        "crafting-with-fluid",
-        "electronics",
-        "electronics-with-fluid",
-        "pressing",
-        "metallurgy-or-assembling",
-        "organic-or-hand-crafting",
-        "organic-or-assembling",
-        "electronics-or-assembling",
-        "cryogenics-or-assembling",
-        "crafting-with-fluid-or-metallurgy"
+        "crafting-with-fluid"
       ],
       "crafting_speed": 0.75,
       "energy_source": {
@@ -720,16 +710,7 @@
         "basic-crafting",
         "crafting",
         "advanced-crafting",
-        "crafting-with-fluid",
-        "electronics",
-        "electronics-with-fluid",
-        "pressing",
-        "metallurgy-or-assembling",
-        "organic-or-hand-crafting",
-        "organic-or-assembling",
-        "electronics-or-assembling",
-        "cryogenics-or-assembling",
-        "crafting-with-fluid-or-metallurgy"
+        "crafting-with-fluid"
       ],
       "crafting_speed": 1.25,
       "energy_source": {
@@ -1094,37 +1075,7 @@
             ]
           }
         ],
-        "hide_connection_info": true,
-        "pipe_covers_frozen": {
-          "north": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "east": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "south": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "west": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          }
-        }
+        "hide_connection_info": true
       }
     }
   },
@@ -1241,46 +1192,10 @@
               0,
               0
             ],
-            "max_underground_distance": 10,
-            "underground_collision_mask": {
-              "layers": {
-                "lava_tile": true,
-                "empty_space": true
-              }
-            }
+            "max_underground_distance": 10
           }
         ],
-        "hide_connection_info": true,
-        "pipe_covers_frozen": {
-          "north": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "east": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "south": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "west": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          }
-        }
+        "hide_connection_info": true
       }
     }
   },
@@ -1530,37 +1445,7 @@
             ]
           }
         ],
-        "hide_connection_info": true,
-        "pipe_covers_frozen": {
-          "north": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "east": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "south": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          },
-          "west": {
-            "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
-            "priority": "extra-high",
-            "width": 128,
-            "height": 128,
-            "scale": 0.5
-          }
-        }
+        "hide_connection_info": true
       }
     }
   },
@@ -1786,8 +1671,7 @@
           "name": "copper-cable",
           "amount": 2
         }
-      ],
-      "category": "electronics"
+      ]
     },
     "electronic-circuit": {
       "type": "recipe",
@@ -1810,8 +1694,7 @@
           "name": "electronic-circuit",
           "amount": 1
         }
-      ],
-      "category": "electronics"
+      ]
     },
     "iron-gear-wheel": {
       "type": "recipe",

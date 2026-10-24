@@ -25,7 +25,10 @@ def main() -> None:
     used = fields_used()
 
     out: dict = {
-        "_provenance": f"extracted from factorio {version} --dump-data by scripts/extract_seed.py",
+        "_provenance": (
+            f"extracted from factorio {version} --dump-data (base mod only, see "
+            "bin/headless.sh dump) by scripts/extract_seed.py"
+        ),
         "_version": version,
         "_constants": seed["_constants"],
     }

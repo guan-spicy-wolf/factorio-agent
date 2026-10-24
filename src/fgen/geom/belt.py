@@ -1,7 +1,9 @@
 """Belt helpers: flow, capacity, lanes, underground range.
 
-Lanes are named relative to the flow direction. An inserter dropping onto a belt from
-the side places items on the far lane (convention to verify, see VERIFY.md).
+Lanes are named relative to the flow direction: ``left`` is
+``defines.transport_line.left_line`` (1), the north lane of an east-flowing belt. An
+inserter dropping onto a belt from the side places items on the far lane. Both checked in
+game on 2.0.76 (``fgen verify`` #4).
 """
 
 from __future__ import annotations

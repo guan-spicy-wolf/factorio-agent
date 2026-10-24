@@ -2,8 +2,9 @@
 
 ``pickup_position`` / ``insert_position`` are vectors for the N-facing inserter; they
 are rotated with the entity, added to the centre and floored. With the seed values an
-N-facing inserter picks up from the tile to its north and drops to the south
-(convention to verify, see VERIFY.md).
+N-facing (direction 0) inserter picks up from the tile to its north and drops to the
+south; an E-facing one picks up from the east. Checked in game on 2.0.76 (items moved
+chest to chest, and ``LuaEntity.pickup_position``/``drop_position``): ``fgen verify`` #1.
 """
 
 from __future__ import annotations

@@ -39,3 +39,34 @@ def wire_distance(gd: GameData, a_name: str, b_name: str) -> float:
 def wire_reaches(gd: GameData, a_name: str, a_pos: Vec2, b_name: str, b_pos: Vec2) -> bool:
     """Centre distance <= the smaller ``maximum_wire_distance`` of the two poles."""
     return a_pos.distance(b_pos) <= wire_distance(gd, a_name, b_name) + _EPS
+
+
+def copper_tree(gd: GameData, poles: list[tuple[str, Vec2]]) -> list[tuple[int, int]]:
+    """Copper wires to draw between poles: a minimum spanning forest of the wire-reach
+    graph (Kruskal, shortest first, ties by index).
+
+    Blueprints must spell the wires out: on 2.0.76 poles built from a blueprint without
+    ``wires`` stay unconnected even when in reach (see VERIFY.md). Returns index pairs
+    ``(i, j)`` with ``i < j``.
+    """
+    edges = sorted(
+        (a_pos.distance(b_pos), i, j)
+        for i, (a_name, a_pos) in enumerate(poles)
+        for j, (b_name, b_pos) in enumerate(poles)
+        if i < j and wire_reaches(gd, a_name, a_pos, b_name, b_pos)
+    )
+    parent = list(range(len(poles)))
+
+    def find(k: int) -> int:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    out = []
+    for _, i, j in edges:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[ri] = rj
+            out.append((i, j))
+    return out

@@ -3,7 +3,9 @@
 #
 # Usage: bin/headless.sh [install|dump|path]
 #   install  download + extract to $FACTORIO_DIR (idempotent)
-#   dump     run --dump-data; prints the path of data-raw-dump.json
+#   dump     run --dump-data with only the base mod enabled (the stock install enables
+#            space-age, quality and elevated-rails, which change base prototypes, e.g.
+#            recipe categories); prints the path of data-raw-dump.json
 #   path     print the factorio binary path
 #
 # Env: FACTORIO_VERSION (default 2.0.76), FACTORIO_DIR (default ~/factorio)
@@ -39,10 +41,19 @@ cmd_install() {
     echo "installed: $("$BIN" --version | head -1)"
 }
 
+MODS_BASE="$FACTORIO_DIR/fgen-mods-base"
+
 cmd_dump() {
     local out="$FACTORIO_DIR/script-output/data-raw-dump.json"
-    if [[ ! -s "$out" ]]; then
-        "$BIN" --dump-data >/dev/null 2>&1
+    local stamp="$out.mods"
+    if [[ ! -s "$out" || "$(cat "$stamp" 2>/dev/null)" != "base" ]]; then
+        mkdir -p "$MODS_BASE"
+        cat > "$MODS_BASE/mod-list.json" <<'JSON'
+{"mods": [{"name": "base", "enabled": true}, {"name": "elevated-rails", "enabled": false},
+          {"name": "quality", "enabled": false}, {"name": "space-age", "enabled": false}]}
+JSON
+        "$BIN" --mod-directory "$MODS_BASE" --dump-data >/dev/null 2>&1
+        echo base > "$stamp"
     fi
     echo "$out"
 }
