@@ -64,6 +64,10 @@ _ENTITY_FIELDS: dict[str, list[str]] = {
     "offshore-pump": [*_COMMON, "fluid_box.pipe_connections", "energy_source.type"],
     "storage-tank": [*_COMMON, "fluid_box.pipe_connections"],
     "container": [*_COMMON, "inventory_size"],
+    # test-harness entities (hidden in normal play; see fgen.sim.harness)
+    "loader": [*_COMMON, "speed"],
+    "infinity-container": [*_COMMON, "inventory_size"],
+    "electric-energy-interface": [*_COMMON],
 }
 
 _OTHER_FIELDS: dict[str, list[str]] = {

@@ -96,7 +96,35 @@ def cmd_gen(args: argparse.Namespace) -> int:
 
 
 def cmd_sweep(args: argparse.Namespace) -> int:
-    jsonl, md = write_characterization(_gd(args), Path(args.out_dir))
+    gd = _gd(args)
+    if not args.measure:
+        jsonl, md = write_characterization(gd, Path(args.out_dir))
+        print(f"wrote {jsonl} and {md}")
+        return 0
+    from fgen.sim.measure import RconCharacterizer
+
+    with _server(args) as srv:
+        ch = RconCharacterizer(srv, gd)
+
+        def measure(unit):
+            m = ch.measure(
+                unit,
+                warmup_s=args.warmup,
+                sample_s=args.sample_s,
+                samples=args.samples,
+                speed=args.speed,
+            )
+            print(
+                f"measured {unit.meta['machine']} x{m['machines']} "
+                f"target {unit.meta['target_rate']:g}/s: {m['throughput']:g}/s",
+                file=sys.stderr,
+            )
+            return m
+
+        try:
+            jsonl, md = write_characterization(gd, Path(args.out_dir), measure)
+        finally:
+            ch.clear_all()
     print(f"wrote {jsonl} and {md}")
     return 0
 
@@ -166,6 +194,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
     p.add_argument("family", choices=["smelting"])
     p.add_argument("--out-dir", default="characterization")
+    p.add_argument("--measure", action="store_true", help="measure each unit in headless")
+    p.add_argument("--warmup", type=float, default=60.0, help="warm-up, game seconds")
+    p.add_argument("--sample-s", type=float, default=10.0, help="sample period, game seconds")
+    p.add_argument("--samples", type=int, default=6)
+    p.add_argument("--speed", type=float, default=64.0, help="game.speed while measuring")
+    p.add_argument("--attach", metavar="PORT", help="use a running server's RCON port")
+    p.add_argument("--password", default="fgen", help="RCON password with --attach")
     p.set_defaults(fn=cmd_sweep)
 
     p = sub.add_parser("verify", help="run the in-game VERIFY.md checks (needs headless)")

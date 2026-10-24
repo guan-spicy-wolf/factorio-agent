@@ -27,6 +27,7 @@ from fgen.geom import pole
 from fgen.geom.vec import CARDINALS, Direction, Tile, Vec2
 from fgen.layout.model import Layout, Placement
 from fgen.sim import lua
+from fgen.sim.harness import LOADER_FOR_BELT
 from fgen.sim.server import HeadlessServer
 
 type Result = dict[str, Any]
@@ -39,11 +40,7 @@ SOURCE_CHEST = "infinity-chest"
 SINK_CHEST = "steel-chest"
 POWER_SOURCE = "electric-energy-interface"
 RIG_POLE = "small-electric-pole"
-LOADERS = {
-    "transport-belt": "loader",
-    "fast-transport-belt": "fast-loader",
-    "express-transport-belt": "express-loader",
-}
+LOADERS = LOADER_FOR_BELT
 
 
 def band_origin(check_id: int) -> Tile:

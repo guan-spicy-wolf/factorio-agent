@@ -64,7 +64,7 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | --- | --- | --- | --- | --- |
 | 带道命名 | `left` / `right` 相对流向；向东流时 left 在北侧 | `geom/belt.py` | 在东向带上手放物品到北侧道，看游戏/脚本 API 报告的 lane 编号 | 已核对（2.0.76）：`fgen verify` #4，东向带：从北侧侧向汇入的物品在 `get_transport_line(defines.transport_line.left_line)`（=1）上，即 left = 北侧，与 `geom/belt.py` 一致 |
 | 爪子放带落远道 | 侧面放带的爪子落在离自己远的那条道；从带子正前/正后放带未定义（代码抛错） | `geom/belt.py`, `gen/smelting_row.py`（输出带只占远道） | 实放爪子往带上放物品观察 | 已核对（2.0.76）：`fgen verify` #4，带北侧的爪子放到 right（南、远道），南侧的放到 left（北、远道），与 `geom.belt.drop_lane` 一致（维基 Inserters 页亦同） |
-| 爪子从带取两道 | 进料爪从矿带两道都取（矿一道、煤一道的混带能同时供矿和燃料） | `gen/smelting_row.py` | 实测一列石炉 | 高 |
+| 爪子从带取两道 | 进料爪从矿带两道都取（矿一道、煤一道的混带能同时供矿和燃料） | `gen/smelting_row.py` | 实测一列石炉 | 已核对（2.0.76）：冶炼列实测（`fgen sweep smelting --measure`）：矿走左道、煤走右道的混带供石炉/钢炉，所有炉子 `no_fuel` 探针为 0，产量达标 |
 | 带子连续性 | 带的下一格是不反向的带（含侧向汇入）、同向的地下带入口、同向分流器即视为连续；分流器出口不检查 | `layout/validate.py` | 设计选择，非游戏事实；实机按需补充 | — |
 | 带子终点声明 | 进料带末端是有意的死路，用 `Unit.meta["belt_terminals"]` 显式声明后不报 `belt.discontinuous` | `layout/validate.py`, `gen/smelting_row.py` | 设计选择；实机无需核对 | — |
 | 地下带 `type` 字段 | 蓝图实体 `type` 取值 `"input"` / `"output"`；缺省按 `"input"` | `layout/validate.py` | 游戏导出一对地下带的蓝图解码查看 | 已核对（2.0.76）：`fgen verify` #3，游戏导出一对地下带：`type` 为 `"input"` / `"output"` |
@@ -88,9 +88,9 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 
 | 条目 | 当前假设值 / 约定 | 所在文件 | 核对方法 | 把握 |
 | --- | --- | --- | --- | --- |
-| 爪子吞吐估算 | 每次搬运 = 转一整圈（去半圈、回半圈），`物品/秒 = 手持量 × 60 × rotation_speed`；忽略伸缩时间、带上拾取延迟与研究加成。普通爪 ≈0.84/s | `gen/throughput.py` | headless 箱到箱、带到炉各测 60 秒；结果写入 `characterization/smelting_row.jsonl` 的 `measured` | 箱到箱已实测（2.0.76，`fgen verify` #6）：普通 0.849/s（估 0.84）、长臂 1.198（1.2）、快速/集装 2.496（2.4）、烧煤 0.749（0.78），偏差 ≤4%；带到炉见 `characterization/smelting_row.md` 实测列 |
-| 机器产率 | `crafting_speed × 产物数 / energy_required`；不计启动、燃料短缺 | `gen/throughput.py` | 特征化实测 | 高 |
-| 输出带容量 | 单侧冶炼列的输出只占远道，上限为单道容量（黄带 7.5/s）——这是本排法的性质，导致默认参数下 15/s 不可行 | `gen/smelting_row.py` | 实测一列 24 台石炉的输出 | 高 |
+| 爪子吞吐估算 | 每次搬运 = 转一整圈（去半圈、回半圈），`物品/秒 = 手持量 × 60 × rotation_speed`；忽略伸缩时间、带上拾取延迟与研究加成。普通爪 ≈0.84/s | `gen/throughput.py` | headless 箱到箱、带到炉各测 60 秒；结果写入 `characterization/smelting_row.jsonl` 的 `measured` | 箱到箱已实测（2.0.76，`fgen verify` #6）：普通 0.849/s（估 0.84）、长臂 1.198（1.2）、快速/集装 2.496（2.4）、烧煤 0.749（0.78），偏差 ≤4%。带到炉：冶炼列里爪子从未成为瓶颈（每炉需求 ≤0.65/s，远低于估计），所以这一估算在带取场景的精度仍未测到 |
+| 机器产率 | `crafting_speed × 产物数 / energy_required`；不计启动、燃料短缺 | `gen/throughput.py` | 特征化实测 | 已核对（2.0.76）：18 组冶炼列实测稳态产量 = 炉数 × crafting_speed / energy_required（偏差 ≤2%，为 10 秒采样的整数量化） |
+| 输出带容量 | 单侧冶炼列的输出只占远道，上限为单道容量（黄带 7.5/s）——这是本排法的性质，导致默认参数下 15/s 不可行 | `gen/smelting_row.py` | 实测一列 24 台石炉的输出 | 已核对（2.0.76）：24 台石炉单侧列输出只占远道，实测 7.5/s（= 黄带单道容量）；15/s 仍须换红带或双侧 |
 
 ## 7. 数据导出字段路径（`fields_used()`）
 
