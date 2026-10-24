@@ -80,6 +80,9 @@ class ServerError(RuntimeError):
 class HeadlessServer:
     """Context manager: create the flat test map if needed, start, wait for RCON, stop.
 
+    ``map_gen_settings`` names a file in ``config/`` (default: the flat field;
+    ``ore-map-gen-settings.json`` is a normal map with resources, see plan-phase2 §3.5).
+
     ``with HeadlessServer() as srv: srv.rcon.lua("rcon.print(game.tick)")``
     """
 
@@ -93,6 +96,7 @@ class HeadlessServer:
         config_dir: Path = REPO_CONFIG,
         mods: tuple[str, ...] = DEFAULT_MODS,
         startup_timeout: float = 60.0,
+        map_gen_settings: str = "test-map-gen-settings.json",
     ) -> None:
         self.factorio_dir = Path(factorio_dir_ or factorio_dir())
         self.binary = factorio_binary(self.factorio_dir)
@@ -106,7 +110,10 @@ class HeadlessServer:
         self.proc: subprocess.Popen[bytes] | None = None
         self.rcon: RconClient = None  # type: ignore[assignment]
         self.log_path = self.workdir / "server.log"
-        self.template_save = self.workdir / "flat-template.zip"
+        self.map_gen_settings = map_gen_settings
+        stem = Path(map_gen_settings).stem.removesuffix("-map-gen-settings")
+        name = "flat" if stem == "test" else stem
+        self.template_save = self.workdir / f"{name}-template.zip"
         self.run_save = self.workdir / "run.zip"
 
     # -- files ---------------------------------------------------------------
@@ -141,7 +148,7 @@ class HeadlessServer:
                 "--create",
                 str(self.template_save),
                 "--map-gen-settings",
-                str(self.config_dir / "test-map-gen-settings.json"),
+                str(self.config_dir / self.map_gen_settings),
                 "--map-settings",
                 str(self.config_dir / "test-map-settings.json"),
             ],

@@ -2,8 +2,8 @@
 
 Only ``Protocol`` definitions and the ``NotAvailable`` stand-ins (the default when no
 server is available) live here; no RCON, socket or subprocess code (plan §4.7). The
-headless implementations are ``fgen.sim.deployer.RconDeployer`` and
-``fgen.sim.measure.RconCharacterizer``.
+headless implementations are ``fgen.sim.deployer.RconDeployer``,
+``fgen.sim.terrain.RconTerrain`` and ``fgen.sim.measure.RconCharacterizer``.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Any, NoReturn, Protocol
 
 from fgen.geom.vec import Tile
 from fgen.layout.model import Layout, Unit
+from fgen.terrain.model import Terrain
 
 type Area = tuple[Tile, Tile]
 
@@ -30,6 +31,8 @@ class TerrainQuery(Protocol):
     def resources(self, area: Area) -> dict[Tile, tuple[str, int]]: ...
 
     def water(self, area: Area) -> frozenset[Tile]: ...
+
+    def snapshot(self, area: Area) -> Terrain: ...
 
 
 class Characterizer(Protocol):
@@ -56,6 +59,9 @@ class NotAvailableTerrain:
         _unavailable()
 
     def water(self, area: Area) -> frozenset[Tile]:
+        _unavailable()
+
+    def snapshot(self, area: Area) -> Terrain:
         _unavailable()
 
 
