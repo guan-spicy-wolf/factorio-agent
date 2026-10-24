@@ -48,7 +48,7 @@ from fgen.geom import footprint, mining, pole
 from fgen.geom.belt import Lane
 from fgen.geom.vec import Direction, Tile, Vec2
 from fgen.layout import transform as tf
-from fgen.layout.model import Interface, Layout, Placement, Unit
+from fgen.layout.model import Interface, Layout, Placement, RateProfile, Unit
 from fgen.layout.render import to_ascii
 from fgen.layout.validate import Violation, validate_unit
 from fgen.terrain.model import Area, Patch, Terrain, background, bounds_of
@@ -834,6 +834,31 @@ class MiningPatch:
             ),
             default=None,
         )
+        # per output: the earliest any of its drills can run dry (same bound)
+        drills = [pl for pl in unit.layout.placements if pl.name == p.drill]
+        belt_tiles = {
+            pl.position.floor()
+            for pl in unit.layout.placements
+            if gd.entity(pl.name).type == "transport-belt"
+        }
+        dry_by_tile: dict[Tile, float] = {}
+        for pl, a in zip(drills, areas, strict=True):
+            if a:
+                dry_by_tile[mining.drop_tile(gd, p.drill, pl.position, pl.direction)] = sum(
+                    patch.amounts.get(t, 0) for t in a
+                ) / (rate * max(sharers[t] for t in a))
+        new_ifaces = []
+        for i in unit.interfaces:
+            if i.kind == "item" and i.role == "output" and i.rate is not None:
+                t, bound = i.tile, None
+                while t in belt_tiles:
+                    if t in dry_by_tile:
+                        v = dry_by_tile[t]
+                        bound = v if bound is None else min(bound, v)
+                    t = t.neighbor(i.direction.opposite)
+                i = replace(i, rate_profile=RateProfile(i.rate, bound))
+            new_ifaces.append(i)
+        unit = Unit(unit.layout, new_ifaces, unit.meta)
         reasons: dict[str, int] = {}
         for d in dropped:
             reasons[d["reason"]] = reasons.get(d["reason"], 0) + 1

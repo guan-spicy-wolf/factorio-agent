@@ -41,3 +41,16 @@ def server(headless_workdir):
         yield srv
     finally:
         srv.stop()
+
+
+@pytest.fixture(scope="module")
+def ore_server(headless_workdir):
+    """A normally generated map (``config/ore-map-gen-settings.json``), one per module."""
+    from fgen.sim.server import HeadlessServer
+
+    srv = HeadlessServer(workdir=headless_workdir, map_gen_settings="ore-map-gen-settings.json")
+    srv.start()
+    try:
+        yield srv
+    finally:
+        srv.stop()

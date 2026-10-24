@@ -12,7 +12,7 @@ from dataclasses import replace
 
 from fgen.data.schema import GameData
 from fgen.geom.vec import Direction, Tile, Vec2
-from fgen.layout.model import LaneSpec, Layout, Unit
+from fgen.layout.model import Interface, LaneMaterial, LaneSpec, Layout, Pose, Predicate, Unit
 
 type _Fn[T] = Callable[[T], T]
 
@@ -24,6 +24,23 @@ def _swap_lane(lane: LaneSpec) -> LaneSpec:
     return {"left": "right", "right": "left"}.get(lane, lane)  # type: ignore[return-value]
 
 
+def _swap_requires(reqs: tuple[Predicate, ...]) -> tuple[Predicate, ...]:
+    return tuple(
+        replace(p, lane=_swap_lane(p.lane)) if isinstance(p, LaneMaterial) else p  # type: ignore[arg-type]
+        for p in reqs
+    )
+
+
+def _map_iface(i: Interface, tile: _Fn[Tile], d: _Fn[Direction], swap: bool) -> Interface:
+    return replace(
+        i,
+        tile=tile(i.tile),
+        direction=d(i.direction),
+        lane=_swap_lane(i.lane) if swap else i.lane,
+        requires=_swap_requires(i.requires) if swap else i.requires,
+    )
+
+
 def _map_layout(layout: Layout, pos: _Fn[Vec2], d: _Fn[Direction]) -> Layout:
     return Layout(
         [replace(p, position=pos(p.position), direction=d(p.direction)) for p in layout.placements]
@@ -31,15 +48,7 @@ def _map_layout(layout: Layout, pos: _Fn[Vec2], d: _Fn[Direction]) -> Layout:
 
 
 def _map_unit(unit: Unit, pos: _Fn[Vec2], tile: _Fn[Tile], d: _Fn[Direction], swap: bool) -> Unit:
-    ifaces = [
-        replace(
-            i,
-            tile=tile(i.tile),
-            direction=d(i.direction),
-            lane=_swap_lane(i.lane) if swap else i.lane,
-        )
-        for i in unit.interfaces
-    ]
+    ifaces = [_map_iface(i, tile, d, swap) for i in unit.interfaces]
     meta = dict(unit.meta)
     for key in GEOMETRIC_META_KEYS:
         if key in meta:
@@ -87,3 +96,23 @@ def normalize[T: (Layout, Unit)](obj: T, gd: GameData) -> T:
     layout = obj.layout if isinstance(obj, Unit) else obj
     lo, _ = layout.bounds(gd)
     return translate(obj, -lo.x, -lo.y)
+
+
+def place_unit(unit: Unit, origin: Tile, pose: Pose) -> Unit:
+    """Apply ``pose`` (mirror_x, then rotation) about the unit origin, then translate."""
+    u = mirror_x(unit) if pose.mirror else unit
+    if pose.rotation != Direction.N:
+        u = rotate(u, pose.rotation)
+    return translate(u, origin.x, origin.y)
+
+
+def place_interface(i: Interface, origin: Tile, pose: Pose) -> Interface:
+    """``place_unit`` for a single interface."""
+    out = i
+    if pose.mirror:
+        out = _map_iface(out, lambda t: t.mirror_x(), lambda x: x.mirror_x(), True)
+    if pose.rotation != Direction.N:
+        q = pose.rotation.quarter_turns
+        rot = pose.rotation
+        out = _map_iface(out, lambda t: t.rotate(rot), lambda x: x.rotate_cw(q), False)
+    return replace(out, tile=out.tile.translate(origin.x, origin.y))

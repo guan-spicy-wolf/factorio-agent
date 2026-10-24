@@ -21,7 +21,7 @@ from fgen.data.schema import GameData
 from fgen.gen import throughput as tp
 from fgen.gen.base import Infeasible
 from fgen.gen.smelting_row import SmeltingRowParams, generate
-from fgen.layout.model import Interface, Unit
+from fgen.layout.model import Interface, LaneMaterial, MinRate, Predicate, Unit
 from fgen.layout.render import LEGEND, to_ascii
 
 FURNACES = ("stone-furnace", "steel-furnace", "electric-furnace")
@@ -111,7 +111,21 @@ def format_interface(i: Interface) -> str:
         f"{i.role:<6} {i.kind:<5} {i.material or '-':<12} at ({i.tile.x},{i.tile.y}) "
         f"facing {i.direction.name}{lane}{rate}"
     )
-    return "\n".join([head, *(f"         assumes: {a}" for a in i.assumptions)])
+    extra = [f"         requires: {format_predicate(r)}" for r in i.requires]
+    rp = i.rate_profile
+    if rp is not None and rp.depletion_s_lower_bound is not None:
+        extra.append(
+            f"         rate {rp.initial:g}/s until at least {rp.depletion_s_lower_bound:.0f}s"
+        )
+    return "\n".join([head, *extra, *(f"         assumes: {a}" for a in i.assumptions)])
+
+
+def format_predicate(r: Predicate) -> str:
+    if isinstance(r, LaneMaterial):
+        return f"{r.lane} lane carries only {r.material}"
+    if isinstance(r, MinRate):
+        return f"at least {r.value:g}/s"
+    return "compressed input (not checked)"
 
 
 def describe(unit: Unit, gd: GameData) -> str:

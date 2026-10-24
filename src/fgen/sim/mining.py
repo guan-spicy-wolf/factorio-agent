@@ -22,7 +22,7 @@ from fgen.gen.sweep import blueprint_sha
 from fgen.geom import mining as mining_geom
 from fgen.geom.vec import Tile
 from fgen.layout.model import Unit
-from fgen.sim import lua
+from fgen.sim import clear
 from fgen.sim.measure import RconCharacterizer
 from fgen.sim.server import HeadlessServer
 from fgen.sim.terrain import RconTerrain
@@ -76,16 +76,8 @@ def painted_measurer(srv: HeadlessServer, gd: GameData):  # -> Measurer
 def clear_obstacles(
     srv: HeadlessServer, area: Area, types: tuple[str, ...] = CLEARABLE_TYPES
 ) -> int:
-    (a, b) = area
-    box = lua.area_lit(((a.x, a.y), (b.x + 1, b.y + 1)))
-    out = srv.rcon.lua_json(
-        lua.PRELUDE
-        + "local n = 0\n"
-        + f"for _, e in pairs(S.find_entities_filtered{{area={box}, type={lua.lit(list(types))}}})"
-        + " do e.destroy(); n = n + 1 end\n"
-        + lua.emit("{destroyed=n}")
-    )
-    return int(out["destroyed"])
+    """Phase-2 wrapper of :func:`fgen.sim.clear.clear_obstacles` (trees and rocks)."""
+    return int(clear.clear_obstacles(srv.rcon, area, types)["total"])
 
 
 def real_map_row(

@@ -16,18 +16,6 @@ from fgen.terrain.model import area_tiles
 pytestmark = pytest.mark.headless
 
 
-@pytest.fixture(scope="module")
-def ore_server(headless_workdir):
-    from fgen.sim.server import HeadlessServer
-
-    srv = HeadlessServer(workdir=headless_workdir, map_gen_settings=mining.ORE_MAP)
-    srv.start()
-    try:
-        yield srv
-    finally:
-        srv.stop()
-
-
 def test_water_matches_tile_names(ore_server):
     rt = RconTerrain(ore_server.rcon)
     area = (Tile(-150, -150), Tile(149, 149))

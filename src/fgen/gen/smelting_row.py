@@ -31,7 +31,17 @@ from fgen.geom import belt as beltgeom
 from fgen.geom import footprint, inserter, pole
 from fgen.geom.vec import Direction, Tile
 from fgen.layout import transform as tf
-from fgen.layout.model import Interface, Layout, Placement, Unit
+from fgen.layout.model import (
+    Compressed,
+    Interface,
+    LaneMaterial,
+    Layout,
+    MinRate,
+    Placement,
+    Predicate,
+    RateProfile,
+    Unit,
+)
 from fgen.layout.validate import Violation, validate_unit
 
 _EPS = 1e-9
@@ -410,6 +420,12 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
     ifaces: list[Interface] = []
     ore_lane = "left" if p.fuel_lane else "both"
     feed_rate = plan.total * plan.ingredient_rate
+    # what the target rate needs (the furnaces could take more: feed_rate)
+    need_ore = p.target_rate * plan.ingredient_rate / plan.rate
+    need_fuel = p.target_rate * plan.fuel_rate / plan.rate
+    ore_req: list[Predicate] = [MinRate(need_ore), Compressed()]
+    if p.fuel_lane:
+        ore_req.insert(0, LaneMaterial("left", plan.ingredient))
     ifaces.append(
         Interface(
             "item",
@@ -424,6 +440,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 f"lane{'s' if ore_lane == 'both' else ''}, compressed enough for "
                 f"{feed_rate:g}/s"
             ],
+            requires=tuple(ore_req),
         )
     )
     if p.fuel_lane:
@@ -442,6 +459,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 plan.total * plan.fuel_rate if plan.burner else 0.0,
                 "input",
                 fuel_assumptions,
+                requires=(LaneMaterial("right", p.fuel), MinRate(need_fuel)) if plan.burner else (),
             )
         )
     ifaces.append(
@@ -454,6 +472,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
             plan.per_side * plan.rate,
             "output",
             [f"{product} on the {out_lane} (far) lane only; downstream must keep it moving"],
+            rate_profile=RateProfile(plan.per_side * plan.rate),
         )
     )
     if poles:

@@ -12,6 +12,50 @@ from fgen.geom.vec import Direction, Tile, Vec2
 type InterfaceKind = Literal["item", "fluid", "power"]
 type LaneSpec = Literal["left", "right", "both"] | None
 type Role = Literal["input", "output"]
+type Lane = Literal["left", "right"]
+
+
+@dataclass(frozen=True)
+class RateProfile:
+    """How an interface's rate behaves over time. ``initial`` equals ``Interface.rate``;
+    ``depletion_s_lower_bound`` (anchor units) is a time before which the rate does not
+    drop (no drill runs dry earlier); None for free units."""
+
+    initial: float
+    depletion_s_lower_bound: float | None = None
+
+
+@dataclass(frozen=True)
+class LaneMaterial:
+    """Only ``material`` may ride on ``lane`` of this belt interface."""
+
+    lane: Lane
+    material: str
+
+
+@dataclass(frozen=True)
+class MinRate:
+    """The interface needs at least ``value`` items (or fluid units) per second for the
+    unit to reach its target."""
+
+    value: float
+
+
+@dataclass(frozen=True)
+class Compressed:
+    """The unit assumes a fully compressed input (recorded only, never checked)."""
+
+
+type Predicate = LaneMaterial | MinRate | Compressed
+
+
+@dataclass(frozen=True)
+class Pose:
+    """Rigid placement of a unit: mirror (x -> -x) first if ``mirror``, then rotate so
+    that N becomes ``rotation``; translation is given separately (an origin tile)."""
+
+    rotation: Direction = Direction.N
+    mirror: bool = False
 
 
 @dataclass(frozen=True)
@@ -38,6 +82,22 @@ class Interface:
     rate: float | None
     role: Role
     assumptions: list[str] = field(default_factory=list)
+    rate_profile: RateProfile | None = None
+    requires: tuple[Predicate, ...] = ()
+
+    def world(self, origin: Tile, transform: Pose | None = None) -> Interface:
+        """This interface after placing its unit with ``transform`` at ``origin``."""
+        from fgen.layout.transform import place_interface
+
+        return place_interface(self, origin, transform or Pose())
+
+    def lane_materials(self) -> dict[str, str]:
+        """``LaneMaterial`` requirements as lane -> material."""
+        return {p.lane: p.material for p in self.requires if isinstance(p, LaneMaterial)}
+
+    def min_rate(self) -> float | None:
+        vals = [p.value for p in self.requires if isinstance(p, MinRate)]
+        return max(vals) if vals else None
 
 
 @dataclass(frozen=True)
@@ -89,3 +149,23 @@ class Unit:
     layout: Layout
     interfaces: list[Interface] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PlacedUnit:
+    """A unit placed on the map: ``pose`` applied about the unit's own origin, then
+    translated by ``origin``. ``name`` identifies it inside a site."""
+
+    name: str
+    unit: Unit
+    origin: Tile = field(default_factory=lambda: Tile(0, 0))
+    pose: Pose = field(default_factory=Pose)
+
+    def world(self) -> Unit:
+        """The unit in world coordinates (layout, interfaces and geometric meta)."""
+        from fgen.layout.transform import place_unit
+
+        return place_unit(self.unit, self.origin, self.pose)
+
+    def interfaces_world(self) -> list[Interface]:
+        return [i.world(self.origin, self.pose) for i in self.unit.interfaces]

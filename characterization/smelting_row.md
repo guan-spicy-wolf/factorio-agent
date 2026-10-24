@@ -25,8 +25,13 @@ legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furna
 
 interfaces:
   input  item  iron-ore     at (0,0) facing E lane=left 5/s
+           requires: left lane carries only iron-ore
+           requires: at least 5/s
+           requires: compressed input (not checked)
            assumes: transport-belt enters from the west, iron-ore on the left lane, compressed enough for 5/s
   input  item  coal         at (0,0) facing E lane=right 0.36/s
+           requires: right lane carries only coal
+           requires: at least 0.36/s
            assumes: coal on the right lane, at least 0.36/s
   output item  iron-plate   at (31,5) facing E lane=right 5/s
            assumes: iron-plate on the right (far) lane only; downstream must keep it moving
@@ -52,8 +57,13 @@ limits: machines=5, input:iron-ore=7.5, fuel:coal=104.167, output_belt=7.5, inse
 
 interfaces:
   input  item  iron-ore     at (0,0) facing E lane=left 7.5/s
+           requires: left lane carries only iron-ore
+           requires: at least 7.5/s
+           requires: compressed input (not checked)
            assumes: transport-belt enters from the west, iron-ore on the left lane, compressed enough for 7.5/s
   input  item  coal         at (0,0) facing E lane=right 0.54/s
+           requires: right lane carries only coal
+           requires: at least 0.54/s
            assumes: coal on the right lane, at least 0.54/s
   output item  iron-plate   at (47,5) facing E lane=right 7.5/s
            assumes: iron-plate on the right (far) lane only; downstream must keep it moving
@@ -85,8 +95,13 @@ Rendered with the first suggestion applied: `belt='fast-transport-belt'`.
 
 interfaces:
   input  item  iron-ore     at (0,0) facing E lane=left 15/s
+           requires: left lane carries only iron-ore
+           requires: at least 15/s
+           requires: compressed input (not checked)
            assumes: fast-transport-belt enters from the west, iron-ore on the left lane, compressed enough for 15/s
   input  item  coal         at (0,0) facing E lane=right 1.08/s
+           requires: right lane carries only coal
+           requires: at least 1.08/s
            assumes: coal on the right lane, at least 1.08/s
   output item  iron-plate   at (95,5) facing E lane=right 15/s
            assumes: iron-plate on the right (far) lane only; downstream must keep it moving
