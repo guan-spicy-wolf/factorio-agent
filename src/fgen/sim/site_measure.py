@@ -278,3 +278,104 @@ FLAT_NOTE = (
     "anchors), side-loaded by the router onto the row's left (ore) and right (coal) "
     "lanes; plates into a counting sink; power from an energy-interface fixture."
 )
+
+
+REAL_MEASURE = {"warmup_s": 120.0, "sample_s": 15.0, "samples": 6, "speed": 32.0}
+REAL_NOTE = (
+    "Normal map (`config/ore-map-gen-settings.json`). Clear obstacles around the nearest "
+    "iron patch -> snapshot -> one-belt mining unit (`site_sweep.choose_mining`: highest "
+    "belt rate not above the smelting row's ore lane, no drill dry within the window) -> "
+    "smelting row placed by `find_spot` next to the belt end, target = the belt's initial "
+    "rate -> router: ore belt side-loaded onto the row's left lane, coal fixture onto the "
+    "right lane, plates to a sink, one power fixture chained to both units."
+)
+
+
+def real_map_row(
+    srv: HeadlessServer,
+    gd: GameData,
+    *,
+    radius: int = 150,
+    margin: int = 45,
+    seed: int | None = None,
+    **opts: Any,
+) -> dict[str, Any]:
+    """M5: nearest iron patch -> mining unit -> belt -> smelting row, measured."""
+    from fgen.gen import site_sweep as ss
+    from fgen.geom.vec import Tile
+    from fgen.sim import clear
+    from fgen.sim.terrain import RconTerrain
+    from fgen.terrain.model import nearest_patch
+
+    mo = {**REAL_MEASURE, **opts}
+    rt = RconTerrain(srv.rcon)
+    whole: Area = (Tile(-radius, -radius), Tile(radius - 1, radius - 1))
+    snap = rt.snapshot(whole)
+    patch = nearest_patch(snap, "iron-ore", (0.0, 0.0), min_tiles=50)
+    if patch is None:
+        raise RuntimeError("no iron patch near the spawn")
+    lo, hi = patch.bounds
+    work: Area = (lo.translate(-margin, -margin), hi.translate(margin, margin))
+    before = clear.count_entities(srv.rcon, work)
+    cleared = clear.clear_obstacles(srv.rcon, work)  # clear -> snapshot, in this order
+    snap = rt.snapshot(work, generate=False)
+    patch = nearest_patch(snap, "iron-ore", (0.0, 0.0), min_tiles=50)
+    assert patch is not None
+    window = mo["warmup_s"] + mo["samples"] * mo["sample_s"]
+    from fgen.gen.smelting_row import SmeltingRowParams
+    from fgen.geom import belt as beltgeom
+
+    cap = beltgeom.lane_items_per_second(gd, SmeltingRowParams().belt)
+    mp = ss.choose_mining(gd, snap, patch, max_rate=cap, window_s=window)
+    site = ss.real_map_site(gd, snap, patch, mining=mp, max_rate=cap)
+    info = {
+        "seed": seed,
+        "patch": patch.describe(),
+        "work_area": [[work[0].x, work[0].y], [work[1].x, work[1].y]],
+        "entities_before_clearing": before,
+        "cleared": cleared,
+        "cliffs": before.get("cliff", 0),
+        "snapshot": {
+            "occupied_tiles": len(snap.occupied),
+            "water_tiles": len(snap.water),
+            "resource_tiles": len(snap.resources),
+        },
+    }
+    row, conn = ss.plan_row(ss.REAL_MAP, site, gd, note=REAL_NOTE, real_map=info)
+    area = site_area(site, conn, gd)
+    try:
+        m = measure(srv, gd, site, conn, **mo)
+    finally:
+        clear_site(srv, area)
+    row["measured"] = m
+    row["judged"] = ss.judge(row, m)
+    m["explanation"] = explain_real(row)
+    return row
+
+
+def explain_real(row: dict[str, Any]) -> str:
+    ports = {p["port"]: p for p in row["judged"]["ports"]}
+    ore_out = next((p for k, p in ports.items() if k.startswith("mine#")), None)
+    plates = next((p for k, p in ports.items() if p["material"] == "iron-plate"), None)
+    if ore_out is None or plates is None:
+        return ""
+    target = min(ore_out["contract"], 7.5)
+    ratio = (plates["measured"] or 0) / target if target else 0
+    parts = [
+        f"plates {plates['measured']:.3f}/s = {ratio:.1%} of min(ore belt initial "
+        f"{ore_out['contract']:g}, 7.5)/s;",
+        f"the drills produced {ore_out['measured']:.3f}/s ({ore_out['deviation']:+.1%} vs "
+        "their contract).",
+    ]
+    gap = (ore_out["measured"] or 0) - (plates["measured"] or 0)
+    if ratio < 1 - 1e-3 and gap > 0:
+        m = row["measured"]
+        span = (m["window_ticks"][1] - m["window_ticks"][0]) / m["ticks_per_second"]
+        parts.append(
+            f"Drills minus furnaces = {gap:.3f}/s, i.e. {gap * span:.0f} ore over the "
+            f"{span:g} s window still going into the route belt and the furnaces' input "
+            "slots: with supply equal to demand the row's buffers fill only slowly (the "
+            "upstream furnaces take first), so the plates lag the ore by that much; it is "
+            "not lost ore and not a lane problem (the left lane carries only ore)."
+        )
+    return " ".join(parts)

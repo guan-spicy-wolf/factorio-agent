@@ -140,3 +140,44 @@ def test_side_load_onto_underground_ends_fills_near_lane(server):
             assert left > 0 and right == 0, (w, out)
     finally:
         server.rcon.lua_json(lua.clear_area(((-2, 190), (16, 232))))
+
+
+CLIFFS = (
+    "west-to-east",
+    "north-to-south",
+    "west-to-north",
+    "north-to-east",
+    "east-to-south",
+    "south-to-west",
+)
+
+
+def test_snapshot_marks_every_cliff_tile_poles_cannot_use(server):
+    """Poles (and belts, pipes) next to cliffs: every tile where ``can_place_entity``
+    refuses them is in the snapshot's ``occupied`` (diagonal cliffs have rotated
+    bounding boxes; the snapshot takes the box of the rotated corners)."""
+    rcon = server.rcon
+    rcon.lua(
+        lua.PRELUDE
+        + f"for k, o in ipairs({lua.lit(list(CLIFFS))}) do\n"
+        + "  S.create_entity{name='cliff', position={260, 60 + k * 12}, cliff_orientation=o}\n"
+        + "end"
+    )
+    area = (Tile(250, 60), Tile(275, 140))
+    try:
+        occ = RconTerrain(rcon).occupied(area)
+        for name in ("small-electric-pole", "medium-electric-pole", "transport-belt", "pipe"):
+            res = rcon.lua_json(
+                lua.PRELUDE
+                + "local out = {}\n"
+                + "for x = 250, 275 do for y = 60, 140 do\n"
+                + f"  if not S.can_place_entity{{name={lua.lit(name)}, "
+                + "position={x + 0.5, y + 0.5}, force=F} then table.insert(out, {x, y}) end\n"
+                + "end end\n"
+                + lua.emit("out")
+            )
+            rows = res.values() if isinstance(res, dict) else res
+            blocked = {Tile(int(x), int(y)) for x, y in rows}
+            assert blocked and blocked <= occ, (name, sorted(blocked - occ)[:5])
+    finally:
+        rcon.lua_json(lua.clear_area(((250, 60), (276, 141))))

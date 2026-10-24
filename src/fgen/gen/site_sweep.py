@@ -19,6 +19,7 @@ case leaves the others as they were). The headless half is
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +94,42 @@ def flat_site(gd: GameData, terrain: Terrain, rate: float = 7.5) -> Site:
         Link(Endpoint("power", 0), Endpoint("row", pow_k), "power"),
     ]
     return Site(terrain, units, links)
+
+
+def choose_mining(
+    gd: GameData,
+    terrain: Terrain,
+    patch: Patch,
+    *,
+    max_rate: float,
+    window_s: float,
+    base: MiningPatchParams | None = None,
+) -> MiningPatchParams:
+    """One-belt mining params for the end-to-end site: for each axis and flow, raise
+    ``min_ore_amount_per_drill`` until no drill can run dry within ``window_s`` (as in
+    phase 2), then keep the variant with the highest belt rate not above ``max_rate``
+    (the lane the belt will be side-loaded onto). A fixed selection rule, not a search
+    over layouts: the generator's arrangement is unchanged."""
+    import math
+
+    from fgen.geom import mining as mining_geom
+
+    base = base or MiningPatchParams(max_belts=1)
+    need = math.ceil(mining_geom.drill_rate(gd, base.drill, base.resource) * window_s)
+    best: tuple[float, MiningPatchParams] | None = None
+    for axis in ("x", "y"):
+        for flow in ("+", "-"):
+            p = replace(base, axis=axis, flow=flow)  # type: ignore[arg-type]
+            u = gen_mining(p, gd, patch, terrain)
+            while (u.meta["anchor"]["first_dry_s_lower_bound"] or 0) < window_s:
+                p = replace(p, min_ore_amount_per_drill=max(need, p.min_ore_amount_per_drill * 2))
+                u = gen_mining(p, gd, patch, terrain)
+            rate = u.meta["anchor"]["rate"]
+            if rate <= max_rate + 1e-9 and (best is None or rate > best[0]):
+                best = (rate, p)
+    if best is None:
+        raise ValueError(f"every one-belt variant exceeds {max_rate:g}/s")
+    return best[1]
 
 
 def real_map_site(
