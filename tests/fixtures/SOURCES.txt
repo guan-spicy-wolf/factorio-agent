@@ -1,0 +1,12 @@
+Real 2.0 blueprint strings used by tests/test_blueprint.py (decode / re-encode round trip).
+
+factorio.com, factorioprints.com, factorio.school and factoriobin.com were unreachable from
+this environment (proxy 403). The strings below were copied from the MIT-licensed
+redruin1/factorio-draftsman repository (shallow clone of main, 2026-10-24):
+
+  bp_2.0.28_power_switch.txt  test/test_blueprint.py   (2 small poles + power switch, 2.0 "wires")
+  bp_2.0.28_trains.txt        test/test_blueprint.py   (legacy rails, locomotives, wagons, stop)
+  bp_2.0.55_assembler.txt     README.md                (assembling-machine-3 + tiles)
+
+Whether each string was exported by the game itself or produced by draftsman is NOT
+confirmed (see docs/VERIFY.md).
