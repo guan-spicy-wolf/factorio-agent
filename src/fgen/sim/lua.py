@@ -121,35 +121,81 @@ def read_entities(a: Area) -> str:
     )
 
 
-def build_blueprint(bp_string: str, position: tuple[float, float], revive: bool = True) -> str:
-    """Import a blueprint string into a script inventory, build it as ghosts at
-    ``position`` (force_build) and optionally revive every ghost.
+def build_blueprint(
+    bp_string: str, position: tuple[float, float], expect_min: tuple[float, float] | None = None
+) -> str:
+    """Import a blueprint string into a script inventory, build it as ghosts with
+    ``force_build`` and revive every ghost.
 
-    Reports ``import`` (0 ok, -1 ok with errors, 1 failed), the ghosts' inner names and
-    positions, and the number revived.
+    ``build_blueprint`` positions a blueprint by its own snapping rules (the blueprint's
+    bounding-box centre goes near ``position``), so when ``expect_min`` is given (the
+    smallest entity x and y the ghosts must have in the world) the snippet measures the
+    offset of the first build, destroys those ghosts and builds again shifted by it.
+
+    Reports ``import`` (0 ok, -1 ok with errors, 1 failed), ``ghosts``, ``revived``,
+    ``failed`` (ghosts that would not revive), ``offset`` left after correction, and
+    ``unit_numbers`` of the revived entities.
     """
+    exp = "nil" if expect_min is None else lit(list(expect_min))
     return (
         PRELUDE
         + "local inv = game.create_inventory(1); local st = inv[1]\n"
         + f"local r = st.import_stack({lit(bp_string)})\n"
-        + "local out = {import=r, ghosts={}, revived=0, failed={}}\n"
-        + "if r ~= 1 and st.is_blueprint_setup() then\n"
-        + f"  local gs = st.build_blueprint{{surface=S, force=F, position={lit(list(position))}, "
-        + "force_build=true, raise_built=false}\n"
-        + "  for _, g in pairs(gs) do\n"
-        + "    table.insert(out.ghosts, {name=g.ghost_name, position=g.position})\n"
-        + "  end\n"
-        + ("  for _, g in pairs(gs) do\n" if revive else "  for _, g in pairs({}) do\n")
-        + "    if g.valid then\n"
-        + "      local name, pos = g.ghost_name, g.position\n"
-        + "      local _, ent = g.revive{raise_revive=false}\n"
-        + "      if ent then out.revived = out.revived + 1 else "
-        + "table.insert(out.failed, {name=name, position=pos}) end\n"
-        + "    end\n"
-        + "  end\n"
-        + "end\n"
-        + "inv.destroy()\n"
+        + f"local P = {lit(list(position))}; local EXP = {exp}\n"
+        + "local out = {import=r, ghosts=0, revived=0, failed={}, offset={0, 0}, unit_numbers={}}\n"
+        + """
+local function build(pos)
+  return st.build_blueprint{surface=S, force=F, position=pos, force_build=true,
+                            raise_built=false}
+end
+local function offset(gs)
+  local mx, my = math.huge, math.huge
+  for _, g in pairs(gs) do
+    mx = math.min(mx, g.position.x); my = math.min(my, g.position.y)
+  end
+  return {EXP[1] - mx, EXP[2] - my}
+end
+if r ~= 1 and st.is_blueprint_setup() then
+  local gs = build(P)
+  if EXP and #gs > 0 then
+    local d = offset(gs)
+    if math.abs(d[1]) > 1e-6 or math.abs(d[2]) > 1e-6 then
+      for _, g in pairs(gs) do if g.valid then g.destroy() end end
+      gs = build({P[1] + d[1], P[2] + d[2]})
+    end
+    out.offset = offset(gs)
+  end
+  out.ghosts = #gs
+  for _, g in pairs(gs) do
+    if g.valid then
+      local name, pos = g.ghost_name, g.position
+      local _, ent = g.revive{raise_revive=false}
+      if ent then
+        out.revived = out.revived + 1
+        table.insert(out.unit_numbers, ent.unit_number)
+      else
+        table.insert(out.failed, {name=name, position=pos})
+      end
+    end
+  end
+end
+inv.destroy()
+"""
         + emit("out")
+    )
+
+
+def export_blueprint(a: Area) -> str:
+    """Let the game make a blueprint of the area (``create_blueprint``) and print its
+    ``export_stack()`` string under ``string``."""
+    return (
+        PRELUDE
+        + "local inv = game.create_inventory(1); local st = inv[1]\n"
+        + "st.set_stack{name='blueprint'}\n"
+        + f"st.create_blueprint{{surface=S, force=F, area={area_lit(a)}}}\n"
+        + "local s = st.export_stack()\n"
+        + "inv.destroy()\n"
+        + emit("{string=s}")
     )
 
 

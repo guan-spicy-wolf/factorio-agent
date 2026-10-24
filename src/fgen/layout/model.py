@@ -64,6 +64,17 @@ class Layout:
         lo, hi = self.bounds(gd)
         return hi.x - lo.x + 1, hi.y - lo.y + 1
 
+    def normalized(self, gd: GameData) -> list[Any]:
+        """Order-free comparison keys; see :mod:`fgen.layout.compare`."""
+        from fgen.layout.compare import normalized
+
+        return normalized(self, gd)
+
+    def same_as(self, other: Layout, gd: GameData) -> bool:
+        from fgen.layout.compare import same
+
+        return same(self, other, gd)
+
     def tile_index(self, gd: GameData) -> dict[Tile, list[int]]:
         """Tile -> indices of placements covering it."""
         idx: dict[Tile, list[int]] = {}

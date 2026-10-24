@@ -67,3 +67,39 @@ def center_for_tile_anchor(
     """Centre position that puts the footprint's top-left tile at ``top_left``."""
     w, h = size(gd, name, direction)
     return Vec2(top_left.x + w / 2, top_left.y + h / 2)
+
+
+# Entity types whose direction the game does not keep: it reports direction 0 (N) for
+# them whatever the blueprint said (checked on 2.0.76 by the deployer round trip).
+DIRECTIONLESS_TYPES = frozenset(
+    {
+        "furnace",
+        "container",
+        "logistic-container",
+        "infinity-container",
+        "electric-pole",
+        "pipe",
+        "electric-energy-interface",
+        "lab",
+        "beacon",
+        "radar",
+        "roboport",
+    }
+)
+
+
+def direction_matters(gd: GameData, name: str, recipe: str | None = None) -> bool:
+    """Whether an entity's direction is meaningful (kept by the game).
+
+    Assembling machines only keep their direction when their recipe moves fluids (an
+    assembler without a recipe, or with an item-only recipe, reads back as N).
+    """
+    e = gd.entity(name)
+    if e.type in DIRECTIONLESS_TYPES:
+        return False
+    if e.type == "assembling-machine":
+        r = gd.recipes.get(recipe) if recipe else None
+        if r is None:
+            return False
+        return any(n not in gd.items for n, _ in (*r.ingredients, *r.results))
+    return True

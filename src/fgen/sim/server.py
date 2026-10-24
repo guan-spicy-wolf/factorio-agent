@@ -244,8 +244,23 @@ class HeadlessServer:
         if self._own_workdir:
             shutil.rmtree(self.workdir, ignore_errors=True)
 
+    @classmethod
+    def attach(cls, port: int, password: str, host: str = "127.0.0.1") -> HeadlessServer:
+        """Wrap an already running server (not owned: :meth:`stop` leaves it alone)."""
+        srv = cls(workdir=Path(tempfile.gettempdir()), port=port, password=password)
+        srv._own_workdir = False
+        srv._attached = True
+        srv.rcon = RconClient(host, port, password)
+        srv.rcon.connect()
+        srv._prime()
+        return srv
+
+    _attached = False
+
     @property
     def running(self) -> bool:
+        if self._attached:
+            return True
         return self.proc is not None and self.proc.poll() is None
 
     @property
