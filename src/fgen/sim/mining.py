@@ -11,12 +11,15 @@ a player would), and the generator runs on the snapshot.
 
 from __future__ import annotations
 
+import math
+from dataclasses import replace
 from typing import Any
 
 from fgen.data.schema import GameData
 from fgen.gen.mining_patch import MiningPatchParams, generate, render
 from fgen.gen.mining_sweep import REAL_MAP, Case, compare, contract
 from fgen.gen.sweep import blueprint_sha
+from fgen.geom import mining as mining_geom
 from fgen.geom.vec import Tile
 from fgen.layout.model import Unit
 from fgen.sim import lua
@@ -108,7 +111,14 @@ def real_map_row(
     snap = rt.snapshot(area, generate=False)
     patch = nearest_patch(snap, p.resource, (0.0, 0.0), min_tiles=min_tiles)
     assert patch is not None
+    # the contract assumes ore under every drill: skip drills that could run dry within
+    # the measurement (edge tiles of real patches hold only a few ore)
+    window_s = MEASURE["warmup_s"] + MEASURE["samples"] * MEASURE["sample_s"]
     unit = generate(p, gd, patch, snap)
+    need = math.ceil(mining_geom.drill_rate(gd, p.drill, p.resource) * window_s)
+    while (unit.meta["anchor"]["first_dry_s_lower_bound"] or 0) < window_s:
+        p = replace(p, min_ore_amount_per_drill=max(need, p.min_ore_amount_per_drill * 2))
+        unit = generate(p, gd, patch, snap)
     ch = RconCharacterizer(srv, gd, origin=ORIGIN)
     m = measure_unit(ch, unit)
     c = contract(unit)

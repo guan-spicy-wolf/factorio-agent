@@ -284,3 +284,31 @@ def test_cli_gen_mining(capsys):
     out = capsys.readouterr().out
     assert "D" in out and ":" in out and "output item" in out
     assert main(["gen", "mining", "--case", "rect-1belt", "--drill", "pumpjack"]) == 2
+
+
+def test_low_ore_and_mixed_resources(gd):
+    # rich core, poor fringe column on the west, stone touching the east edge
+    shape = paint.rectangle(0, 0, 18, 10, AMOUNT)
+    shape.update(paint.rectangle(-3, 0, 3, 10, 2))
+    res = paint.to_resources(shape, "iron-ore")
+    res.update(paint.to_resources(paint.rectangle(18, 0, 6, 10, AMOUNT), "stone"))
+    terrain = Terrain.from_resources(res)
+    patch = max(patches(terrain, "iron-ore"), key=lambda q: len(q.tiles))
+    unit = generate(MiningPatchParams(), gd, patch, terrain)
+    for d in _drills(unit, gd):
+        area = mining.search_tiles(gd, d.name, d.position)
+        assert not any(terrain.resources.get(t, ("",))[0] == "stone" for t in area)
+    assert unit.meta["dropped_by_reason"].get("mixed_resource")
+    mixed = generate(MiningPatchParams(allow_mixed=True), gd, patch, terrain)
+    assert mixed.meta["anchor"]["drills"] > unit.meta["anchor"]["drills"]
+    need = 100
+    rich = generate(MiningPatchParams(min_ore_amount_per_drill=need), gd, patch, terrain)
+    assert rich.meta["dropped_by_reason"].get("low_ore")
+    for d in _drills(rich, gd):
+        area = mining.search_tiles(gd, d.name, d.position)
+        assert sum(patch.amounts.get(t, 0) for t in area) >= need
+    a = rich.meta["anchor"]
+    assert (
+        a["first_dry_s_lower_bound"]
+        >= need / mining.drill_rate(gd, "electric-mining-drill", "iron-ore") / 4
+    )

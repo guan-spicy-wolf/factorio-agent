@@ -22,7 +22,7 @@ terrain: : ore (mined resource)  , other resource  ~ water  x blocked/occupied
 
 ## rect-1belt
 
-iron-ore rectangle(x=10, y=10, w=24, h=8, amount=5000) — single belt. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=1, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore rectangle(x=10, y=10, w=24, h=8, amount=5000) — single belt. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=1, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    5678901234567890123456789012345678
@@ -44,7 +44,7 @@ drills 15, poles 5, lanes per belt [(5, 10)] (left, right), dropped {'max_belts'
 
 ## rect-2belt
 
-iron-ore rectangle(x=10, y=10, w=24, h=13, amount=5000) — two belts. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=2, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore rectangle(x=10, y=10, w=24, h=13, amount=5000) — two belts. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=2, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    5678901234567890123456789012345678
@@ -73,7 +73,7 @@ drills 30, poles 10, lanes per belt [(5, 10), (5, 10)] (left, right), dropped {'
 
 ## l-shape
 
-iron-ore l_shape(x=10, y=10, w=24, h=20, arm=8, amount=5000). `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=None, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore l_shape(x=10, y=10, w=24, h=20, arm=8, amount=5000). `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=None, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    5678901234567890123456789012345678
@@ -113,7 +113,7 @@ drills 40, poles 14, lanes per belt [(0, 4), (2, 4), (5, 10), (5, 10)] (left, ri
 
 ## rect-hole
 
-iron-ore rectangle(x=10, y=10, w=24, h=18, amount=5000) minus 8x8 hole at (18,15). `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=None, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore rectangle(x=10, y=10, w=24, h=18, amount=5000) minus 8x8 hole at (18,15). `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=None, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    5678901234567890123456789012345678
@@ -153,7 +153,7 @@ drills 54, poles 20, lanes per belt [(0, 10), (5, 10), (4, 10), (5, 10)] (left, 
 
 ## blob
 
-iron-ore blob(seed=7, n_tiles=300, amount=5000, cx=30, cy=25) — random 4-connected blob. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=None, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore blob(seed=7, n_tiles=300, amount=5000, cx=30, cy=25) — random 4-connected blob. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='small-electric-pole', axis='x', max_belts=None, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    4567890123456789012345678901234
@@ -193,7 +193,7 @@ drills 41, poles 15, lanes per belt [(0, 4), (4, 8), (5, 9), (4, 7)] (left, righ
 
 ## rect-axis-y
 
-iron-ore rectangle(x=10, y=10, w=20, h=24, amount=5000) — belts flow south, medium poles. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='medium-electric-pole', axis='y', max_belts=None, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore rectangle(x=10, y=10, w=20, h=24, amount=5000) — belts flow south, medium poles. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='medium-electric-pole', axis='y', max_belts=None, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    789012345678901234567890123456
@@ -239,7 +239,7 @@ drills 61, poles 16, lanes per belt [(0, 10), (7, 10), (7, 10), (7, 10)] (left, 
 
 ## lane-capacity
 
-iron-ore rectangle(x=10, y=10, w=66, h=3, amount=5000) — long thin patch: drills cut at lane capacity. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='medium-electric-pole', axis='x', max_belts=1, min_ore_tiles_per_drill=1, flow='+'`
+iron-ore rectangle(x=10, y=10, w=66, h=3, amount=5000) — long thin patch: drills cut at lane capacity. `resource='iron-ore', drill='electric-mining-drill', belt='transport-belt', pole='medium-electric-pole', axis='x', max_belts=1, min_ore_tiles_per_drill=1, min_ore_amount_per_drill=0, allow_mixed=False, flow='+'`
 
 ```
    6789012345678901234567890123456789012345678901234567890123456789012345678
@@ -257,4 +257,61 @@ iron-ore rectangle(x=10, y=10, w=66, h=3, amount=5000) — long thin patch: dril
 ```
 
 drills 30, poles 8, lanes per belt [(15, 15)] (left, right), dropped {'pole_slot': 8, 'lane_capacity': 8}; suggestions: belt='fast-transport-belt', axis='y'
+
+## Real map (end to end)
+
+Normal map generation (`config/ore-map-gen-settings.json`, fixed seed, default resources, no enemies). The terrain is read back with `RconTerrain.snapshot`, the nearest iron-ore patch (4-connected) is passed to the generator, the unit is built from its blueprint and measured like the painted cases. Produced by `uv run fgen sweep mining --real-map`.
+
+- map: seed 20261024, snapshot [[-150, -150], [149, 149]], cleared 150 trees/rocks over the patch first
+- patch: iron-ore: 352 tiles in 29x29 at (-66,35)..(-38,63), 156978 total
+- params: `allow_mixed=False, axis='x', belt='transport-belt', drill='electric-mining-drill', flow='+', max_belts=None, min_ore_amount_per_drill=260, min_ore_tiles_per_drill=1, pole='small-electric-pole', resource='iron-ore'`
+- drills 32, poles 17, belts 5, contract 16/s, est. depletion 2.7 h (whole patch) / 2.2 h (tiles under drills)
+- dropped: {'low_ore': 12, 'mixed_resource': 9, 'pole_slot': 10}
+
+Measured in 2.1.23: total 16/s vs contract 16/s; max |Δ| per belt 0.0%.
+
+| case | shape | drills | belts | contract/s per belt | measured/s | Δ | dropped | drill status probes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| real-map | iron-ore: 352 tiles in 29x29 at (-66,35)..(-38,63), 156978 total | 32 | 5 | 1 / 1.5 / 5.5 / 6 / 2 | 1 / 1.5 / 5.5 / 6 / 2 | +0.0% / +0.0% / +0.0% / +0.0% / +0.0% | low_ore 12, mixed_resource 9, pole_slot 10 | working 8320 |
+
+```
+   0987654321098765432109876543210987654
+29 .................,,,,................
+30 .............,,,,,,,,,,..............
+31 ............,,,,,,,,,,,.P.....P......
+32 ..........,,,,,,,,,,,,,,...>>>>......
+33 ........,,,,,,,,,,,,,,,,..DDDDDD....,
+34 .......,,,,,,,,,,,,,,,,...DDDDDD....,
+35 ......,,,,,,,,,,,,,,,,,...DDDDDD...,,
+36 ......,,,,,,,,,,,,,,,,,...DDD:.....,,
+37 .......,,,,,,,,,,,,,,,,,..DDD:.....,,
+38 .......,,,,,,,,,,,,,,,,,P:DDD:P....,,
+39 .......,,,,,,,,,,,,,,,,,:::>>>>....,,
+40 ......,,,,,,,,,,,,,,,,,:::DDDDDD....,
+41 ......,,,,,,,,,,,,,,,,,:::DDDDDD....,
+42 ......,,,,,,,,,,,,,,,,::::DDDDDD....,
+43 .......,,,,,,,,,,,,,::::::DDD::.DDD..
+44 .......,,,,,,,,,,,::::::::DDD:::DDD..
+45 ......P..,,,P,,:::P:::::P:DDD:P:DDD..
+46 ......>>>>>>>>>>>>>>>>>>>>>>>>>>>>...
+47 .....DDDDDDDDDDDDDDDDDDDDDDDDDDD.....
+48 .....DDDDDDDDDDDDDDDDDDDDDDDDDDD.....
+49 ....:DDDDDDDDDDDDDDDDDDDDDDDDDDD.....
+50 ..DDD:::DDD:::DDD:::DDD:::DDD........
+51 ..DDD:::DDD:::DDD:::DDD:::DDD........
+52 ..DDD:P:DDD:P:DDD:P:DDD:P:DDD.P......
+53 ...>>>>>>>>>>>>>>>>>>>>>>>>>.........
+54 ....::..DDDDDDDDDDDDDDDDDDDDD........
+55 ....:...DDDDDDDDDDDDDDDDDDDDD........
+56 ....:...DDDDDDDDDDDDDDDDDDDDD........
+57 ..............DDD:::DDD..............
+58 ..............DDD:::DDD..............
+59 ............P.DDD:P:DDD.P............
+60 ...............>>>>>>>...............
+61 .................DDDDDD..............
+62 .................DDDDDD..............
+63 .................DDDDDD..............
+64 .....................................
+65 .....................................
+```
 

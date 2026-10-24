@@ -21,7 +21,9 @@ Derived from ``GameData`` (no entity names in the logic):
 
 - drill positions: drop tile and footprint from the prototype; a slot gets a drill when
   its search area (``fgen.geom.mining.search_tiles``) holds at least
-  ``min_ore_tiles_per_drill`` patch tiles, its footprint and belt tile are buildable;
+  ``min_ore_tiles_per_drill`` patch tiles and ``min_ore_amount_per_drill`` ore, no other
+  resource the drill would mine too (unless ``allow_mixed``; reasons ``low_ore`` /
+  ``mixed_resource``), and its footprint and belt tile are buildable;
 - the x/y phase of the grid is searched (``period`` x drill width options) for the most
   drills;
 - poles: the in-slot offset whose supply area reaches the drill rows of both sides
@@ -80,6 +82,8 @@ class MiningPatchParams:
     axis: Literal["x", "y"] = "x"  # belt direction
     max_belts: int | None = None  # None: as many belt rows as the patch takes
     min_ore_tiles_per_drill: int = 1  # patch tiles needed in a drill's search area
+    min_ore_amount_per_drill: int = 0  # ore (sum of amounts) needed in its search area
+    allow_mixed: bool = False  # allow drills whose search area holds another resource
     flow: Literal["+", "-"] = "+"  # belts flow toward the + (E/S) or - (W/N) end of axis
 
 
@@ -140,6 +144,8 @@ def _check_names(p: MiningPatchParams, gd: GameData) -> None:
         raise Infeasible("axis must be 'x' or 'y' and flow '+' or '-'")
     if p.min_ore_tiles_per_drill < 1:
         raise Infeasible("min_ore_tiles_per_drill must be >= 1", ["min_ore_tiles_per_drill=1"])
+    if p.min_ore_amount_per_drill < 0:
+        raise Infeasible("min_ore_amount_per_drill must be >= 0", ["min_ore_amount_per_drill=0"])
     if p.max_belts is not None and p.max_belts < 1:
         raise Infeasible("max_belts must be >= 1 or None", ["max_belts=None"])
     res = gd.resource(p.resource)
@@ -278,24 +284,43 @@ def _candidates(
     ys = [y for y in range(oy0 - margin, oy1 + margin + 1) if (y - py) % g.period == 0]
     xs = [x for x in range(ox0 - margin, ox1 + margin + 1) if (x - px) % g.w == 0]
     rows = dict(enumerate(ys))
-    count = _counter(ore)
+    count = _counter({t: 1 for t in ore})
+    amount = _counter({t: terr.resources[t][1] for t in ore if t in terr.resources})
+    window = (ox0 - margin, oy0 - margin, ox1 + margin, oy1 + margin)
+    cats = set(gd.entity(p.drill).resource_categories)
+    other = {
+        t: 1
+        for t, (name, _) in terr.resources.items()
+        if name != p.resource
+        and window[0] <= t.x <= window[2]
+        and window[1] <= t.y <= window[3]
+        and (name not in gd.resources or gd.resource(name).category in cats)
+    }
+    mixed = _counter(other) if other else None
     cands: list[_Cand] = []
+    dropped: list[dict[str, Any]] = []
     for i, yb in rows.items():
         for side in SIDES:
             d = FACING[side]
             for x in xs:
                 a = _drill_anchor(g, side, x, yb)
                 pos = footprint.center_for_tile_anchor(gd, p.drill, a, d)
-                n = count(*mining.search_range(gd, p.drill, pos))
+                box = mining.search_range(gd, p.drill, pos)
+                n = count(*box)
                 if n < p.min_ore_tiles_per_drill:
                     continue
                 ts = footprint.tiles_of(gd, p.drill, pos, d)
                 if not terr.can_build_all(ts) or not terr.can_build(Tile(x, yb)):
                     continue
                 k = (x - px) // g.w
-                cands.append(_Cand(i, side, k, x, pos, n, g.lanes[side]))
+                c = _Cand(i, side, k, x, pos, n, g.lanes[side])
+                if amount(*box) < p.min_ore_amount_per_drill:
+                    dropped.append(_drop(c, "low_ore", f"{amount(*box)} ore in its area"))
+                elif mixed is not None and not p.allow_mixed and mixed(*box):
+                    dropped.append(_drop(c, "mixed_resource"))
+                else:
+                    cands.append(c)
     # a belt must run from each drill to the row's downstream end
-    dropped: list[dict[str, Any]] = []
     kept: list[_Cand] = []
     for i, yb in rows.items():
         cs = [c for c in cands if c.row == i]
@@ -313,16 +338,18 @@ def _candidates(
     return rows, kept, dropped
 
 
-def _counter(ore: frozenset[Tile]):  # -> Callable[[int, int, int, int], int]
-    """O(1) count of ``ore`` tiles in an inclusive rectangle (2D prefix sums)."""
-    lo, hi = bounds_of(ore)
+def _counter(weights: dict[Tile, int]):  # -> Callable[[int, int, int, int], int]
+    """O(1) sum of ``weights`` over an inclusive tile rectangle (2D prefix sums)."""
+    if not weights:
+        return lambda x0, y0, x1, y1: 0
+    lo, hi = bounds_of(weights)
     w, h = hi.x - lo.x + 1, hi.y - lo.y + 1
     pre = [[0] * (w + 1) for _ in range(h + 1)]
     for j in range(h):
         row, above = pre[j + 1], pre[j]
         acc = 0
         for i in range(w):
-            acc += Tile(lo.x + i, lo.y + j) in ore
+            acc += weights.get(Tile(lo.x + i, lo.y + j), 0)
             row[i + 1] = above[i + 1] + acc
 
     def count(x0: int, y0: int, x1: int, y1: int) -> int:
@@ -620,6 +647,10 @@ class MiningPatch:
             changes: list[dict[str, Any]] = [{"axis": "y" if p.axis == "x" else "x"}]
             if p.min_ore_tiles_per_drill > 1:
                 changes.append({"min_ore_tiles_per_drill": 1})
+            if p.min_ore_amount_per_drill > 0:
+                changes.append({"min_ore_amount_per_drill": 0})
+            if not p.allow_mixed:
+                changes.append({"allow_mixed": True})
             changes += [
                 {"drill": n}
                 for n in _names_of_type(gd, "mining-drill")
@@ -782,10 +813,27 @@ class MiningPatch:
         total_rate = sum(b["rate"] for b in res.belts)
         lo, hi = patch.bounds
         covered: set[Tile] = set()
-        for pl in unit.layout.placements:
-            if pl.name == p.drill:
-                covered |= mining.search_tiles(gd, p.drill, pl.position)
+        areas = [
+            mining.search_tiles(gd, p.drill, pl.position) & patch.tiles
+            for pl in unit.layout.placements
+            if pl.name == p.drill
+        ]
+        sharers: dict[Tile, int] = {}
+        for a in areas:
+            covered |= a
+            for t in a:
+                sharers[t] = sharers.get(t, 0) + 1
         covered_amount = sum(a for t, a in patch.amounts.items() if t in covered)
+        # no drill can run dry before its own ore is gone even if every neighbour sharing
+        # a tile mined only from its area: amount / (rate x most sharers on one tile)
+        first_dry = min(
+            (
+                sum(patch.amounts.get(t, 0) for t in a) / (rate * max(sharers[t] for t in a))
+                for a in areas
+                if a
+            ),
+            default=None,
+        )
         reasons: dict[str, int] = {}
         for d in dropped:
             reasons[d["reason"]] = reasons.get(d["reason"], 0) + 1
@@ -806,6 +854,7 @@ class MiningPatch:
                 "rate": total_rate,
                 "est_depletion_s": patch.total_amount / total_rate if total_rate else None,
                 "est_depletion_covered_s": covered_amount / total_rate if total_rate else None,
+                "first_dry_s_lower_bound": first_dry,
             },
             "belts": [
                 {
