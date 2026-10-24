@@ -288,3 +288,51 @@ def test_fluid_points_rotate_with_entity(gd: GameData, d: Direction) -> None:
         for t, dd in base:
             assert t in tiles  # connection position lies inside the entity
             assert t.neighbor(dd) not in tiles  # and points outward
+
+
+# ---- mining ------------------------------------------------------------------------
+
+
+def test_drill_search_area_and_drop(gd):
+    from fgen.geom import footprint, mining
+    from fgen.geom.vec import Direction, Tile
+
+    for name in ("electric-mining-drill", "big-mining-drill"):
+        e = gd.entity(name)
+        w, _ = footprint.size(gd, name)
+        c = footprint.center_for_tile_anchor(gd, name, Tile(0, 0))
+        ts = mining.search_tiles(gd, name, c)
+        # tiles whose centre lies within the search square (derived, not a constant)
+        r = e.resource_searching_radius
+        expect = {
+            Tile(x, y)
+            for x in range(-20, 20)
+            for y in range(-20, 20)
+            if abs(x + 0.5 - c.x) <= r and abs(y + 0.5 - c.y) <= r
+        }
+        assert ts == expect
+        assert footprint.tiles_of(gd, name, c, Direction.N) <= ts
+        # output lands just outside the footprint, in front, centre column
+        for d in (Direction.N, Direction.E, Direction.S, Direction.W):
+            t = mining.drop_tile(gd, name, c, d)
+            fp = footprint.tiles_of(gd, name, c, d)
+            assert t not in fp and t - d.tile_offset() in fp
+        assert mining.drop_tile(gd, name, c, Direction.N) == Tile((w - 1) // 2, -1)
+    # near lane: N-facing drill under an east-flowing belt drops on the south (right) lane
+    c = footprint.center_for_tile_anchor(gd, "electric-mining-drill", Tile(0, 0))
+    assert mining.drop_lane(gd, "electric-mining-drill", c, Direction.N, Direction.E) == "right"
+    assert mining.drop_lane(gd, "electric-mining-drill", c, Direction.N, Direction.W) == "left"
+    assert mining.drop_lane(gd, "electric-mining-drill", c, Direction.S, Direction.E) == "left"
+
+
+def test_drill_rate_and_can_mine(gd):
+    from fgen.geom import mining
+
+    e, r = gd.entity("electric-mining-drill"), gd.resource("iron-ore")
+    assert mining.drill_rate(gd, "electric-mining-drill", "iron-ore") == e.mining_speed / (
+        r.mining_time
+    )
+    assert mining.can_mine(gd, "electric-mining-drill", "coal")
+    assert not mining.can_mine(gd, "electric-mining-drill", "crude-oil")
+    assert not mining.can_mine(gd, "electric-mining-drill", "uranium-ore")  # needs acid
+    assert not mining.can_mine(gd, "pumpjack", "iron-ore")

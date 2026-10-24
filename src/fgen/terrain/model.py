@@ -174,3 +174,34 @@ def nearest_patch(
 
     cands = [p for p in patches(terrain, resource) if len(p.tiles) >= min_tiles]
     return min(cands, key=dist) if cands else None
+
+
+ORE_CHAR = ":"
+OTHER_RESOURCE_CHAR = ","
+WATER_CHAR = "~"
+LAND_CHAR = "."
+BLOCKED_CHAR = "x"
+
+
+def background(
+    terrain: Terrain, resource: str | None = None, area: Area | None = None
+) -> dict[Tile, str]:
+    """Characters for ASCII rendering under a layout: ``:`` for ``resource`` (or any
+    resource when None), ``,`` for other resources, ``~`` water, ``x`` tiles that are
+    neither buildable nor water, or occupied. Plain land is left out (renders ``.``).
+    ``area`` limits the output (default: everything but plain land)."""
+    out: dict[Tile, str] = {}
+    keep = area_tiles(area) if area is not None else None
+    for t, (name, _) in terrain.resources.items():
+        out[t] = ORE_CHAR if resource is None or name == resource else OTHER_RESOURCE_CHAR
+    for t in terrain.water:
+        out[t] = WATER_CHAR
+    for t in terrain.occupied:
+        out[t] = BLOCKED_CHAR
+    if keep is not None:
+        for t in keep:
+            if t not in out:
+                plain = t in terrain.buildable or t in terrain.water
+                out[t] = LAND_CHAR if plain else BLOCKED_CHAR
+        out = {t: c for t, c in out.items() if t in keep}
+    return out

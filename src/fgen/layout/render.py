@@ -3,9 +3,15 @@
 One character per tile. Belts show their flow direction; multi-tile entities fill all
 of their tiles with the same letter. Tiles covered by more than one entity show ``#``;
 entities missing from the game data are drawn as ``?`` on their centre tile.
+
+``background`` (tile -> character) fills tiles no entity covers, e.g. ore under a
+mining layout (:func:`fgen.terrain.model.background`: ``:`` ore, ``,`` other resource,
+``~`` water, ``x`` blocked or occupied).
 """
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from fgen.data.schema import GameData
 from fgen.geom import footprint
@@ -37,6 +43,7 @@ LEGEND = (
     "legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furnace  "
     "A machine  D drill  = pipe  c chest  O offshore pump  T tank  # overlap  ? unknown"
 )
+TERRAIN_LEGEND = "terrain: : ore (mined resource)  , other resource  ~ water  x blocked/occupied"
 
 
 def char_for(gd: GameData, p: Placement) -> str:
@@ -65,9 +72,18 @@ def to_grid(gd: GameData, layout: Layout) -> dict[Tile, str]:
     return grid
 
 
-def to_ascii(layout: Layout, gd: GameData, *, rulers: bool = False) -> str:
-    """Render ``layout``; ``rulers`` adds x (mod 10) and y coordinate labels."""
+def to_ascii(
+    layout: Layout,
+    gd: GameData,
+    *,
+    rulers: bool = False,
+    background: Mapping[Tile, str] | None = None,
+) -> str:
+    """Render ``layout``; ``rulers`` adds x (mod 10) and y coordinate labels;
+    ``background`` characters show through where no entity is (and widen the frame)."""
     grid = to_grid(gd, layout)
+    if background:
+        grid = {**background, **grid}
     if not grid:
         return ""
     x0 = min(t.x for t in grid)

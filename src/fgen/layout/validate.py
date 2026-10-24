@@ -13,6 +13,10 @@ Checked codes:
                               a declared terminal
 ``underground.unpaired``      underground belt without a partner within ``max_distance``
 ``fluid.unintended_adjacency`` two touching fluid connections carry different fluids
+``drill.output_blocked``      a mining drill's output tile holds no belt or container and
+                              is no item interface
+``drill.no_ore``              no minable resource tile in a drill's search area (only
+                              checked when ``resources`` is given)
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from fgen.data.schema import GameData
-from fgen.geom import fluid, footprint, inserter, pole
+from fgen.geom import fluid, footprint, inserter, mining, pole
 from fgen.geom.vec import Direction, Tile
 from fgen.layout.model import Interface, Layout, Placement, Unit
 
@@ -261,6 +265,49 @@ def _check_fluids(c: _Ctx, fluids: Mapping[int, str]) -> None:
             )
 
 
+DRILL_OUTPUT_TYPES = frozenset({"transport-belt", "underground-belt", "splitter", "container"})
+
+
+def _check_drills(
+    c: _Ctx,
+    item_iface_tiles: frozenset[Tile],
+    resources: Mapping[Tile, tuple[str, int]] | None,
+) -> None:
+    for i, p in c.known():
+        e = c.gd.entity(p.name)
+        if e.type != "mining-drill" or not p.direction.is_cardinal:
+            continue
+        if e.vector_to_place_result is not None and e.output_fluid_box is None:
+            t = mining.drop_tile(c.gd, p.name, p.position, p.direction)
+            if t not in item_iface_tiles and not any(
+                c.type_of(j) in DRILL_OUTPUT_TYPES for j in c.occupants(t) if j != i
+            ):
+                c.violations.append(
+                    Violation(
+                        "drill.output_blocked",
+                        f"#{i} {p.name}: output tile {t} holds no belt or container",
+                        frozenset({t}),
+                    )
+                )
+        if resources is None or e.resource_searching_radius is None:
+            continue
+        ok = False
+        for t in mining.search_tiles(c.gd, p.name, p.position):
+            r = resources.get(t)
+            if r is None:
+                continue
+            name = r[0]
+            if name not in c.gd.resources or mining.can_mine(c.gd, p.name, name):
+                ok = True
+                break
+        if not ok:
+            c.violations.append(
+                Violation(
+                    "drill.no_ore", f"#{i} {p.name}: nothing to mine in its search area", c.tiles[i]
+                )
+            )
+
+
 def validate(
     layout: Layout,
     gd: GameData,
@@ -268,9 +315,12 @@ def validate(
     *,
     belt_terminals: Iterable[Tile] = (),
     fluids: Mapping[int, str] | None = None,
+    resources: Mapping[Tile, tuple[str, int]] | None = None,
 ) -> list[Violation]:
     """Check every invariant. ``belt_terminals`` are tiles where a belt is meant to end
-    (e.g. the far end of a feed belt); ``fluids`` maps placement index -> fluid name."""
+    (e.g. the far end of a feed belt); ``fluids`` maps placement index -> fluid name;
+    ``resources`` (tile -> (name, amount), e.g. ``Terrain.resources``) enables
+    ``drill.no_ore``."""
     c = _Ctx(layout, gd)
     item_ifaces = frozenset(i.tile for i in interfaces if i.kind == "item")
     out_ifaces = frozenset(i.tile for i in interfaces if i.kind == "item" and i.role == "output")
@@ -280,10 +330,13 @@ def validate(
     _check_belts(c, out_ifaces, frozenset(belt_terminals))
     _check_undergrounds(c)
     _check_fluids(c, fluids or {})
+    _check_drills(c, item_ifaces, resources)
     return c.violations
 
 
-def validate_unit(unit: Unit, gd: GameData) -> list[Violation]:
+def validate_unit(
+    unit: Unit, gd: GameData, resources: Mapping[Tile, tuple[str, int]] | None = None
+) -> list[Violation]:
     """``validate`` with the unit's interfaces and ``meta['belt_terminals']``."""
     return validate(
         unit.layout,
@@ -291,4 +344,5 @@ def validate_unit(unit: Unit, gd: GameData) -> list[Violation]:
         unit.interfaces,
         belt_terminals=unit.meta.get("belt_terminals", ()),
         fluids=unit.meta.get("fluids"),
+        resources=resources,
     )
