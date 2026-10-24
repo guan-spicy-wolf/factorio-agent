@@ -10,3 +10,11 @@ redruin1/factorio-draftsman repository (shallow clone of main, 2026-10-24):
 
 Whether each string was exported by the game itself or produced by draftsman is NOT
 confirmed (see docs/VERIFY.md).
+
+Exported by the game itself (Factorio headless 2.0.76, base only): the layout was placed
+with fgen.sim.deployer (blueprint import + revive), then LuaItemStack.create_blueprint
+over its area and export_stack():
+
+  bp_2.0.76_game_smelting.txt      smelting row, SmeltingRowParams(target_rate=5)
+  bp_2.0.76_game_undergrounds.txt  tests/test_sim_deployer.py::undergrounds
+  bp_2.0.76_game_machines.txt      tests/test_sim_deployer.py::machines_and_poles

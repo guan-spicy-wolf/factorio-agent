@@ -82,7 +82,7 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | `mirror` 字段 | 编解码原样保留；`layout.transform.mirror_*` **不**翻转实体的 `mirror` 标志（种子集里没有不对称实体） | `blueprint/*`, `layout/transform.py` | 阶段 5 放化工厂时核对游戏翻转蓝图时是否切换该标志 | 低 |
 | 不可旋转实体的方向 | 变换会旋转所有实体的 direction（熔炉、箱子旋转后可能导出非 0 direction） | `layout/transform.py` | 导入旋转后的蓝图看游戏是否接受/忽略 | 已核对（2.0.76）：旋转后的冶炼列（熔炉、电杆写成 E/S/W）导入无报错；游戏读回熔炉、箱子、电杆、管道以及无流体配方的组装机 direction 一律为 0。比较规则放在 `geom.footprint.direction_matters` |
 | 蓝图级字段 | 导入只取 `entities`；`wires`、`tiles`、`schedules` 等丢弃 | `blueprint/import_.py` | 设计选择；注意维基仍写 1.1 的 `neighbours`（铜线）字段，2.0 改为蓝图级 `wires`，维基页标注"需更新到 2.0" | — |
-| 真实蓝图样本 | factorio.com、factorioprints.com、factorio.school、factoriobin.com 均被代理 403；改从 MIT 许可的 `redruin1/factorio-draftsman` 仓库取了 3 条 2.0 字符串（2.0.28 ×2、2.0.55 ×1），见 `tests/fixtures/SOURCES.txt`。**无法确认它们是游戏导出的，还是 draftsman 生成的** | `tests/fixtures/` | 从游戏里直接导出几条蓝图替换/补充 | — |
+| 真实蓝图样本 | factorio.com、factorioprints.com、factorio.school、factoriobin.com 均被代理 403；改从 MIT 许可的 `redruin1/factorio-draftsman` 仓库取了 3 条 2.0 字符串（2.0.28 ×2、2.0.55 ×1），见 `tests/fixtures/SOURCES.txt`。**无法确认它们是游戏导出的，还是 draftsman 生成的** | `tests/fixtures/` | 从游戏里直接导出几条蓝图替换/补充 | 已补充（2.0.76）：另有 3 条由 headless 游戏自己 `create_blueprint` + `export_stack` 导出（`bp_2.0.76_game_*.txt`），`test_game_export_matches_generator` 核对游戏导出的冶炼列与生成器布局一致 |
 
 ## 6. 吞吐模型
 
@@ -99,3 +99,18 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 字段名与嵌套路径 | 见 `fgen.data.loader.fields_used()`；如 `energy_source.type`、`energy_source.fuel_categories`（缺省时读 `fuel_category`）、`fluid_box.pipe_connections`、抽油机 `output_fluid_box.pipe_connections` | `data/loader.py` | 对真实 dump 跑 `load_dump`，对每个字段统计"有值的原型数"，为 0 的就是路径错了 | 已核对（2.0.76）：`load_dump` 成功加载全部 53 个原型 |
 | 向量/包围盒编码 | dump 中向量可能是 `[x, y]` 或 `{"x","y"}`，包围盒可能是 `[[..],[..]]` 或 `{"left_top","right_bottom"}`，两种都接受 | `data/loader.py` | 看真实 dump 原文 | 已核对（2.0.76）：dump 使用 `[x, y]` 与 `[[..],[..]]`；抽油机连接用 `positions` 列表 |
 | dump 不含版本与常数 | `load_dump` 的版本号与引擎常数缺省取自种子文件 | `data/loader.py` | 调用时显式传 `version=` | — |
+
+## 8. 仍未核对的条目（阶段 1 结束时）
+
+| 条目 | 为什么还没核 | 建议做法 |
+| --- | --- | --- |
+| 每秒 tick 数（60） | 实测全部按 tick 计时，这个常数只用来把 tick 换成秒；带速、产率的实测与按 60 换算的预测一致，算间接证据 | 无需专门核对 |
+| 带道数、配方默认耗时 | 常识/原型文档；dump 里种子配方都显式写了 `energy_required` | 无需专门核对 |
+| 拉线距离（异种电杆、恰在边界） | 只测了同种小杆相距 7 格（< 7.5）能连；导出器只在 `wire_reaches` 为真时写 `wires`，游戏若拒绝过长的线会表现为 `power` 检查失败 | 在 verify 里加：小杆–中杆、恰好 7.5 格与 8 格各一例 |
+| 供电区：多格实体部分落入覆盖区 | `fgen verify` #9 只用了 1×1 爪子 | 用 2×2 熔炉、3×3 组装机沿覆盖区边缘逐格平移 |
+| 液体连接格式 / 液体相邻判定 | 阶段 1 没有液体单元；往返测试只证明管道、地下管能放下并保持方向，没有测连通 | 阶段 5 前放管道相邻、错位、地下管配对各一例，读 `fluidbox.get_connections` |
+| 爪子吞吐估算（带到炉/带到箱） | 冶炼列里爪子从不成为瓶颈 | 单爪从满带取到箱子测 60 秒，各爪种、带速各一组 |
+| `mirror` 字段 | 种子集里没有不对称实体 | 阶段 5（化工厂） |
+| 组装机方向（流体配方） | `direction_matters` 对流体配方组装机保留方向，但种子里没有流体配方，未实测 | 阶段 5 |
+| 采矿机（电钻）放置 | 平地测试场没有资源，蓝图里的电钻建不出来（ghost 不生成）；往返测试因此不含电钻 | 阶段 2 在测试场里用 `surface.create_entity{name='iron-ore', amount=...}` 铺矿再测 |
+

@@ -1,7 +1,9 @@
-"""Interfaces to a running Factorio (headless). Not available in phase 0.
+"""Interfaces to a running Factorio (headless).
 
-Only ``Protocol`` definitions and ``NotAvailable`` stand-ins live here; no RCON,
-socket or subprocess code (plan §4.7).
+Only ``Protocol`` definitions and the ``NotAvailable`` stand-ins (the default when no
+server is available) live here; no RCON, socket or subprocess code (plan §4.7). The
+headless implementations are ``fgen.sim.deployer.RconDeployer`` and
+``fgen.sim.measure.RconCharacterizer``.
 """
 
 from __future__ import annotations

@@ -138,3 +138,15 @@ def test_export_without_poles_has_no_wires(gd: GameData) -> None:
 
     bp = layout_to_blueprint(Layout([Placement("inserter", Vec2(0.5, 0.5))]), gd)
     assert "wires" not in bp["blueprint"]
+
+
+def test_game_export_matches_generator(gd: GameData) -> None:
+    """The game's own export of a deployed smelting row is our layout up to translation."""
+    from fgen.gen.smelting_row import SmeltingRowParams, generate
+    from fgen.layout import transform as tf
+    from fgen.layout.compare import describe_diff, same
+
+    path = Path(__file__).parent / "fixtures" / "bp_2.0.76_game_smelting.txt"
+    game = tf.normalize(blueprint_to_layout(codec.decode(path.read_text())), gd)
+    ours = tf.normalize(generate(SmeltingRowParams(target_rate=5), gd).layout, gd)
+    assert same(game, ours, gd), describe_diff(game, ours, gd)
