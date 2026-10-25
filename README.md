@@ -7,7 +7,8 @@ agent 的产出是**生成器参数或生成器代码**，不是坐标。总体�
 ## 快速开始
 
 ```sh
-uv sync
+uv sync                      # core: no third-party runtime dependency
+uv sync --extra solver       # optional: OR-Tools for the CP-SAT period backend (`--backend cpsat`)
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 
@@ -21,6 +22,7 @@ uv run fgen sweep site                                    # 平地整站（规�
 uv run fgen gen direct-chain --recipe electronic-circuit --rate 2   # 直插链：求解器周期 × k
 uv run fgen gen direct-chain --rate 2 --layout baseline             # 手写经典 3:2 排法
 uv run fgen gen direct-chain --rate 2 --extra-inserters long-handed-inserter   # 允许混长臂爪
+uv run fgen gen direct-chain --rate 2 --backend cpsat                # CP-SAT 周期后端（需 --extra solver）
 uv run fgen sweep direct-chain                            # 写 characterization/direct_chain.{jsonl,md}
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>

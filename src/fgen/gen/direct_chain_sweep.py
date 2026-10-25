@@ -113,8 +113,8 @@ def _render(gd: GameData, p: DirectChainParams) -> list[str]:
     lines = [
         f"### {p.layout}, target {p.target_rate:g}/s",
         "",
-        f"Period {per_meta['width']}x{per_meta['height']} (ratio {unit.meta['ratio'][0]}:"
-        f"{unit.meta['ratio'][1]}), {unit.meta['periods']} period(s).",
+        f"Period {per_meta['width']}x{per_meta['height']} (ratio "
+        f"{':'.join(map(str, unit.meta['ratio']))}), {unit.meta['periods']} period(s).",
         "",
         "```",
         to_ascii(unit.layout, gd, rulers=True),
@@ -194,7 +194,7 @@ def write(gd: GameData, out_dir: Path, measure: Measurer | None = None) -> tuple
             _cells(
                 *head,
                 "ok",
-                f"{r['ratio'][0]}:{r['ratio'][1]}",
+                ":".join(map(str, r["ratio"])),
                 r["periods"],
                 f"{per['width']}x{per['height']}",
                 q["area"],

@@ -51,16 +51,19 @@ from fgen.gen import throughput as tp
 from fgen.geom import belt as beltgeom
 from fgen.geom import footprint, inserter, pole
 from fgen.geom.vec import CARDINALS, Direction, Tile
-from fgen.layout.model import Placement
 from fgen.solve.period import (
     FLOW,
-    BeltRow,
     CycleFlows,
     CycleSpec,
     Period,
+    PlacedInserter,
+    SkeletonBelt,
+    assemble,
+    belt_sets,
     ceil_div,
     center,
     flows,
+    input_lanes_ok,
 )
 
 _EPS = 1e-9
@@ -98,12 +101,6 @@ class _Timeout(Exception):
 # a requirement: kind (in / out / link), machine, belt or -1, candidate slots, fewest
 # inserters, rate (items/s) the chosen inserters must carry
 type _Req = tuple[str, int, int, list["_Slot"], int, float]
-
-
-@dataclass(frozen=True)
-class _Belt:
-    role: str  # input / output
-    materials: tuple[str, ...]  # input: one per lane (or one for both); output: product
 
 
 @dataclass(frozen=True)
@@ -225,34 +222,11 @@ class _Search:
             raise _Timeout
 
     # ---- skeletons -------------------------------------------------------------------
-    def belt_sets(self) -> Iterator[list[_Belt]]:
-        """Input materials partitioned into belts of <= lanes materials, plus one output
-        belt per product."""
+    def belt_sets(self) -> list[list[SkeletonBelt]]:
+        return belt_sets(self.flows, self.lanes)
 
-        def partitions(items: list[str]) -> Iterator[list[list[str]]]:
-            if not items:
-                yield []
-                return
-            first, rest = items[0], items[1:]
-            for part in partitions(rest):
-                for k in range(len(part)):
-                    if len(part[k]) < self.lanes:
-                        yield [*part[:k], [first, *part[k]], *part[k + 1 :]]
-                yield [[first], *part]
-
-        outs = [_Belt("output", (o,)) for o in self.flows.outputs]
-        for part in partitions(list(self.flows.inputs)):
-            yield [_Belt("input", tuple(sorted(b))) for b in part] + outs
-
-    def input_lanes_ok(self, belts: list[_Belt]) -> bool:
-        for b in belts:
-            if b.role != "input":
-                continue
-            lanes = 1 if len(b.materials) > 1 else self.lanes
-            for m in b.materials:
-                if self.flows.input_rate[m] * self.repeats > self.lane_cap * lanes + _EPS:
-                    return False
-        return True
+    def input_lanes_ok(self, belts: list[SkeletonBelt]) -> bool:
+        return input_lanes_ok(belts, self.flows, self.lane_cap, self.lanes, self.repeats)
 
     # ---- one size ----------------------------------------------------------------------
     def size(self, w: int, h: int) -> Iterator[Period]:
@@ -281,7 +255,7 @@ class _Search:
     def machine_tiles(self) -> int:
         return sum(self.msize[si][0] * self.msize[si][1] for si in self.machine_stage)
 
-    def skeleton(self, belts: list[_Belt], ys: list[int]) -> Iterator[Period]:
+    def skeleton(self, belts: list[SkeletonBelt], ys: list[int]) -> Iterator[Period]:
         w = self.w
         self.belts, self.ys = belts, ys
         self.belt_rows = {y: k for k, y in enumerate(ys)}
@@ -917,65 +891,28 @@ class _Search:
 
     # ---- result ------------------------------------------------------------------------
     def build(self, chosen: list[_Slot], placed: list[Any], poles: list[Any]) -> Period:
-        gd, spec, w = self.gd, self.spec, self.w
-        ps: list[Placement] = []
-        stage_of: list[int | None] = []
-        for y in self.ys:
-            for x in range(w):
-                ps.append(Placement(spec.belt, center(gd, spec.belt, x, y, FLOW), FLOW))
-                stage_of.append(None)
-        for m, x, y, _mask, _, _ in sorted(placed, key=lambda p: p[0]):
-            st = spec.stages[self.machine_stage[m]]
-            ps.append(
-                Placement(st.machine, center(gd, st.machine, x, y), extra={"recipe": st.recipe})
+        w = self.w
+        machines = [
+            (self.machine_stage[m], x, y) for m, x, y, *_ in sorted(placed, key=lambda p: p[0])
+        ]
+        ins = [
+            PlacedInserter(
+                s.tile % w, s.tile // w, s.direction, s.ins, s.kind, s.machine, s.other, s.lane
             )
-            stage_of.append(self.machine_stage[m])
-        for s in sorted(chosen, key=lambda s: s.tile):
-            tx, ty = s.tile % w, s.tile // w
-            ps.append(Placement(s.ins, center(gd, s.ins, tx, ty), s.direction))
-            stage_of.append(None)
-        for x, y, _mask, _cx, _cy in sorted(poles, key=lambda q: (q[0], q[1])):
-            ps.append(Placement(spec.pole, center(gd, spec.pole, x, y)))
-            stage_of.append(None)
-        rows: list[BeltRow] = []
-        for b, y in zip(self.belts, self.ys, strict=True):
-            if b.role == "input":
-                if len(b.materials) == 1:
-                    lanes: tuple[tuple[Any, str], ...] = (
-                        ("left", b.materials[0]),
-                        ("right", b.materials[0]),
-                    )
-                    r = self.flows.input_rate[b.materials[0]] / 2
-                    rates: tuple[tuple[Any, float], ...] = (("left", r), ("right", r))
-                else:
-                    lanes = tuple(zip(("left", "right"), b.materials, strict=False))
-                    rates = tuple((ln, self.flows.input_rate[mat]) for ln, mat in lanes)
-                rows.append(BeltRow(y, "input", lanes, rates))
-            else:
-                load: dict[str, float] = {}
-                k = self.belts.index(b)
-                for m in {s.machine for s in chosen if s.kind == "out" and s.other == k}:
-                    outs = [s for s in chosen if s.kind == "out" and s.machine == m]
-                    rate = self.flows.stages[self.machine_stage[m]].rate
-                    for s in outs:
-                        load[str(s.lane)] = load.get(str(s.lane), 0.0) + rate / len(outs)
-                rows.append(
-                    BeltRow(
-                        y,
-                        "output",
-                        tuple((ln, b.materials[0]) for ln in sorted(load)),  # type: ignore[misc]
-                        tuple(sorted(load.items())),  # type: ignore[arg-type]
-                    )
-                )
-        links = Counter(
-            (s.other, s.machine) for s in chosen if s.kind == "link"
-        )  # (producer, consumer) -> inserters
-        meta = {
-            "links": sorted([p, c, n] for (p, c), n in links.items()),
-            "inserters": len(chosen),
-            "poles": len(poles),
-        }
-        return Period(w, self.h, tuple(ps), tuple(rows), spec, tuple(stage_of), meta)
+            for s in chosen
+        ]
+        return assemble(
+            self.spec,
+            self.gd,
+            w,
+            self.h,
+            self.belts,
+            self.ys,
+            machines,
+            ins,
+            [(x, y) for x, y, *_ in poles],
+            self.flows,
+        )
 
 
 class _PoleBudget(Exception):
@@ -1025,7 +962,7 @@ def _hall_ok(groups: list[tuple[int, int]], blocked: int) -> bool:
     return all(bin(m & ~blocked).count("1") >= need for m, need in groups)
 
 
-def _belt_key(k: tuple[tuple[_Belt, ...], tuple[int, ...]]) -> tuple[Any, ...]:
+def _belt_key(k: tuple[tuple[SkeletonBelt, ...], tuple[int, ...]]) -> tuple[Any, ...]:
     return (tuple((b.role, b.materials) for b in k[0]), k[1])
 
 

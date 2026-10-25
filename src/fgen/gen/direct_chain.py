@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass, replace
+from fractions import Fraction
 from typing import Any, Literal
 
 from fgen.data.schema import GameData
@@ -47,11 +48,12 @@ from fgen.layout.model import (
     Unit,
 )
 from fgen.layout.validate import Violation, validate_unit
-from fgen.solve import cycle
-from fgen.solve.period import FLOW, CycleSpec, Period, Stage, check_period, flows, ratio, tile
+from fgen.solve import cpsat, cycle
+from fgen.solve.period import FLOW, CycleSpec, Period, Stage, check_period, flows, tile
 
 _EPS = 1e-9
 MAX_CONSUMERS = 4  # search-size bound on consumers per period (not a game number)
+BACKENDS = ("exhaustive", "cpsat")
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,9 @@ class DirectChainParams:
     extra_inserters: tuple[str, ...] = ()  # solver: further tiers it may mix in
     layout: Literal["solver", "baseline"] = "solver"
     time_limit: float = 60.0  # solver, seconds per period
+    backend: Literal["exhaustive", "cpsat"] = "exhaustive"  # solver backend (plan-phase4b)
+    belt_inputs: tuple[str, ...] = ()  # craftable ingredients that come on belts anyway
+    max_consumers: int = MAX_CONSUMERS  # final machines per period at most (search size)
 
 
 @dataclass(frozen=True)
@@ -74,7 +79,8 @@ class ChainPlan:
     exact: tuple[int, int]  # exact producer : consumer ratio
     rate: float  # product per period
     product: str
-    intermediate: str
+    intermediate: str  # the first intermediate (the only one for one-level chains)
+    intermediates: tuple[str, ...] = ()
 
 
 def _names_of_type(gd: GameData, type_: str) -> list[str]:
@@ -107,6 +113,10 @@ def _check_names(p: DirectChainParams, gd: GameData) -> None:
         )
     if p.layout not in ("solver", "baseline"):
         raise Infeasible(f"layout={p.layout!r}", ["layout='solver'", "layout='baseline'"])
+    if p.backend not in BACKENDS:
+        raise Infeasible(f"backend={p.backend!r}", [f"backend={b!r}" for b in BACKENDS])
+    if p.layout == "solver" and p.backend == "cpsat" and not cpsat.available():
+        raise Infeasible(cpsat.INSTALL_HINT, ["backend='exhaustive'"], [{"backend": "exhaustive"}])
 
 
 def _producer(gd: GameData, item: str, machine: str, exclude: str) -> str | None:
@@ -119,44 +129,93 @@ def _producer(gd: GameData, item: str, machine: str, exclude: str) -> str | None
     return names[0] if names else None
 
 
+def tree(p: DirectChainParams, gd: GameData) -> list[tuple[str, str]]:
+    """``(item, recipe)`` for every ingredient (at any depth) the machine can craft,
+    except ``belt_inputs``: the intermediates the chain makes itself."""
+    raw = set(p.belt_inputs)
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    queue = [p.recipe]
+    while queue:
+        for n, _ in gd.recipe(queue.pop(0)).ingredients:
+            if n in raw or n in seen:
+                continue
+            r = _producer(gd, n, p.machine, p.recipe)
+            if r is not None:
+                seen.add(n)
+                out.append((n, r))
+                queue.append(r)
+    return out
+
+
+def exact_counts(p: DirectChainParams, gd: GameData) -> dict[str, Fraction]:
+    """Machines of each intermediate recipe per final machine, both at full speed
+    (copper cable per circuit machine: 3/2)."""
+    inter = tree(p, gd)
+    q: dict[str, Fraction] = {p.recipe: Fraction(1)}
+    pending = list(inter)
+    while pending:
+        for item, r in list(pending):
+            users = [rr for rr in q if item in dict(gd.recipe(rr).ingredients)]
+            if any(item in dict(gd.recipe(r2).ingredients) and r2 not in q for _, r2 in pending):
+                continue  # a consumer of this item has no count yet
+            need = sum(
+                (q[u] * Fraction(tp.ingredient_rates(gd, u, p.machine)[item]) for u in users),
+                Fraction(0),
+            )
+            q[r] = (need / Fraction(tp.machine_rate(gd, r, p.machine))).limit_denominator(1000)
+            pending.remove((item, r))
+    return {r: v for r, v in q.items() if r != p.recipe}
+
+
 def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
-    """Every period type (``a' : b'`` for ``b' = 1..b``) with the count ``k`` that meets
+    """Every period type (``b'`` final machines for ``b' = 1..max_consumers``, each
+    intermediate recipe ``ceil(b' * exact)`` machines) with the count ``k`` that meets
     the target, fewest machines first (ties: closer to the exact ratio)."""
     _check_names(p, gd)
-    ings = [n for n, _ in gd.recipe(p.recipe).ingredients]
-    made = {i: _producer(gd, i, p.machine, p.recipe) for i in ings}
-    inter = [i for i, r in made.items() if r is not None]
+    inter = tree(p, gd)
     if not inter:
         raise Infeasible(
             f"no ingredient of {p.recipe} can be made by {p.machine}: nothing to chain"
         )
-    if len(inter) > 1:
-        raise Infeasible(f"{p.recipe}: {len(inter)} craftable ingredients; this family chains one")
-    item = inter[0]
-    prod_recipe = str(made[item])
-    if any(_producer(gd, n, p.machine, prod_recipe) for n, _ in gd.recipe(prod_recipe).ingredients):
-        raise Infeasible(f"{prod_recipe} has craftable ingredients itself; one level only")
-    q = ratio(gd, (p.recipe, p.machine), (prod_recipe, p.machine))
+    q = exact_counts(p, gd)
     rate = tp.machine_rate(gd, p.recipe, p.machine)
     product = tp.main_product(gd, p.recipe)[0]
+    den = math.lcm(*(v.denominator for v in q.values()))
     options = []
-    for b in range(1, min(q.denominator, MAX_CONSUMERS) + 1):
-        a = math.ceil(b * q - _EPS)
+    for b in range(1, min(den, p.max_consumers) + 1):
+        counts = {r: math.ceil(b * v - _EPS) for r, v in q.items()}
         k = max(1, math.ceil(p.target_rate / (b * rate) - _EPS))
         spec = CycleSpec(
-            (Stage(p.recipe, p.machine, b), Stage(prod_recipe, p.machine, a)),
+            (
+                Stage(p.recipe, p.machine, b),
+                *(Stage(r, p.machine, counts[r]) for _, r in inter),
+            ),
             p.inserter,
             p.pole,
             p.belt,
             tuple(p.extra_inserters),
         )
+        exact: tuple[int, ...]
+        if len(inter) == 1:
+            v = q[inter[0][1]]
+            exact = (v.numerator, v.denominator)
+        else:
+            exact = (*(int(x * den) for x in q.values()), den)
         options.append(
             (
-                (k * (a + b), -b),
-                ChainPlan(spec, k, (q.numerator, q.denominator), b * rate, product, item),
+                (k * (b + sum(counts.values())), -b),
+                ChainPlan(
+                    spec, k, exact, b * rate, product, inter[0][0], tuple(i for i, _ in inter)
+                ),
             )
         )
     return [pl for _, pl in sorted(options, key=lambda o: o[0])]
+
+
+def _tag(spec: CycleSpec) -> str:
+    """Machine counts, intermediates first, the final stage last (``3:2``)."""
+    return ":".join(str(st.count) for st in (*spec.stages[1:], spec.stages[0]))
 
 
 def plan(p: DirectChainParams, gd: GameData) -> ChainPlan:
@@ -200,7 +259,7 @@ def _belt_suggestions(p: DirectChainParams, gd: GameData) -> list[dict[str, Any]
         pl = plan(q, gd)
         if _capacity_problems(pl, q, gd):
             continue
-        res = solve_period(pl.spec, gd, 1, p.time_limit)
+        res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend)
         if res.best is not None and lane_repeats(res.best, gd) >= pl.periods:
             out.append({"belt": n})
             break
@@ -214,7 +273,7 @@ def _belt_suggestions(p: DirectChainParams, gd: GameData) -> list[dict[str, Any]
             except Infeasible:
                 per = None
         else:
-            per = solve_period(pl.spec, gd, 1, p.time_limit).best
+            per = solve_period(pl.spec, gd, 1, p.time_limit, p.backend).best
         if per is not None:
             r = lane_repeats(per, gd) * pl.rate
             best = r if best is None else max(best, r)
@@ -233,19 +292,22 @@ _SOLVED: dict[tuple[Any, ...], cycle.SolveResult] = {}
 
 
 def solve_period(
-    spec: CycleSpec, gd: GameData, repeats: int, time_limit: float
+    spec: CycleSpec, gd: GameData, repeats: int, time_limit: float, backend: str = "exhaustive"
 ) -> cycle.SolveResult:
-    """The solver, memoised per process (generators and sweeps call it repeatedly)."""
-    key = (spec, id(gd), repeats, time_limit)
+    """The solver (``backend``: exhaustive search or CP-SAT, same interface), memoised
+    per process (generators and sweeps call it repeatedly)."""
+    key = (spec, id(gd), repeats, time_limit, backend)
     if key not in _SOLVED:
-        _SOLVED[key] = cycle.solve(spec, gd, repeats=repeats, time_limit=time_limit)
+        solve = cpsat.solve if backend == "cpsat" else cycle.solve
+        _SOLVED[key] = solve(spec, gd, repeats=repeats, time_limit=time_limit)
     return _SOLVED[key]
 
 
-def _solver_info(res: cycle.SolveResult, repeats: int) -> dict[str, Any]:
+def _solver_info(res: cycle.SolveResult, repeats: int, backend: str) -> dict[str, Any]:
     st = res.stats
     return {
         "layout": "solver",
+        "backend": backend,
         "solved_for_repeats": repeats,
         "seconds": round(st.seconds, 3),
         "timed_out": st.timed_out,
@@ -278,10 +340,10 @@ def period_for(pl: ChainPlan, p: DirectChainParams, gd: GameData) -> tuple[Perio
         if lane_repeats(per, gd) < pl.periods:
             raise Infeasible(f"{pl.periods} baseline periods overload a {p.belt} lane")
         return per, {"layout": "baseline"}
-    res = solve_period(pl.spec, gd, 1, p.time_limit)
+    res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend)
     reps = 1
     if res.best is not None and lane_repeats(res.best, gd) < pl.periods:
-        res = solve_period(pl.spec, gd, pl.periods, p.time_limit)
+        res = solve_period(pl.spec, gd, pl.periods, p.time_limit, p.backend)
         reps = pl.periods
     if res.best is None:
         st = res.stats
@@ -289,7 +351,7 @@ def period_for(pl: ChainPlan, p: DirectChainParams, gd: GameData) -> tuple[Perio
         raise Infeasible(
             f"solver found no {pl.spec.machines()}-machine period ({why}; {st.summary()})"
         )
-    return res.best, _solver_info(res, reps)
+    return res.best, _solver_info(res, reps, p.backend)
 
 
 def _lane(lanes: list[str]) -> Any:
@@ -347,8 +409,8 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                     sup, dem = f.internal[item]
                     note.append(
                         f"{item}: {sup:g}/s made per period, {dem:g}/s used (approximate "
-                        f"{pl.spec.stages[1].count}:{pl.spec.stages[0].count} ratio, exact "
-                        f"{pl.exact[0]}:{pl.exact[1]}); producers idle the rest"
+                        f"{_tag(pl.spec)} ratio, exact {':'.join(map(str, pl.exact))}); "
+                        "producers idle the rest"
                     )
             ifaces.append(
                 Interface(
@@ -430,14 +492,12 @@ class DirectChain:
         for pl in options:
             problems = _capacity_problems(pl, p, gd)
             if problems:
-                failures.append(
-                    f"{pl.spec.stages[1].count}:{pl.spec.stages[0].count}: " + "; ".join(problems)
-                )
+                failures.append(f"{_tag(pl.spec)}: " + "; ".join(problems))
                 continue
             try:
                 per, info = period_for(pl, p, gd)
             except Infeasible as exc:
-                tag = f"{pl.spec.stages[1].count}:{pl.spec.stages[0].count} x{pl.periods}"
+                tag = f"{_tag(pl.spec)} x{pl.periods}"
                 failures.append(f"{tag}: {exc.reason}")
                 continue
             found = (pl, per, info)
@@ -451,16 +511,16 @@ class DirectChain:
         if bad:
             raise Infeasible(f"period breaks its boundary conditions: {bad[:3]}")
         unit = build_unit(per, pl, p, gd)
-        a = pl.spec.stages[1].count
-        b = pl.spec.stages[0].count
         meta = {
             **unit.meta,
             "family": self.family,
             "params": asdict(p),
             "periods": pl.periods,
-            "ratio": [a, b],
+            "ratio": [*(st.count for st in pl.spec.stages[1:]), pl.spec.stages[0].count],
+            "stages": [st.recipe for st in (*pl.spec.stages[1:], pl.spec.stages[0])],
             "exact_ratio": list(pl.exact),
             "intermediate": pl.intermediate,
+            "intermediates": list(pl.intermediates),
             "period": {
                 "width": per.width,
                 "height": per.height,

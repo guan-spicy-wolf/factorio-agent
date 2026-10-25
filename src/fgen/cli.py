@@ -160,6 +160,7 @@ def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
         layout=args.layout,
         time_limit=args.time_limit,
         extra_inserters=tuple(x for x in (args.extra_inserters or "").split(",") if x),
+        backend=args.backend or d.backend,
     )
     try:
         unit = generate_chain(params, gd)
@@ -178,10 +179,10 @@ def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
         print("interfaces:")
         for i in unit.interfaces:
             print("  " + format_interface(i).replace("\n", "\n  "))
-        a, b = unit.meta["ratio"]
+        ratio = ":".join(map(str, unit.meta["ratio"]))
         print(
-            f"period {per['width']}x{per['height']} ({per['layout']}, {a}:{b} "
-            f"{unit.meta['intermediate']} : {params.recipe}) x {unit.meta['periods']}; "
+            f"period {per['width']}x{per['height']} ({per['layout']}, {ratio} "
+            f"{' : '.join(unit.meta['stages'])}) x {unit.meta['periods']}; "
             f"{pred['machines']} machines, {pred['width']}x{pred['height']} = {pred['area']} "
             f"tiles, {pred['throughput']:g}/s (target {params.target_rate:g})"
         )
@@ -433,6 +434,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--layout", choices=["solver", "baseline"], default="solver", help="direct-chain"
     )
     p.add_argument("--time-limit", type=float, default=60.0, help="direct-chain: solver seconds")
+    p.add_argument(
+        "--backend",
+        choices=["exhaustive", "cpsat"],
+        default=None,
+        help="direct-chain: period solver (cpsat: `uv sync --extra solver`)",
+    )
     p.add_argument(
         "--extra-inserters", default=None, help="direct-chain: comma list of tiers to mix in"
     )

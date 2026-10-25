@@ -90,6 +90,7 @@ class CycleFlows:
     input_rate: dict[str, float]  # per period, at the output rate (not machine capacity)
     internal: dict[str, tuple[float, float]]  # item -> (supply, demand) per period
     surplus: dict[str, float]  # internal item -> supply / demand - 1 (0 = exact ratio)
+    share: tuple[float, ...] = ()  # per stage: fraction of full speed it runs at
 
 
 def flows(spec: CycleSpec, gd: GameData) -> CycleFlows:
@@ -111,32 +112,44 @@ def flows(spec: CycleSpec, gd: GameData) -> CycleFlows:
                 final=not consumed,
             )
         )
+    # shares (fraction of full speed each stage runs at), from the final stages down:
+    # a producer runs only as fast as its consumers (at their own shares) use its product
+    share = [1.0 if sf.final else None for sf in out]
     internal: dict[str, tuple[float, float]] = {}
-    for item in made:
-        demand = sum(
-            sf.internal_in.get(item, 0.0) * s.count for s, sf in zip(spec.stages, out, strict=True)
-        )
-        if demand:
+    pending = set(made)
+    while pending:
+        ready = [
+            item
+            for item in sorted(pending)
+            if all(share[k] is not None for k, sf in enumerate(out) if item in sf.internal_in)
+        ]
+        if not ready:
+            raise ValueError(f"cyclic intermediates: {sorted(pending)}")
+        for item in ready:
+            pending.discard(item)
+            demand = sum(
+                sf.internal_in.get(item, 0.0) * s.count * float(share[k] or 0.0)
+                for k, (s, sf) in enumerate(zip(spec.stages, out, strict=True))
+            )
             supply = sum(
                 sf.rate * s.count
                 for s, sf in zip(spec.stages, out, strict=True)
                 if sf.product == item
             )
-            if supply < demand - _EPS:
-                raise ValueError(f"{item}: period makes {supply:g}/s but uses {demand:g}/s")
-            internal[item] = (supply, demand)
-    # actual rates: final stages at full speed, producers only as fast as consumed
+            if demand:
+                if supply < demand - _EPS:
+                    raise ValueError(f"{item}: period makes {supply:g}/s but uses {demand:g}/s")
+                internal[item] = (supply, demand)
+            for k, sf in enumerate(out):
+                if sf.product == item and not sf.final:
+                    share[k] = demand / supply if supply else 0.0
     input_rate: dict[str, float] = {}
     output_rate: dict[str, float] = {}
-    for s, sf in zip(spec.stages, out, strict=True):
-        share = 1.0
-        if not sf.final:
-            supply, demand = internal[sf.product]
-            share = demand / supply
-        else:
+    for s, sf, sh in zip(spec.stages, out, share, strict=True):
+        if sf.final:
             output_rate[sf.product] = output_rate.get(sf.product, 0.0) + sf.rate * s.count
         for k, v in sf.external_in.items():
-            input_rate[k] = input_rate.get(k, 0.0) + v * s.count * share
+            input_rate[k] = input_rate.get(k, 0.0) + v * s.count * float(sh or 0.0)
     return CycleFlows(
         stages=tuple(out),
         inputs=tuple(sorted({k for sf in out for k in sf.external_in})),
@@ -145,6 +158,7 @@ def flows(spec: CycleSpec, gd: GameData) -> CycleFlows:
         input_rate=input_rate,
         internal=internal,
         surplus={k: s / d - 1 for k, (s, d) in internal.items()},
+        share=tuple(float(x or 0.0) for x in share),
     )
 
 
@@ -264,3 +278,140 @@ def ceil_div(a: float, b: float) -> int:
 
 def center(gd: GameData, name: str, x: int, y: int, d: Direction = Direction.N) -> Vec2:
     return footprint.center_for_tile_anchor(gd, name, Tile(x, y), d)
+
+
+# ---- shared by the solver backends -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SkeletonBelt:
+    """A belt of a skeleton: ``role`` input (``materials``: one per lane, or one for
+    both lanes) or output (``materials``: the product)."""
+
+    role: Literal["input", "output"]
+    materials: tuple[str, ...]
+
+
+def belt_sets(f: CycleFlows, lanes: int) -> list[list[SkeletonBelt]]:
+    """External inputs partitioned into belts of at most ``lanes`` materials, plus one
+    output belt per product (every skeleton the backends consider)."""
+
+    def partitions(items: list[str]) -> list[list[list[str]]]:
+        if not items:
+            return [[]]
+        first, rest = items[0], items[1:]
+        out: list[list[list[str]]] = []
+        for part in partitions(rest):
+            for k in range(len(part)):
+                if len(part[k]) < lanes:
+                    out.append([*part[:k], [first, *part[k]], *part[k + 1 :]])
+            out.append([[first], *part])
+        return out
+
+    outs = [SkeletonBelt("output", (o,)) for o in f.outputs]
+    return [
+        [SkeletonBelt("input", tuple(sorted(b))) for b in part] + outs
+        for part in partitions(list(f.inputs))
+    ]
+
+
+def input_lanes_ok(
+    belts: list[SkeletonBelt], f: CycleFlows, lane_cap: float, lanes: int, repeats: int
+) -> bool:
+    """Every input lane carries ``repeats`` periods' worth of its material."""
+    for b in belts:
+        if b.role != "input":
+            continue
+        n = 1 if len(b.materials) > 1 else lanes
+        for m in b.materials:
+            if f.input_rate[m] * repeats > lane_cap * n + _EPS:
+                return False
+    return True
+
+
+@dataclass(frozen=True)
+class PlacedInserter:
+    """An inserter of a solved period (tile ``x, y``). ``kind``: ``in`` (belt
+    ``other`` -> machine ``machine``), ``out`` (machine ``machine`` -> belt ``other``,
+    landing on ``lane``) or ``link`` (machine ``other`` -> machine ``machine``)."""
+
+    x: int
+    y: int
+    direction: Direction
+    tier: str
+    kind: str
+    machine: int
+    other: int
+    lane: str | None = None
+
+
+def assemble(
+    spec: CycleSpec,
+    gd: GameData,
+    width: int,
+    height: int,
+    belts: list[SkeletonBelt],
+    rows: list[int],
+    machines: list[tuple[int, int, int]],
+    inserters: list[PlacedInserter],
+    poles: list[tuple[int, int]],
+    f: CycleFlows,
+) -> Period:
+    """The :class:`Period` of a solution: ``belts[k]`` on row ``rows[k]``, machines as
+    ``(stage, x, y)`` anchors (top-left tile), poles as anchors. Output-belt lane rates
+    split each machine's product evenly over its output inserters."""
+    ps: list[Placement] = []
+    stage_of: list[int | None] = []
+    for y in rows:
+        for x in range(width):
+            ps.append(Placement(spec.belt, center(gd, spec.belt, x, y, FLOW), FLOW))
+            stage_of.append(None)
+    for si, x, y in machines:
+        st = spec.stages[si]
+        ps.append(Placement(st.machine, center(gd, st.machine, x, y), extra={"recipe": st.recipe}))
+        stage_of.append(si)
+    for s in sorted(inserters, key=lambda s: (s.y, s.x)):
+        ps.append(Placement(s.tier, center(gd, s.tier, s.x, s.y), s.direction))
+        stage_of.append(None)
+    for x, y in sorted(poles):
+        ps.append(Placement(spec.pole, center(gd, spec.pole, x, y)))
+        stage_of.append(None)
+    out_rows: list[BeltRow] = []
+    for k, (b, y) in enumerate(zip(belts, rows, strict=True)):
+        if b.role == "input":
+            if len(b.materials) == 1:
+                lanes: tuple[tuple[Any, str], ...] = (
+                    ("left", b.materials[0]),
+                    ("right", b.materials[0]),
+                )
+                r = f.input_rate[b.materials[0]] / 2
+                rates: tuple[tuple[Any, float], ...] = (("left", r), ("right", r))
+            else:
+                lanes = tuple(zip(("left", "right"), b.materials, strict=False))
+                rates = tuple((ln, f.input_rate[mat]) for ln, mat in lanes)
+            out_rows.append(BeltRow(y, "input", lanes, rates))
+        else:
+            load: dict[str, float] = {}
+            for m in {s.machine for s in inserters if s.kind == "out" and s.other == k}:
+                outs = [s for s in inserters if s.kind == "out" and s.machine == m]
+                rate = f.stages[machines[m][0]].rate
+                for s in outs:
+                    load[str(s.lane)] = load.get(str(s.lane), 0.0) + rate / len(outs)
+            out_rows.append(
+                BeltRow(
+                    y,
+                    "output",
+                    tuple((ln, b.materials[0]) for ln in sorted(load)),  # type: ignore[misc]
+                    tuple(sorted(load.items())),  # type: ignore[arg-type]
+                )
+            )
+    links: dict[tuple[int, int], int] = {}
+    for s in inserters:
+        if s.kind == "link":
+            links[(s.other, s.machine)] = links.get((s.other, s.machine), 0) + 1
+    meta = {
+        "links": sorted([p, c, n] for (p, c), n in links.items()),
+        "inserters": len(inserters),
+        "poles": len(poles),
+    }
+    return Period(width, height, tuple(ps), tuple(out_rows), spec, tuple(stage_of), meta)
