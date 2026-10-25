@@ -48,6 +48,14 @@ for k, m in ipairs(machines) do
                   no_ingredients=0, no_fuel=0, status={{}}}}
 end
 script.on_nth_tick(1, function(ev)
+  for _, s in pairs(H.fsinks or {{}}) do
+    local f = s.entity.get_fluid_segment_fluid(1)
+    if f and f.amount > 0 then
+      s.total = s.total + f.amount
+      if not s.first_tick then s.first_tick = ev.tick end
+      s.entity.clear_fluid_segment_fluid(1)
+    end
+  end
   for _, s in pairs(H.sinks) do
     local inv = s.entity.get_inventory(defines.inventory.chest)
     local n = inv.get_item_count(s.item)
@@ -61,6 +69,7 @@ end)
 script.on_nth_tick({sample_ticks}, function(ev)
   local row = {{tick=ev.tick, totals={{}}}}
   for k, s in ipairs(H.sinks) do row.totals[k] = s.total end
+  for k, s in ipairs(H.fsinks or {{}}) do row.totals[#H.sinks + k] = s.total end
   table.insert(H.snapshots, row)
 end)
 script.on_nth_tick({PROBE_TICKS}, function(ev)
@@ -72,7 +81,8 @@ script.on_nth_tick({PROBE_TICKS}, function(ev)
       local src = e.get_inventory(defines.inventory.crafter_input)
       if src and src.is_empty() then m.source_empty = m.source_empty + 1 end
       if e.status == defines.entity_status.no_ingredients
-         or e.status == defines.entity_status.item_ingredient_shortage then
+         or e.status == defines.entity_status.item_ingredient_shortage
+         or e.status == defines.entity_status.fluid_ingredient_shortage then
         m.no_ingredients = m.no_ingredients + 1
       end
       if e.status == defines.entity_status.no_fuel then m.no_fuel = m.no_fuel + 1 end
@@ -99,6 +109,8 @@ READ_LOG = (
     "local sinks = {}\n"
     "for k, s in ipairs(H.sinks) do sinks[k] = {item=s.item, total=s.total, "
     "first_tick=s.first_tick} end\n"
+    "for k, s in ipairs(H.fsinks or {}) do sinks[#H.sinks + k] = {item=s.item, "
+    "total=s.total, first_tick=s.first_tick, fluid=true} end\n"
     + lua.emit("{tick=game.tick, start=H.start, snapshots=H.snapshots, machines=ms, sinks=sinks}")
 )
 

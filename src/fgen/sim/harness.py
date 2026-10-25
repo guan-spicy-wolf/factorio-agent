@@ -15,7 +15,9 @@ turns it):
 - :func:`fluid_source_unit`: one ``infinity-pipe`` (filter set after building:
   ``set_infinity_pipe_filter{name, percentage, mode}``, checked on 2.1.23).
 - :func:`fluid_sink_unit`: a ``storage-tank``; read with ``LuaEntity.get_fluid(1)``
-  (2.1 has no ``LuaEntity.fluidbox``; VERIFY §10).
+  (2.1 has no ``LuaEntity.fluidbox``; VERIFY §10). As a measuring sink the per-tick
+  handler adds up ``get_fluid_segment_fluid(1)`` and empties the segment
+  (``clear_fluid_segment_fluid(1)``, VERIFY §13).
 
 :func:`plan` (used by :class:`fgen.sim.measure.RconCharacterizer`) builds a site from a
 unit and one fixture per interface, routes it with :func:`fgen.route.connect.connect`
@@ -191,9 +193,11 @@ def fluid_source_unit(gd: GameData, fluid: str, percentage: float = 1.0) -> Unit
         None,
         None,
         "output",
-        [f"infinite {fluid} (infinity-pipe)"],
+        [f"infinite {fluid} (infinity-pipe): fills its whole segment at once (VERIFY §13)"],
         rate_profile=RateProfile.on_demand(),
         entity=FLUID_SOURCE,
+        temperature=gd.fluids[fluid].default_temperature if fluid in gd.fluids else None,
+        segment_extent=1,
     )
     meta = {
         "fixture": {"kind": "fluid-source", "fluid": fluid, "percentage": percentage},
@@ -218,9 +222,11 @@ def fluid_sink_unit(gd: GameData, fluid: str, tank: str = FLUID_SINK) -> Unit:
         None,
         None,
         "input",
-        [f"{tank} collects {fluid}"],
+        [f"{tank} collects {fluid}; the harness counts and empties its segment every tick"],
         rate_profile=RateProfile.on_demand(),
         entity=tank,
+        temperature=gd.fluids[fluid].default_temperature if fluid in gd.fluids else None,
+        segment_extent=max(footprint.size(gd, tank)),
     )
     # the fixture faces east like the others: its port points west (into the flow)
     meta = {
@@ -241,6 +247,7 @@ class Harness:
     sinks: list[tuple[int, str]] = field(default_factory=list)  # (spec index, item)
     sink_units: list[str] = field(default_factory=list)  # fixture name per sink
     fluid_sources: list[tuple[int, str, float]] = field(default_factory=list)
+    fluid_sinks: list[tuple[int, str]] = field(default_factory=list)  # (spec index, fluid)
     tiles: set[Tile] = field(default_factory=set)
     unit_numbers: list[int] = field(default_factory=list)
     power_pole: int | None = None  # spec index
@@ -286,6 +293,8 @@ def fixture_specs(
                 h.power_pole = base + fx["pole"]
         elif fx["kind"] == "fluid-source":
             h.fluid_sources.append((base, fx["fluid"], fx["percentage"]))
+        elif fx["kind"] == "fluid-sink":
+            h.fluid_sinks.append((base, fx["fluid"]))
     return h
 
 
@@ -434,6 +443,7 @@ def build(rcon: RconClient, h: Harness) -> Harness:
         + f"local sources = {lua.lit([[i + 1, item] for i, item in h.sources])}\n"
         + f"local fsources = {lua.lit([[i + 1, f, p] for i, f, p in h.fluid_sources])}\n"
         + f"local sinks = {lua.lit([[i + 1, item] for i, item in h.sinks])}\n"
+        + f"local fsinks = {lua.lit([[i + 1, fl] for i, fl in h.fluid_sinks])}\n"
         + f"local pole_i = {lua.lit(None if h.power_pole is None else h.power_pole + 1)}\n"
         + f"""
 local ents, out = {{}}, {{unit_numbers={{}}, failed={{}}}}
@@ -454,9 +464,12 @@ for _, s in ipairs(fsources) do
   local e = ents[s[1]]
   if e then e.set_infinity_pipe_filter{{name=s[2], percentage=s[3], mode='at-least'}} end
 end
-storage.fgen_harness = {{sinks={{}}, pole=pole_i and ents[pole_i] or nil}}
+storage.fgen_harness = {{sinks={{}}, fsinks={{}}, pole=pole_i and ents[pole_i] or nil}}
 for k, s in ipairs(sinks) do
   storage.fgen_harness.sinks[k] = {{entity=ents[s[1]], item=s[2], total=0, first_tick=nil}}
+end
+for k, s in ipairs(fsinks) do
+  storage.fgen_harness.fsinks[k] = {{entity=ents[s[1]], item=s[2], total=0, first_tick=nil}}
 end
 out.pole_net = pole_i and ents[pole_i] and ents[pole_i].electric_network_id or nil
 """
