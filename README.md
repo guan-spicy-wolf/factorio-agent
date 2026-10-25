@@ -1,6 +1,6 @@
-# fgen — Factorio 蓝图生成器库（阶段 3a：清障、夹具泛化与单元间连接）
+# fgen — Factorio 蓝图生成器库（阶段 4a：周期求解器与直插链）
 
-agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）与 `docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论），数值与约定的核对状态见 `docs/VERIFY.md`。
+agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）、`docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论）与 `docs/plan-phase4a.md`（周期求解器，实验记录在 `docs/experiments/`），数值与约定的核对状态见 `docs/VERIFY.md`。
 
 阶段 1 起可以连 Factorio headless（当前 2.1.23，默认开启 space-age/quality/elevated-rails/recycler）：`fgen.sim` 有 RCON 客户端、服务器管理、蓝图部署与读回、测试夹具（harness）、实测与 VERIFY 检查。没有二进制时 `fgen.sim.protocol` 的 `NotAvailable*` 仍是默认，所有 headless 测试自动 skip。
 
@@ -18,6 +18,10 @@ uv run fgen sweep smelting                                # 写 characterization
 uv run fgen gen mining --case l-shape [--pole medium-electric-pole --axis y ...]   # 画好的矿区上铺钻机
 uv run fgen sweep mining                                  # 写 characterization/mining_patch.{jsonl,md}
 uv run fgen sweep site                                    # 平地整站（规划+路由）写 characterization/site.{jsonl,md}
+uv run fgen gen direct-chain --recipe electronic-circuit --rate 2   # 直插链：求解器周期 × k
+uv run fgen gen direct-chain --rate 2 --layout baseline             # 手写经典 3:2 排法
+uv run fgen gen direct-chain --rate 2 --extra-inserters long-handed-inserter   # 允许混长臂爪
+uv run fgen sweep direct-chain                            # 写 characterization/direct_chain.{jsonl,md}
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
 uv run fgen render <蓝图字符串或文件> [--rulers]
@@ -37,6 +41,7 @@ uv run fgen sweep mining --measure     # 7 个画矿形状实测，约 30 秒
 uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-settings.json）端到端，约 15 秒
 uv run fgen sweep site --measure       # 平地整站仿真（M4），约 12 秒
 uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列），约 30 秒
+uv run fgen sweep direct-chain --measure       # 16 个直插链（求解器 vs 手写基线）实测，约 1.5 分钟
 ```
 
 - 服务器：`HeadlessServer`（`fgen.sim.server`）在临时目录里建平地存档（`config/test-*.json`，mod 组合取 `DEFAULT_MODS`），`--start-server` 并等 RCON 就绪；退出时 `/quit`，超时再 terminate/kill，并用 `PR_SET_PDEATHSIG` 保证 Python 进程死掉时服务器也被杀。一次只起一个实例：pytest 每个测试模块一个服务器（`tests/conftest.py` 的 `server` fixture），按模块顺序运行。
@@ -68,7 +73,8 @@ uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：
 | `fgen.geom` | 纯函数几何：`Direction`（16 向）/`Vec2`/`Tile`、占地、爪子取放格、电杆覆盖与拉线、带容量与带道、液体连接点、钻机搜索区/出料格/出料带道/产率（`mining`） |
 | `fgen.layout` | `Placement`/`Interface`/`Layout`/`Unit`；平移/旋转/镜像；`validate()`（违例列表，不抛异常）；`to_ascii()` |
 | `fgen.blueprint` | 字符串编解码、`unit_to_blueprint`、`blueprint_to_layout` |
-| `fgen.gen` | `Generator` 协议与 `Infeasible`；`throughput`（解析吞吐模型、`predict`）；`smelting_row`（带供料行 → 冶炼列）；`sweep`（特征化）；`mining_patch`（钻机铺矿，锚定单元）；`mining_sweep`（采矿特征化） |
+| `fgen.gen` | `Generator` 协议与 `Infeasible`；`throughput`（解析吞吐模型、`predict`）；`smelting_row`（带供料行 → 冶炼列）；`sweep`（特征化）；`mining_patch`（钻机铺矿，锚定单元）；`mining_sweep`（采矿特征化）；`direct_chain`（配比周期的直插链）、`direct_chain_baseline`（手写经典 3:2 周期）、`direct_chain_sweep` |
+| `fgen.solve` | `period`：周期（`Period`）、边界条件 `check_period`、平铺 `tile`、配比与速率 `flows`/`ratio`；`cycle`：周期内穷尽搜索 `solve(spec, gd)`（阶段 4a） |
 | `fgen.terrain` | `model`：`Terrain` 快照（可建/资源/水/已占）、4 邻接矿区分块 `patches`、`nearest_patch`、渲染背景；`paint`：矩形/L 形/挖洞/随机 blob 形状 |
 | `fgen.sim` | 服务器相关：协议与 `NotAvailable` 默认值、RCON、部署、实测（见上节） |
 | `fgen.site` | `model`：`Site` = `Terrain` + `PlacedUnit` 列表 + `Link`（按 (单元名, 接口序号) 连接），占格合并、世界坐标接口；`place`：螺旋找空位 `find_spot`、按接口落点放置 `place_port` |
@@ -109,6 +115,15 @@ uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：
 - 管：管 + 地下管（偏移 ≤ `max_underground_distance`），管旁不能有异种液体口。
 - 电：所有电接口按欧氏 MST 连，每条边 A* 找杆链（每跳 ≤ 两端较小的拉线距离）。
 - 实测（`characterization/site.md`）：平地 7.5/s 冶炼列由两个源夹具侧向汇入矿（左）和煤（右），板 7.5/s；真实地图最近铁矿一条带 7.5/s（`max_belt_rate` 限到冶炼列矿道）→ 带 → 冶炼列，板 7.467/s（99.6%）。
+
+## 直插链生成器（阶段 4a）
+
+`fgen.gen.direct_chain.generate(DirectChainParams(recipe, target_rate, machine, inserter, belt, pole, extra_inserters, layout))`：配方里能被同一台组装机造出来的原料（绿板的铜线）是中间产物，机器到机器由爪子直插，不上带。精确配比由配方与制造速度约分（绿板 3:2）；周期类型 `a':b'`（b' ≤ b，a' = ⌈b'·a/b⌉，略过剩写进契约）× 个数 k 取机器最少者，放不下时依次退到下一种。
+
+- 周期（`fgen.solve.period`）：`W×H` 矩形，沿 x 以步长 W 平铺。边界条件：足迹在矩形内、带行每格同向同级、爪子取放在本周期内、本周期的杆供本周期的电、杆连通且能连到下一周期的像。
+- 求解器（`fgen.solve.cycle.solve`）：尺寸（面积升序）→ 带骨架 → 机器锚点 → 电杆（迭代加深，下界 ⌈W/拉线⌉）→ 爪子（只在杆供到的空格里选，最大流检查铜线分配）；`SolveStats` 给出每层节点数和每条约束剪掉的分支数。零第三方依赖；3:2 单等级约 1.5 s，混长臂爪约 23 s。
+- 结果（`characterization/direct_chain.md`）：单等级时最小周期就是经典的 19×7（求解器证明 133 以内没有更小的），杆比手写少（小杆 3 vs 4）；允许长臂爪时 9×12 = 108。R = 1、2、4 及各等级变体实测全部达标（0% 偏差）。实验记录：`docs/experiments/4a-cycle-solver.md`。
+- 实测前要解锁配方（2.1 + space-age 开局铜线、绿板未解锁，VERIFY §11），`RconCharacterizer` 自动做。
 
 ## 测试样本
 

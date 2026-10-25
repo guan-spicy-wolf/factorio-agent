@@ -183,6 +183,8 @@ def test_mixed_tiers_beat_the_classic_row(gd):
     res = solve(mixed, gd, time_limit=60)
     assert res.best is not None and not res.stats.timed_out
     assert res.best.area < baseline_period(spec(), gd).area
+    # no search was cut by a budget: nothing smaller exists in the domain
+    assert all(s["budget_cuts"] == 0 for s in res.stats.sizes)
     names = {p.name for p in res.best.placements if gd.entity(p.name).type == "inserter"}
     assert names <= set(mixed.inserters)
     for n in (4, 8):

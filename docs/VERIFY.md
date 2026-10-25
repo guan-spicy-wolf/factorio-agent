@@ -119,7 +119,7 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 拉线距离（异种电杆、恰在边界） | 只测了同种小杆相距 7 格（< 7.5）能连；导出器只在 `wire_reaches` 为真时写 `wires`，游戏若拒绝过长的线会表现为 `power` 检查失败 | 在 verify 里加：小杆–中杆、恰好 7.5 格与 8 格各一例 |
 | 供电区：多格实体部分落入覆盖区 | `fgen verify` #9 只用了 1×1 爪子 | 用 2×2 熔炉、3×3 组装机沿覆盖区边缘逐格平移 |
 | 液体连接格式 / 液体相邻判定 | 阶段 1 没有液体单元；往返测试只证明管道、地下管能放下并保持方向，没有测连通 | 阶段 5 前放管道相邻、错位、地下管配对各一例，读 `fluidbox.get_connections` |
-| 爪子吞吐估算（带到炉/带到箱） | 冶炼列里爪子从不成为瓶颈 | 单爪从满带取到箱子测 60 秒，各爪种、带速各一组 |
+| 爪子吞吐估算（带到炉/带到箱） | 冶炼列里爪子从不成为瓶颈；组装机→组装机已在阶段 4a 测过（§11），带→机器仍未单测 | 单爪从满带取到箱子测 60 秒，各爪种、带速各一组 |
 | `mirror` 字段 | 种子集里没有不对称实体 | 阶段 5（化工厂） |
 | 组装机方向（流体配方） | `direction_matters` 对流体配方组装机保留方向，但种子里没有流体配方，未实测 | 阶段 5 |
 | ~~采矿机（电钻）放置~~ | ~~平地测试场没有资源，蓝图里的电钻建不出来~~ → 已核对（2.1.23），见 §9 | — |
@@ -169,3 +169,20 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 物品统计口径 | `force.get_item_production_statistics(surface)`：`get_output_count` = 消耗（炉子吃矿、烧煤），`get_input_count` = 生产（钻机出矿、炉子出板）。infinity chest 出货与脚本清空汇箱都**不**计入（平地整站 iron-ore 生产 0、消耗 7.5/s）。燃料在开始燃烧时按整个计数，2 分钟窗口里石炉煤耗有 ±3% 的量化 | `sim/site_measure.py` | 平地整站读数 | 已核对 |
 | 路由出的带与夹具 | 夹具 Unit + 路由器替代了阶段 1 的固定夹具；`test_sim_measure`（冶炼列）、`test_sim_mining`、`test_sim_real_map` 在新夹具下全部照旧通过 | `sim/harness.py` | 全部 headless 测试 | 已核对 |
 | 真实地图整站预热 | 采矿供给恰等于冶炼需求（7.5/s）时，冶炼列 24 台炉的输入缓冲要很久才填满：40 s 预热后第一段只有 2/s，120 s 预热后 7.456/s（钻 7.5/s，差额是仍在进缓冲的矿）。平地用满带源时 60 s 足够 | `sim/site_measure.py` `REAL_MEASURE` | 实测样本 | 已核对 |
+
+## 11. 直插链与组装机（阶段 4a，2.1.23 实机）
+
+核对方法：阶段 4a 开头的一次性 spike（`create_entity` 手搭链，scratchpad 脚本，结论见 `docs/experiments/4a-cycle-solver.md` 迭代 1），之后由 `tests/test_sim_direct_chain.py` 与 `fgen sweep direct-chain --measure` 持续覆盖。
+
+| 条目 | 结论 | 所在文件 | 核对方法 | 状态 |
+| --- | --- | --- | --- | --- |
+| 配方开局锁定 | 2.1.23 + 目标 mod 组合（含 space-age）下，`copper-cable`、`electronic-circuit` 开局 `enabled = false`：组装机能建、`recipe` 能设，但状态是 `recipe_not_researched`，永不开工。实测前 `force.recipes[name].enabled = true`（`lua.enable_recipes`，`RconCharacterizer.measure` 按单元里出现的配方自动解锁） | `sim/lua.py`、`sim/measure.py` | spike：解锁前 5 条链产出 0、状态全是 `recipe_not_researched`；解锁后正常 | 已核对 |
+| 蓝图里组装机的 `recipe` | 蓝图实体的 `recipe` 字段经 `build_blueprint` + `revive` 后保留，组装机按它开工 | `blueprint/export.py`、`sim/deployer.py` | 16 个直插链单元实测全部达标 | 已核对 |
+| 直插不需要隔格 | 两台 3×3 组装机之间只隔爪子那一格（取放向量 (0,-1)/(0,1.2) 本身决定：取自一侧相邻格、放进另一侧相邻格）即可机器到机器转运，不需要额外空格或箱子 | `solve/cycle.py`（槽位由取放向量算出） | spike + 全部直插链实测 | 已核对 |
+| 组装机→组装机的爪子速率 | 爪子封顶时实测：快速爪 2.52/s（估计 2.4）、普通爪 0.85/s（估计 0.84），3 型铜线机（5/s）→ 绿板机（要 7.5/s）。组装机产出被取空的节奏**不**限制转运，`inserter_throughput_estimate` 对这种用法偏保守 | `gen/throughput.py` | spike：用 3 型让爪子成为瓶颈，绿板产率 × 3 = 铜线转运率 | 已核对（只测了快速、普通两种；长臂未单测） |
+| 一个铜线机分给两台绿板机 | 中间的铜线机用两只爪子分别喂左右两台绿板机，产出按需分走（3:2 周期每台绿板机满速 1/s） | `solve/cycle.py`（最大流） | 3:2 周期实测 2/s、4/s | 已核对 |
+| 混带取料 | 铁、铜各占一道的带上，爪子只取目标组装机配方需要的那种（铜线机只拿铜、绿板机只拿铁），两道都会取 | `solve/cycle.py`（混带骨架） | 全部单等级直插链实测达标 | 已核对（间接：按吞吐） |
+| 近似配比的过剩 | 2:1 周期（铜线 4/s 供 3/s）里铜线机交替 `full_output` 停机，绿板产率不受影响；铜板只按实际用量消耗 | `solve/period.py` `flows` | R = 1 实测 1.0/s，探针 `full_output` 约 17% | 已核对 |
+| 长臂爪跨带放货 | 长臂爪（pickup (0,-2)、insert (0,2.2)）从绿板机取货、跨过紧邻的铁带放到下一条输出带；9×12 周期实测 2/s、4/s 达标 | `solve/cycle.py`（`extra_inserters`） | `fgen sweep direct-chain --measure` 的 `fastlong-*` | 部分核对：吞吐已测；落在输出带哪一道（契约写 right = 远道）没有单独读道，夹具汇点两道都收 |
+| 长臂爪从组装机取货的速率 | 估计 1.2/s（箱到箱已测 1.198，§6）；9×12 周期里每只长臂爪只运 1/s，没有逼到上限 | `gen/throughput.py` | 未单测组装机场景 | 待核：用 3 型铜线机→长臂爪→绿板机测封顶速率 |
+

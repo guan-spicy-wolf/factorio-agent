@@ -568,10 +568,17 @@ class _Search:
                 kept = self.undominated(r[3])
                 self.stats.pruned["dominated_tier"] += len(r[3]) - len(kept)
                 r[3][:] = kept
+        # fewest inserters with the fastest tier that has a slot for the requirement
+        reqs = [self.tighten(r) for r in reqs]
+        link_reqs = [self.tighten(r) for r in link_reqs]
         for kind, _m, _o, ss, k, _rate in reqs + link_reqs:
             if len({s.tile for s in ss}) < k:
                 self.stats.pruned[f"slots_{kind}"] += 1
                 return
+        self.hall = _hall_groups(reqs + link_reqs)
+        if not _hall_ok(self.hall, 0):
+            self.stats.pruned["hall_slots"] += 1
+            return
         for g in caps.values():
             demand = sum(v for (a, b), v in g.items() if b == "t")
             if _maxflow(g, "s", "t") < demand - _EPS:
@@ -607,6 +614,11 @@ class _Search:
         per = self.poles_first(placed, occ_all, reqs, link_reqs)
         if per is not None:
             yield per
+
+    def tighten(self, r: _Req) -> _Req:
+        kind, m, o, ss, k, rate = r
+        best = max((self.caps[sl.ins] for sl in ss), default=self.cap)
+        return (kind, m, o, ss, max(k, ceil_div(rate, best)), rate)
 
     def links_feasible(self, link_reqs: list[_Req]) -> bool:
         budget = [self.inserter_budget]
@@ -843,6 +855,9 @@ class _Search:
             if budget[0] < 0:
                 raise _PoleBudget
             self.stats.nodes["pole"] += 1
+            if not _hall_ok(self.hall, pmask):
+                self.stats.pruned["hall_poles"] += 1
+                return None
             if covered == full:
                 linked = connected(sel) and any(cross[a][b] for a in sel for b in sel)
                 if linked and len(sel) == limit:
@@ -971,6 +986,45 @@ class _InserterBudget(Exception):
     pass
 
 
+def _hall_groups(reqs: list[_Req]) -> list[tuple[int, int]]:
+    """(slot-tile mask, inserters needed) for every requirement and for every group of
+    requirements whose slots overlap (connected components): each group needs at least
+    that many free tiles among its slots (a necessary Hall condition)."""
+    masks = []
+    for r in reqs:
+        m = 0
+        for sl in r[3]:
+            m |= 1 << sl.tile
+        masks.append(m)
+    out = [(m, r[4]) for m, r in zip(masks, reqs, strict=True)]
+    parent = list(range(len(reqs)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(reqs)):
+        for j in range(i + 1, len(reqs)):
+            if masks[i] & masks[j]:
+                parent[find(i)] = find(j)
+    comps: dict[int, list[int]] = {}
+    for i in range(len(reqs)):
+        comps.setdefault(find(i), []).append(i)
+    for idx in comps.values():
+        if len(idx) > 1:
+            m = 0
+            for i in idx:
+                m |= masks[i]
+            out.append((m, sum(reqs[i][4] for i in idx)))
+    return out
+
+
+def _hall_ok(groups: list[tuple[int, int]], blocked: int) -> bool:
+    return all(bin(m & ~blocked).count("1") >= need for m, need in groups)
+
+
 def _belt_key(k: tuple[tuple[_Belt, ...], tuple[int, ...]]) -> tuple[Any, ...]:
     return (tuple((b.role, b.materials) for b in k[0]), k[1])
 
@@ -1016,6 +1070,7 @@ def solve(
                 continue
             ts = time.monotonic()
             before = sum(stats.nodes.values())
+            cut_before = {k: v for k, v in stats.pruned.items() if k.endswith("budget")}
             n_found = 0
             for per in s.size(w, h):
                 per.meta["seconds_to_find"] = round(time.monotonic() - t0, 3)
@@ -1031,6 +1086,12 @@ def solve(
                     "seconds": round(time.monotonic() - ts, 3),
                     "nodes": sum(stats.nodes.values()) - before,
                     "found": n_found,
+                    # searches cut by a budget at this size: here "infeasible" is not proven
+                    "budget_cuts": sum(
+                        v - cut_before.get(k, 0)
+                        for k, v in stats.pruned.items()
+                        if k.endswith("budget")
+                    ),
                 }
             )
             if len(found) >= candidates:
