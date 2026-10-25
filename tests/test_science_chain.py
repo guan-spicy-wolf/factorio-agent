@@ -75,7 +75,9 @@ def test_lane_skeletons_fit_the_lanes(gd):
 
 
 def test_exhaustive_has_no_lanes(gd):
-    p = dc.DirectChainParams(recipe=RED, target_rate=1.0, intermediates="lane")
+    p = dc.DirectChainParams(
+        recipe=RED, target_rate=1.0, intermediates="lane", backend="exhaustive"
+    )
     with pytest.raises(Infeasible) as exc:
         dc.generate(p, gd)
     assert "cpsat" in exc.value.reason or "cpsat" in " ".join(exc.value.suggestions)

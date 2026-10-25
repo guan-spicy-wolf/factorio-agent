@@ -55,7 +55,15 @@ from fgen.solve.period import FLOW, CycleSpec, Period, Stage, check_period, flow
 
 _EPS = 1e-9
 MAX_CONSUMERS = 4  # search-size bound on consumers per period (not a game number)
-BACKENDS = ("exhaustive", "cpsat")
+BACKENDS = ("auto", "exhaustive", "cpsat")
+
+
+def resolve_backend(p: DirectChainParams) -> DirectChainParams:
+    if p.backend != "auto":
+        return p
+    return replace(p, backend="cpsat" if cpsat.available() else "exhaustive")
+
+
 MAX_LANE_CONSUMERS = 12  # search-size bound for lane periods (not a game number)
 
 
@@ -70,7 +78,9 @@ class DirectChainParams:
     extra_inserters: tuple[str, ...] = ()  # solver: further tiers it may mix in
     layout: Literal["solver", "baseline"] = "solver"
     time_limit: float = 60.0  # solver, seconds per period
-    backend: Literal["exhaustive", "cpsat"] = "exhaustive"  # solver backend (plan-phase4b)
+    # solver backend (plan-phase4b): "auto" = CP-SAT when OR-Tools is installed, else the
+    # exhaustive search (the core install has no third-party dependency)
+    backend: Literal["auto", "exhaustive", "cpsat"] = "auto"
     belt_inputs: tuple[str, ...] = ()  # craftable ingredients that come on belts anyway
     max_consumers: int = MAX_CONSUMERS  # final machines per period at most (search size)
     intermediates: Literal["auto", "direct", "lane"] = "auto"  # period kinds to consider
@@ -184,6 +194,7 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
     producer would have to reach more consumers than inserters can): first only the
     final recipe's own ingredients on lanes, then every intermediate. ``intermediates``
     restricts the kinds."""
+    p = resolve_backend(p)
     _check_names(p, gd)
     inter = tree(p, gd)
     if not inter:
@@ -551,7 +562,7 @@ class DirectChain:
     family = "direct-chain"
 
     def generate(self, params: DirectChainParams, gd: GameData) -> Unit:
-        p = params
+        p = resolve_backend(params)
         options = plans(p, gd)
         failures: list[str] = []
         found: tuple[ChainPlan, Period, dict[str, Any]] | None = None

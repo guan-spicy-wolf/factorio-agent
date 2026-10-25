@@ -1,4 +1,4 @@
-# fgen — Factorio 蓝图生成器库（阶段 4a：周期求解器与直插链）
+# fgen — Factorio 蓝图生成器库（阶段 4b：CP-SAT 周期后端、运行时状态、科学包直插链）
 
 agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）、`docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论）与 `docs/plan-phase4a.md`（周期求解器，实验记录在 `docs/experiments/`），数值与约定的核对状态见 `docs/VERIFY.md`。
 
@@ -23,6 +23,7 @@ uv run fgen gen direct-chain --recipe electronic-circuit --rate 2   # 直插链�
 uv run fgen gen direct-chain --rate 2 --layout baseline             # 手写经典 3:2 排法
 uv run fgen gen direct-chain --rate 2 --extra-inserters long-handed-inserter   # 允许混长臂爪
 uv run fgen gen direct-chain --rate 2 --backend cpsat                # CP-SAT 周期后端（需 --extra solver）
+uv run fgen gen direct-chain --recipe automation-science-pack --rate 1 --backend cpsat   # 红瓶（齿轮走带的一条道）
 uv run fgen sweep direct-chain                            # 写 characterization/direct_chain.{jsonl,md}
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
@@ -35,15 +36,15 @@ uv run fgen validate <蓝图字符串或文件>
 二进制位置：`$FACTORIO_DIR/bin/x64/factorio`（默认 `~/factorio`；`bin/headless.sh install` 下载，`bin/headless.sh dump` 按 `FGEN_MODS` 指定的 mod 组合导出，默认全开）。
 
 ```sh
-uv run pytest -m "not headless"     # 209 个，不启动服务器，约 25 秒
-uv run pytest -m headless           # 52 个，需要二进制；约 110 秒（4 核容器实测）
+uv run pytest -m "not headless"     # 275 个，不启动服务器，约 5 分钟（CP-SAT 已装时直插链测试用它）
+uv run pytest -m headless           # 62 个，需要二进制；约 3 分钟（4 核容器实测）
 uv run fgen verify                  # VERIFY.md 的 9 项实机检查，JSON 一行一项，约 15 秒
 uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characterization/，约 2 分钟
 uv run fgen sweep mining --measure     # 7 个画矿形状实测，约 30 秒
 uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-settings.json）端到端，约 15 秒
 uv run fgen sweep site --measure       # 平地整站仿真（M4），约 12 秒
 uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列），约 30 秒
-uv run fgen sweep direct-chain --measure       # 16 个直插链（求解器 vs 手写基线）实测，约 1.5 分钟
+uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解器 vs 手写基线、红瓶、绿瓶；需 --extra solver），绿瓶周期求解约 30 分钟
 ```
 
 - 服务器：`HeadlessServer`（`fgen.sim.server`）在临时目录里建平地存档（`config/test-*.json`，mod 组合取 `DEFAULT_MODS`），`--start-server` 并等 RCON 就绪；退出时 `/quit`，超时再 terminate/kill，并用 `PR_SET_PDEATHSIG` 保证 Python 进程死掉时服务器也被杀。一次只起一个实例：pytest 每个测试模块一个服务器（`tests/conftest.py` 的 `server` fixture），按模块顺序运行。

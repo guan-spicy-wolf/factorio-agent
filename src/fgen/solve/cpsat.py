@@ -338,6 +338,27 @@ def _solve_height(
     def first_lane_item(key: tuple[int, str]) -> bool:
         return next(mat for mat in belts[key[0]].materials if mat in lane_set) == key[1]
 
+    # input ports stay reachable: a raw material that has only one lane of its belt is
+    # side-loaded at the west edge from that lane's side, so the neighbouring row on that
+    # side must not be another belt (two such feeders facing each other would cross)
+    def lane_dy(lane: str) -> int:
+        return round(beltgeom.lane_side(FLOW, lane).vector().y)  # type: ignore[arg-type]
+
+    for k, b in in_belts.items():
+        raws = [mat for mat in b.materials if mat not in lane_set]
+        if len(b.materials) < 2 or not raws:
+            continue
+        for lane in ("left", "right"):
+            if len(raws) == 2:
+                slack: Any = 0
+            else:  # one lane item: the raw rides the other lane
+                item_left = side[k]
+                slack = item_left if lane == "left" else 1 - item_left
+            for y in range(h):
+                yy = y + lane_dy(lane)
+                if 0 <= yy < h:
+                    m.add(row[k][y] + sum(row[o][yy] for o in range(nb)) <= 1 + slack)
+
     users = {k: [si for si in stages if k in need_in[si]] for k in in_belts}
     makers = {
         k: [si for si in stages if f.stages[si].final and f.stages[si].product == b.materials[0]]
@@ -565,6 +586,9 @@ def _solve_height(
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = max(0.01, seconds)
     solver.parameters.num_workers = workers
+    # deterministic parallel search: the same spec always gives the same period (the
+    # blueprint sha keeps measurements across regenerations)
+    solver.parameters.interleave_search = True
     if not optimize:
         solver.parameters.stop_after_first_solution = True
     # the poles must be one wire network: solved without it, then for every pole set

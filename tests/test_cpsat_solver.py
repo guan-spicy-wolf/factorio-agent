@@ -92,3 +92,20 @@ def test_unavailable_backend_is_explained(gd, monkeypatch):
     with pytest.raises(Infeasible) as exc:
         dc.generate(dc.DirectChainParams(backend="cpsat"), gd)
     assert "backend='exhaustive'" in exc.value.suggestions
+
+
+def test_auto_backend_follows_the_install(gd, monkeypatch):
+    p = dc.DirectChainParams()
+    assert p.backend == "auto"
+    want = "cpsat" if cpsat.available() else "exhaustive"
+    assert dc.resolve_backend(p).backend == want
+    monkeypatch.setattr(cpsat, "available", lambda: False)
+    assert dc.resolve_backend(p).backend == "exhaustive"
+
+
+@needs_ortools
+def test_cpsat_is_deterministic(gd):
+    """The same spec gives the same period (blueprint shas keep measurements)."""
+    a = cpsat.solve(spec(2, 1), gd, time_limit=60).best
+    b = cpsat.solve(spec(2, 1), gd, time_limit=60).best
+    assert a is not None and b is not None and a.placements == b.placements

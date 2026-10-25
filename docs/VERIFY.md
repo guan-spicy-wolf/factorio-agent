@@ -185,7 +185,9 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 近似配比的过剩 | 2:1 周期（铜线 4/s 供 3/s）里铜线机交替 `full_output` 停机，绿板产率不受影响；铜板只按实际用量消耗 | `solve/period.py` `flows` | R = 1 实测 1.0/s，探针 `full_output` 约 17% | 已核对 |
 | 长臂爪跨带放货 | 长臂爪（pickup (0,-2)、insert (0,2.2)）从绿板机取货、跨过紧邻的铁带放到下一条输出带；9×12 周期实测 2/s、4/s 达标 | `solve/cycle.py`（`extra_inserters`） | `fgen sweep direct-chain --measure` 的 `fastlong-*` | 部分核对：吞吐已测；落在输出带哪一道（契约写 right = 远道）没有单独读道，夹具汇点两道都收 |
 | 长臂爪从组装机取货的速率 | 估计 1.2/s（箱到箱已测 1.198，§6）；9×12 周期里每只长臂爪只运 1/s，没有逼到上限 | `gen/throughput.py` | 未单测组装机场景 | 待核：用 3 型铜线机→长臂爪→绿板机测封顶速率 |
-
+| 中间产物走输入带的一条道（阶段 4b） | 齿轮机把齿轮直放到"铜 / 齿轮"混带的齿轮道，投放点在所有取货点上游；10 台红瓶机共用 1 台齿轮机，0.5/1/2 瓶/秒实测达标；过剩齿轮堵住道后齿轮机 `full_output` 停机 | `solve/cpsat.py`（`LANE`）、`gen/direct_chain.py` | `fgen sweep direct-chain --measure` 的 `red-r*` | 已核对（只测了黄带、快速爪；没测道上中间产物在链首被上游周期"抢走"的情形——投放在上游已排除它） |
+| 侧装夹具的摆放 | 单道输入口的侧装喂料箱放在接入格旁边时，可能落到下一条输入带的另一侧、两条喂料线交叉；改为连不上时从接入格上游同一行进料 | `sim/harness.py` | 红瓶道版夹具 | 已核对 |
+| 长链预热 | 直插链的稳态要等原料走完整条带、每台机器至少合成一两次：预热 = 60 s + 2 × 带上走完单元的时间 + 2 × 最慢合成；110 格长的红瓶链在 60 s 预热下只测到 1.35/2 | `gen/direct_chain_sweep.py` | 红瓶 sweep 前后对比 | 已核对 |
 
 ## 12. 运行时状态（阶段 4b，2.1.23 实机）
 

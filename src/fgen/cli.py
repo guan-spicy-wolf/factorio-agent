@@ -436,9 +436,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--time-limit", type=float, default=60.0, help="direct-chain: solver seconds")
     p.add_argument(
         "--backend",
-        choices=["exhaustive", "cpsat"],
+        choices=["auto", "exhaustive", "cpsat"],
         default=None,
-        help="direct-chain: period solver (cpsat: `uv sync --extra solver`)",
+        help="direct-chain: period solver (auto = cpsat if OR-Tools is installed)",
     )
     p.add_argument(
         "--extra-inserters", default=None, help="direct-chain: comma list of tiers to mix in"

@@ -22,8 +22,12 @@ from fgen.layout.render import LEGEND, to_ascii
 from fgen.solve.period import tile
 
 RATES = (1.0, 2.0, 4.0)
+PHASE_4A = DirectChainParams(backend="exhaustive")  # the phase-4a rows keep their backend
 SCIENCE_RATES = (0.5, 1.0, 2.0)
 RED = "automation-science-pack"
+GREEN = "logistic-science-pack"
+GREEN_RATES = (0.5, 1.0)
+GREEN_TIME_LIMIT = 2400.0  # seconds for the one green period (proved in ~31 min)
 LONG = "long-handed-inserter"
 DEVIATION_NOTE = 0.02  # relative measured/target gap that is called out in the .md
 
@@ -38,8 +42,8 @@ def cases() -> list[Case]:
     out = []
     for r in RATES:
         for lay in ("solver", "baseline"):
-            out.append(Case(f"{lay}-r{r:g}", DirectChainParams(target_rate=r, layout=lay)))  # type: ignore[arg-type]
-    d = DirectChainParams()
+            out.append(Case(f"{lay}-r{r:g}", replace(PHASE_4A, target_rate=r, layout=lay)))  # type: ignore[arg-type]
+    d = PHASE_4A
     for lay in ("solver", "baseline"):
         out += [
             Case(
@@ -70,6 +74,21 @@ def cases() -> list[Case]:
             ),
         )
     )
+    # green science: circuits on a belt, inserters and belts on the lanes of one belt,
+    # gears machine to machine; needs long-handed inserters. Six green machines per
+    # period (0.5/s) bound the search (a 12-machine period would take hours); 1/s is
+    # two such periods (the same period: one solve)
+    green = replace(
+        d,
+        recipe=GREEN,
+        backend="cpsat",
+        belt_inputs=("electronic-circuit",),
+        extra_inserters=(LONG,),
+        max_lane_consumers=6,
+        time_limit=GREEN_TIME_LIMIT,
+    )
+    for r in GREEN_RATES:
+        out.append(Case(f"green-r{r:g}", replace(green, target_rate=r)))
     out.append(Case("solver-r6", replace(d, target_rate=6.0)))
     out.append(Case("solver-r20", replace(d, target_rate=20.0)))
     return out
@@ -130,7 +149,12 @@ def sweep(
         row["ratio"] = unit.meta["ratio"]
         sha = blueprint_sha(unit, gd)
         if measure is not None:
-            m = dict(measure(unit))
+            try:
+                m = dict(measure(unit))
+            except Exception as exc:  # a harness that cannot be wired: record, go on
+                row["measure_error"] = f"{type(exc).__name__}: {exc}"
+                rows.append(row)
+                continue
             m["blueprint_sha"] = sha
             pr = predict(unit, gd, RuntimeState.from_json(m.get("runtime")))
             m["predicted_throughput"] = pr["throughput"]
@@ -190,7 +214,7 @@ def write(gd: GameData, out_dir: Path, measure: Measurer | None = None) -> tuple
         "## Periods (3:2, assembling-machine-1, fast inserter, small pole, yellow belt)",
         "",
     ]
-    d = DirectChainParams()
+    d = PHASE_4A
     for lay in ("solver", "baseline"):
         md += [f"`{lay}`:", "", "```", _period_render(gd, replace(d, layout=lay)), "```", ""]  # type: ignore[arg-type]
     md += ["## Units", ""]
@@ -239,7 +263,7 @@ def write(gd: GameData, out_dir: Path, measure: Measurer | None = None) -> tuple
                 per["inserters"],
                 per["poles"],
                 f"{per['seconds']:.2f}" if per.get("seconds") is not None else "-",
-                f"{m['throughput']:g}" if m else "-",
+                f"{m.get('throughput_mean', m['throughput']):.4g}" if m else "-",
             )
         )
     md += ["", *_compare(rows), *_measured(rows)]
@@ -271,7 +295,8 @@ def _compare(rows: list[dict[str, Any]]) -> list[str]:
     ]
 
     def ms(r: dict[str, Any]) -> str:
-        return f"{r['measured']['throughput']:g}" if r["measured"] else "-"
+        m = r["measured"]
+        return f"{m.get('throughput_mean', m['throughput']):.4g}" if m else "-"
 
     for c in cases():
         if not c.name.startswith("solver-"):
@@ -314,7 +339,8 @@ def _measured(rows: list[dict[str, Any]]) -> list[str]:
         f"Factorio headless {m0.get('game_version', '?')}: unit built from its blueprint (recipes "
         "unlocked first, see VERIFY §11), iron and copper side-loaded onto their lanes by "
         "infinity-chest fixtures, product counted at a loader + chest, free power. Throughput "
-        f"is the median of {len(m0['samples'])} samples of {m0['sample_s']:g} s after a "
+        f"is the whole-window mean of {len(m0['samples'])} samples of {m0['sample_s']:g} s "
+        "(`samples/s` lists them; a 10 s sample resolves one item) after a "
         "warm-up of 60 s + twice the belt transit along the unit + two crafts of its slowest "
         "recipe (`direct_chain_sweep.warmup_s`; long science chains need minutes to fill).",
         "",
@@ -325,7 +351,8 @@ def _measured(rows: list[dict[str, Any]]) -> list[str]:
     for r in meas:
         m, t = r["measured"], r["params"]["target_rate"]
         pred = m.get("predicted_throughput", (r.get("predicted") or {}).get("throughput", t))
-        delta = (m["throughput"] - pred) / pred
+        got = m.get("throughput_mean", m["throughput"])
+        delta = (got - pred) / pred
         states = ", ".join(f"{k} {v}" for k, v in sorted(m["machine_status_probes"].items()))
         note = ""
         if delta < -DEVIATION_NOTE:
@@ -335,7 +362,7 @@ def _measured(rows: list[dict[str, Any]]) -> list[str]:
         elif "item_ingredient_shortage" in m["machine_status_probes"]:
             note = "brief ingredient waits seen by the probes; no loss at the sample resolution"
         out.append(
-            f"| {r['case']} | {t:g} | {pred:g} | {m['throughput']:g} | {delta:+.1%} | "
+            f"| {r['case']} | {t:g} | {pred:g} | {got:.4g} | {delta:+.1%} | "
             f"{' '.join(f'{x:g}' for x in m['samples'])} | {states} | {note} |"
         )
     return [*out, "", *runtime_section(rows, "direct_chain.predict")]
