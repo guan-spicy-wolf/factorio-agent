@@ -22,6 +22,8 @@ from fgen.layout.render import LEGEND, to_ascii
 from fgen.solve.period import tile
 
 RATES = (1.0, 2.0, 4.0)
+SCIENCE_RATES = (0.5, 1.0, 2.0)
+RED = "automation-science-pack"
 LONG = "long-handed-inserter"
 DEVIATION_NOTE = 0.02  # relative measured/target gap that is called out in the .md
 
@@ -52,9 +54,40 @@ def cases() -> list[Case]:
         long = replace(d, target_rate=r, extra_inserters=(LONG,))
         out.append(Case(f"solver-fastlong-r{r:g}", long))
         out.append(Case(f"baseline-fastlong-r{r:g}", replace(long, layout="baseline")))
+    # phase 4b: red science on the CP-SAT backend, period kinds chosen by machine count
+    # (lanes win: exact ratio), the direct-insertion surplus periods for comparison, and
+    # the same direct period from the exhaustive search (consumers capped at what it can
+    # prove quickly)
+    red = replace(d, recipe=RED, backend="cpsat")
+    for r in SCIENCE_RATES:
+        out.append(Case(f"red-r{r:g}", replace(red, target_rate=r)))
+        out.append(Case(f"red-direct-r{r:g}", replace(red, target_rate=r, intermediates="direct")))
+    out.append(
+        Case(
+            "red-direct-exhaustive-r1",
+            replace(
+                red, target_rate=1.0, intermediates="direct", backend="exhaustive", max_consumers=2
+            ),
+        )
+    )
     out.append(Case("solver-r6", replace(d, target_rate=6.0)))
     out.append(Case("solver-r20", replace(d, target_rate=20.0)))
     return out
+
+
+def warmup_s(unit: Any, gd: GameData, base: float) -> float:
+    """Warm-up for a chain: ``base`` plus twice the belt transit along the unit (raw
+    materials reach the last machine, products travel back out) plus two crafts of its
+    slowest recipe (input buffers and the first outputs)."""
+    w, _ = unit.layout.size(gd)
+    belt = unit.meta["params"]["belt"]
+    tiles_s = gd.entity(belt).speed * gd.constant("ticks_per_second")
+    craft = max(
+        gd.recipe(q.extra["recipe"]).energy_required / gd.entity(q.name).crafting_speed
+        for q in unit.layout.placements
+        if q.extra.get("recipe")
+    )
+    return base + 2 * w / tiles_s + 2 * craft
 
 
 def _key(params: dict[str, Any]) -> str:
@@ -281,8 +314,9 @@ def _measured(rows: list[dict[str, Any]]) -> list[str]:
         f"Factorio headless {m0.get('game_version', '?')}: unit built from its blueprint (recipes "
         "unlocked first, see VERIFY §11), iron and copper side-loaded onto their lanes by "
         "infinity-chest fixtures, product counted at a loader + chest, free power. Throughput "
-        f"is the median of {len(m0['samples'])} samples of {m0['sample_s']:g} s after "
-        f"{m0['warmup_s']:g} s warm-up.",
+        f"is the median of {len(m0['samples'])} samples of {m0['sample_s']:g} s after a "
+        "warm-up of 60 s + twice the belt transit along the unit + two crafts of its slowest "
+        "recipe (`direct_chain_sweep.warmup_s`; long science chains need minutes to fill).",
         "",
         "| case | target/s | predicted/s | measured/s | Δ vs predicted | samples/s | "
         "machine states (probes) | note |",

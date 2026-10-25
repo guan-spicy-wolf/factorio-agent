@@ -1973,6 +1973,105 @@
           "amount": 1
         }
       ]
+    },
+    "automation-science-pack": {
+      "name": "automation-science-pack",
+      "energy_required": 5,
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "copper-plate",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "automation-science-pack",
+          "amount": 1
+        }
+      ]
+    },
+    "logistic-science-pack": {
+      "name": "logistic-science-pack",
+      "energy_required": 6,
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "inserter",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "transport-belt",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "logistic-science-pack",
+          "amount": 1
+        }
+      ]
+    },
+    "inserter": {
+      "name": "inserter",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "electronic-circuit",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "inserter",
+          "amount": 1
+        }
+      ]
+    },
+    "transport-belt": {
+      "name": "transport-belt",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "transport-belt",
+          "amount": 2
+        }
+      ],
+      "categories": [
+        "crafting",
+        "metallurgy"
+      ]
     }
   },
   "resource": {

@@ -314,7 +314,7 @@ def cmd_sweep_direct_chain(args: argparse.Namespace) -> int:
         def measure(unit):
             m = ch.measure(
                 unit,
-                warmup_s=args.warmup,
+                warmup_s=dcs.warmup_s(unit, gd, args.warmup),
                 sample_s=args.sample_s,
                 samples=args.samples,
                 speed=args.speed,

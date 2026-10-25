@@ -23,6 +23,8 @@ ADD: dict[str, list[str]] = {
     "mining-drill": ["big-mining-drill"],
     "resource": ["iron-ore", "copper-ore", "coal", "stone", "uranium-ore", "crude-oil"],
     "infinity-pipe": ["infinity-pipe"],  # phase 3a: fluid source fixture
+    # phase 4b: science packs and their intermediates (direct_chain family)
+    "recipe": ["automation-science-pack", "logistic-science-pack", "inserter", "transport-belt"],
 }
 
 SEED_PATH = Path(__file__).resolve().parents[1] / "src" / "fgen" / "data" / "seed" / SEED_FILE

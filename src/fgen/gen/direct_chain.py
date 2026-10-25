@@ -56,6 +56,7 @@ from fgen.solve.period import FLOW, CycleSpec, Period, Stage, check_period, flow
 _EPS = 1e-9
 MAX_CONSUMERS = 4  # search-size bound on consumers per period (not a game number)
 BACKENDS = ("exhaustive", "cpsat")
+MAX_LANE_CONSUMERS = 12  # search-size bound for lane periods (not a game number)
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,8 @@ class DirectChainParams:
     backend: Literal["exhaustive", "cpsat"] = "exhaustive"  # solver backend (plan-phase4b)
     belt_inputs: tuple[str, ...] = ()  # craftable ingredients that come on belts anyway
     max_consumers: int = MAX_CONSUMERS  # final machines per period at most (search size)
+    intermediates: Literal["auto", "direct", "lane"] = "auto"  # period kinds to consider
+    max_lane_consumers: int = MAX_LANE_CONSUMERS  # lane periods: final machines at most
 
 
 @dataclass(frozen=True)
@@ -171,9 +174,16 @@ def exact_counts(p: DirectChainParams, gd: GameData) -> dict[str, Fraction]:
 
 
 def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
-    """Every period type (``b'`` final machines for ``b' = 1..max_consumers``, each
-    intermediate recipe ``ceil(b' * exact)`` machines) with the count ``k`` that meets
-    the target, fewest machines first (ties: closer to the exact ratio)."""
+    """Every period type with the count ``k`` that meets the target, fewest machines
+    first (ties: direct insertion before lanes, then closer to the exact ratio).
+
+    A type is ``b'`` final machines plus ``ceil(b' * exact)`` machines per intermediate
+    recipe, of one of these kinds: **direct** (intermediates machine to machine, ``b' <=
+    max_consumers``) or **lane** (intermediates dropped onto a lane of an input belt
+    upstream of their consumers, ``b' <= max_lane_consumers``; the fallback when one
+    producer would have to reach more consumers than inserters can): first only the
+    final recipe's own ingredients on lanes, then every intermediate. ``intermediates``
+    restricts the kinds."""
     _check_names(p, gd)
     inter = tree(p, gd)
     if not inter:
@@ -184,34 +194,49 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
     rate = tp.machine_rate(gd, p.recipe, p.machine)
     product = tp.main_product(gd, p.recipe)[0]
     den = math.lcm(*(v.denominator for v in q.values()))
+    kinds: list[tuple[int, tuple[str, ...], int]] = []  # (rank, lane items, most b')
+    if p.intermediates in ("auto", "direct"):
+        kinds.append((0, (), min(den, p.max_consumers)))
+    if p.intermediates in ("auto", "lane"):
+        # the final recipe's own intermediates on lanes (deeper ones machine to machine),
+        # then every intermediate on a lane
+        final_ings = {n for n, _ in gd.recipe(p.recipe).ingredients}
+        for lane_items in (
+            tuple(i for i, _ in inter if i in final_ings),
+            tuple(i for i, _ in inter),
+        ):
+            if lane_items and all(lane_items != li for _, li, _ in kinds):
+                kinds.append((len(kinds), lane_items, min(den, p.max_lane_consumers)))
     options = []
-    for b in range(1, min(den, p.max_consumers) + 1):
-        counts = {r: math.ceil(b * v - _EPS) for r, v in q.items()}
-        k = max(1, math.ceil(p.target_rate / (b * rate) - _EPS))
-        spec = CycleSpec(
-            (
-                Stage(p.recipe, p.machine, b),
-                *(Stage(r, p.machine, counts[r]) for _, r in inter),
-            ),
-            p.inserter,
-            p.pole,
-            p.belt,
-            tuple(p.extra_inserters),
-        )
-        exact: tuple[int, ...]
-        if len(inter) == 1:
-            v = q[inter[0][1]]
-            exact = (v.numerator, v.denominator)
-        else:
-            exact = (*(int(x * den) for x in q.values()), den)
-        options.append(
-            (
-                (k * (b + sum(counts.values())), -b),
-                ChainPlan(
-                    spec, k, exact, b * rate, product, inter[0][0], tuple(i for i, _ in inter)
+    for rank, lane_items, most in kinds:
+        for b in range(1, most + 1):
+            counts = {r: math.ceil(b * v - _EPS) for r, v in q.items()}
+            k = max(1, math.ceil(p.target_rate / (b * rate) - _EPS))
+            spec = CycleSpec(
+                (
+                    Stage(p.recipe, p.machine, b),
+                    *(Stage(r, p.machine, counts[r]) for _, r in inter),
                 ),
+                p.inserter,
+                p.pole,
+                p.belt,
+                tuple(p.extra_inserters),
+                lane_items,
             )
-        )
+            exact: tuple[int, ...]
+            if len(inter) == 1:
+                v = q[inter[0][1]]
+                exact = (v.numerator, v.denominator)
+            else:
+                exact = (*(int(x * den) for x in q.values()), den)
+            options.append(
+                (
+                    (k * (b + sum(counts.values())), rank, -b),
+                    ChainPlan(
+                        spec, k, exact, b * rate, product, inter[0][0], tuple(i for i, _ in inter)
+                    ),
+                )
+            )
     return [pl for _, pl in sorted(options, key=lambda o: o[0])]
 
 
@@ -261,7 +286,10 @@ def _belt_suggestions(p: DirectChainParams, gd: GameData) -> list[dict[str, Any]
         pl = plan(q, gd)
         if _capacity_problems(pl, q, gd):
             continue
-        res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend)
+        try:
+            res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend)
+        except Infeasible:
+            continue
         if res.best is not None and lane_repeats(res.best, gd) >= pl.periods:
             out.append({"belt": n})
             break
@@ -275,7 +303,10 @@ def _belt_suggestions(p: DirectChainParams, gd: GameData) -> list[dict[str, Any]
             except Infeasible:
                 per = None
         else:
-            per = solve_period(pl.spec, gd, 1, p.time_limit, p.backend).best
+            try:
+                per = solve_period(pl.spec, gd, 1, p.time_limit, p.backend).best
+            except Infeasible:
+                per = None
         if per is not None:
             r = lane_repeats(per, gd) * pl.rate
             best = r if best is None else max(best, r)
@@ -298,6 +329,8 @@ def solve_period(
 ) -> cycle.SolveResult:
     """The solver (``backend``: exhaustive search or CP-SAT, same interface), memoised
     per process (generators and sweeps call it repeatedly)."""
+    if spec.lane_items and backend != "cpsat":
+        raise Infeasible("lane intermediates need the CP-SAT backend", ["backend='cpsat'"])
     key = (spec, id(gd), repeats, time_limit, backend)
     if key not in _SOLVED:
         solve = cpsat.solve if backend == "cpsat" else cycle.solve
@@ -380,6 +413,8 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                 reqs = [LaneMaterial(ln, m) for ln, m in b.lanes]  # type: ignore[arg-type]
             groups.append(PortGroup(g, tuple(reqs)))
             for m in mats:
+                if m in pl.spec.lane_items:
+                    continue  # made inside the period: the feeder leaves this lane empty
                 lns = sorted(ln for ln, mm in b.lanes if mm == m)
                 rates = {ln: lanes[ln] * k for ln in lns}
                 total = sum(rates.values())
@@ -406,6 +441,14 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
             rates = {ln: lanes[ln] * k for ln in lns}
             total = sum(rates.values())
             note = [f"{pl.product} on lane(s) {'/'.join(lns)}; downstream must keep it moving"]
+            for bb in per.belts:
+                for ln, item in bb.lanes:
+                    if item in pl.spec.lane_items:
+                        note.append(
+                            f"{item} rides the {ln} lane of the input belt at y={bb.y}: made "
+                            "in every period upstream of its pickups; the feeder leaves that "
+                            "lane empty, surplus backs it up to the belt end"
+                        )
             for item, s in f.surplus.items():
                 if s > _EPS:
                     sup, dem = f.internal[item]
@@ -485,6 +528,7 @@ def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[st
             continue
         lanes = 1 if i.lane in ("left", "right") else int(gd.constant("belt_lanes"))
         limits["output_belt"] = tp.belt_lane_capacity(gd, i.entity) * lanes
+    limits = {k: round(v, 9) for k, v in limits.items()}
     bottleneck = min(limits, key=lambda k: limits[k])
     machines = sum(
         1 for q in unit.layout.placements if gd.entity(q.name).type == "assembling-machine"
@@ -526,6 +570,8 @@ class DirectChain:
             break
         if found is None:
             changes = _belt_suggestions(p, gd)
+            if p.backend != "cpsat" and any(pl.spec.lane_items for pl in options):
+                changes.insert(0, {"backend": "cpsat"})
             raise Infeasible(" | ".join(failures), [_fmt(c) for c in changes], changes)
         pl, per, info = found
         info["rejected"] = failures

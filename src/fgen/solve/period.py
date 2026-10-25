@@ -61,6 +61,9 @@ class CycleSpec:
     pole: str = "small-electric-pole"
     belt: str = "transport-belt"
     extra_inserters: tuple[str, ...] = ()  # further inserter tiers the solver may mix in
+    # intermediates that travel on a lane of an input belt inside the period instead of
+    # machine to machine (dropped upstream of every pickup, surplus backs the lane up)
+    lane_items: tuple[str, ...] = ()
 
     @property
     def inserters(self) -> tuple[str, ...]:
@@ -292,9 +295,12 @@ class SkeletonBelt:
     materials: tuple[str, ...]
 
 
-def belt_sets(f: CycleFlows, lanes: int) -> list[list[SkeletonBelt]]:
-    """External inputs partitioned into belts of at most ``lanes`` materials, plus one
-    output belt per product (every skeleton the backends consider)."""
+def belt_sets(
+    f: CycleFlows, lanes: int, lane_items: tuple[str, ...] = ()
+) -> list[list[SkeletonBelt]]:
+    """External inputs (and lane intermediates) partitioned into belts of at most
+    ``lanes`` materials, plus one output belt per product (every skeleton the backends
+    consider)."""
 
     def partitions(items: list[str]) -> list[list[list[str]]]:
         if not items:
@@ -311,8 +317,16 @@ def belt_sets(f: CycleFlows, lanes: int) -> list[list[SkeletonBelt]]:
     outs = [SkeletonBelt("output", (o,)) for o in f.outputs]
     return [
         [SkeletonBelt("input", tuple(sorted(b))) for b in part] + outs
-        for part in partitions(list(f.inputs))
+        for part in partitions(sorted({*f.inputs, *lane_items}))
     ]
+
+
+def belt_rate(f: CycleFlows, material: str) -> float:
+    """Items/s per period a material puts on an input belt: a raw input's consumption,
+    a lane intermediate's use."""
+    if material in f.input_rate:
+        return f.input_rate[material]
+    return f.internal[material][1]
 
 
 def input_lanes_ok(
@@ -324,7 +338,7 @@ def input_lanes_ok(
             continue
         n = 1 if len(b.materials) > 1 else lanes
         for m in b.materials:
-            if f.input_rate[m] * repeats > lane_cap * n + _EPS:
+            if belt_rate(f, m) * repeats > lane_cap * n + _EPS:
                 return False
     return True
 
@@ -356,6 +370,7 @@ def assemble(
     inserters: list[PlacedInserter],
     poles: list[tuple[int, int]],
     f: CycleFlows,
+    lane_sides: dict[int, dict[str, str]] | None = None,
 ) -> Period:
     """The :class:`Period` of a solution: ``belts[k]`` on row ``rows[k]``, machines as
     ``(stage, x, y)`` anchors (top-left tile), poles as anchors. Output-belt lane rates
@@ -377,8 +392,19 @@ def assemble(
         ps.append(Placement(spec.pole, center(gd, spec.pole, x, y)))
         stage_of.append(None)
     out_rows: list[BeltRow] = []
+    lane_sides = lane_sides or {}
     for k, (b, y) in enumerate(zip(belts, rows, strict=True)):
-        if b.role == "input":
+        if b.role == "input" and k in lane_sides:
+            # a lane intermediate on its lane, the other material (if any) on the other
+            placed = lane_sides[k]  # lane item -> its lane; raw materials take the rest
+            rest = [ln for ln in ("left", "right") if ln not in placed.values()]
+            raw = [m for m in b.materials if m not in placed]
+            lanes = tuple(
+                sorted([*((ln, it) for it, ln in placed.items()), *zip(rest, raw, strict=False)])
+            )
+            rates = tuple((ln, belt_rate(f, mat)) for ln, mat in lanes)
+            out_rows.append(BeltRow(y, "input", lanes, rates))
+        elif b.role == "input":
             if len(b.materials) == 1:
                 lanes: tuple[tuple[Any, str], ...] = (
                     ("left", b.materials[0]),

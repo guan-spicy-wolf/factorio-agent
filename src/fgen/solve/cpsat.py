@@ -142,8 +142,13 @@ class _Ctx:
         best = max(self.caps.values())
         self.min_inserters = 0
         for s, sf in zip(spec.stages, f.stages, strict=True):
-            per = sum(ceil_div(v, best) for v in sf.internal_in.values())
-            per += ceil_div(sum(sf.external_in.values()), best)
+            lane = set(spec.lane_items)
+            per = sum(ceil_div(v, best) for k, v in sf.internal_in.items() if k not in lane)
+            per += ceil_div(
+                sum(sf.external_in.values())
+                + sum(v for k, v in sf.internal_in.items() if k in lane),
+                best,
+            )
             per += ceil_div(sf.rate, best) if sf.final else 0
             self.min_inserters += per * s.count
         self.machine_tiles = sum(
@@ -313,11 +318,26 @@ def _solve_height(
     # which belt each stage needs, at what rate
     belt_of = {(b.role, mat): k for k, b in enumerate(belts) for mat in b.materials}
     need_in: list[dict[int, float]] = []
+    lane_set = set(spec.lane_items)
     for sf in f.stages:
         d: dict[int, float] = defaultdict(float)
-        for mat, r in sf.external_in.items():
-            d[belt_of[("input", mat)]] += r
+        for mat, r in [*sf.external_in.items(), *sf.internal_in.items()]:
+            if mat in sf.external_in or mat in lane_set:
+                d[belt_of[("input", mat)]] += r
         need_in.append(dict(d))
+    # belts that carry a lane intermediate: which item, which stages make it, its side
+    # lane intermediates: (belt, item) keys; per belt one side literal: its first lane
+    # item rides the left lane iff it is 1, a second one the other lane
+    lane_keys = [(k, mat) for k, b in in_belts.items() for mat in b.materials if mat in lane_set]
+    lane_belts = {k for k, _ in lane_keys}
+    lane_makers = {
+        key: [si for si in stages if f.stages[si].product == key[1]] for key in lane_keys
+    }
+    side = {k: m.new_bool_var(f"left{k}") for k in lane_belts}
+
+    def first_lane_item(key: tuple[int, str]) -> bool:
+        return next(mat for mat in belts[key[0]].materials if mat in lane_set) == key[1]
+
     users = {k: [si for si in stages if k in need_in[si]] for k in in_belts}
     makers = {
         k: [si for si in stages if f.stages[si].final and f.stages[si].product == b.materials[0]]
@@ -327,7 +347,9 @@ def _solve_height(
         (ps, cs)
         for ps in stages
         for cs in stages
-        if ps != cs and f.stages[ps].product in f.stages[cs].internal_in
+        if ps != cs
+        and f.stages[ps].product in f.stages[cs].internal_in
+        and f.stages[ps].product not in lane_set
     ]
 
     # inserter slots by purpose
@@ -335,6 +357,9 @@ def _solve_height(
     in_drop: dict[tuple[int, tuple[int, int]], list[tuple[Any, int]]] = defaultdict(list)
     out_pick: dict[tuple[int, int], list[tuple[Any, int, int, str]]] = defaultdict(list)
     link_vars: list[tuple[Any, int, int, tuple[int, int], tuple[int, int], PlacedInserter]] = []
+    lane_drop: dict[tuple[int, int], list[tuple[Any, int, Any]]] = defaultdict(list)
+    lane_pick: dict[int, list[tuple[Any, int]]] = defaultdict(list)  # belt -> (IN, pickup x)
+    lane_put: dict[Any, list[tuple[Any, int]]] = defaultdict(list)  # key -> (LANE, drop x)
     slots: list[tuple[Any, PlacedInserter, tuple[int, int], tuple[int, int]]] = []
     for x, y in tiles:
         for tier, d, pu, dr in ctx.reach:
@@ -355,6 +380,8 @@ def _solve_height(
                 m.add(v <= sum(tgt))
                 ins_at[(x, y)].append(v)
                 in_drop[(k, (dx, dy))].append((v, cap))
+                if k in lane_belts:
+                    lane_pick[k].append((v, px))
                 slots.append((v, PlacedInserter(x, y, d, tier, "in", -1, k), (px, py), (dx, dy)))
             for k in out_belts:
                 if dx != x or dy == y:
@@ -373,6 +400,26 @@ def _solve_height(
                 slots.append(
                     (v, PlacedInserter(x, y, d, tier, "out", -1, k, lane), (px, py), (dx, dy))
                 )
+            for key in lane_keys:
+                k = key[0]
+                if dx != x or dy == y:
+                    continue
+                src = covered(lane_makers[key], (px, py))
+                if not src:
+                    continue
+                v = m.new_bool_var("")
+                m.add(v <= inside)
+                m.add(v <= row[k][dy])
+                m.add(v <= sum(src))
+                ln = beltgeom.drop_lane(FLOW, Direction.S if dy > y else Direction.N)
+                on_left = (ln == "left") == first_lane_item(key)
+                m.add(v <= (side[k] if on_left else 1 - side[k]))
+                ins_at[(x, y)].append(v)
+                lane_drop[(px, py)].append((v, cap, key))
+                slots.append(
+                    (v, PlacedInserter(x, y, d, tier, "lane", -1, k, ln), (px, py), (dx, dy))
+                )
+                lane_put[key].append((v, x))
             for ps, cs in pairs:
                 src, tgt = covered([ps], (px, py)), covered([cs], (dx, dy))
                 if not src or not tgt:
@@ -435,7 +482,31 @@ def _solve_height(
         m.add(fv <= hi * P[cs][ac])
         give[(ps, ap)].append(fv)
         take[(cs, item, ac)].append(fv)
-    for ps, _cs in pairs:
+    # lane intermediates: what each maker drops onto its lane covers the period's use,
+    # and every drop lies upstream (west) of every pickup from that belt
+    for key in lane_keys:
+        k, item = key
+        made = []
+        for ps in lane_makers[key]:
+            for ap, pv in P[ps].items():
+                terms = [
+                    (v, c) for t in fp(ps, ap) for v, c, kk in lane_drop.get(t, []) if kk == key
+                ]
+                g = m.new_int_var(0, _q(f.stages[ps].rate), "")
+                m.add(g <= sum(c * v for v, c in terms))
+                m.add(g <= _q(f.stages[ps].rate) * pv)
+                give[(ps, ap)].append(g)
+                made.append(g)
+        m.add(sum(made) >= _q(f.internal[item][1]))
+        m.add(sum(made) <= _q(ctx.lane_cap))
+        last = m.new_int_var(0, w, "")
+        for v, x in lane_put.get(key, []):
+            m.add(last >= x * v)
+        for v, x in lane_pick.get(k, []):
+            m.add(x >= last - w * (1 - v))
+    for ps in stages:
+        if f.stages[ps].final:
+            continue
         for ap, pv in P[ps].items():
             if give.get((ps, ap)):
                 m.add(sum(give[(ps, ap)]) <= _q(f.stages[ps].rate) * pv)
@@ -444,6 +515,8 @@ def _solve_height(
     for cs in stages:
         csf = f.stages[cs]
         for item, dem in csf.internal_in.items():
+            if item in lane_set:
+                continue  # taken from the belt with the raw inputs (need_in)
             for ac, cv in P[cs].items():
                 got = take.get((cs, item, ac), [])
                 if csf.final:
@@ -542,7 +615,7 @@ def _solve_height(
             continue
         if pi.kind == "in":
             chosen.append(replace(pi, machine=owner[dt]))
-        elif pi.kind == "out":
+        elif pi.kind in ("out", "lane"):
             chosen.append(replace(pi, machine=owner[pt]))
         else:
             chosen.append(
@@ -550,7 +623,11 @@ def _solve_height(
             )
     poles = [q for q, v in Q.items() if solver.value(v)]
     w_sol = sum(solver.value(v) for v in u)
-    per = assemble(spec, ctx.gd, w_sol, h, belts, rows, machines, chosen, poles, f)
+    sides: dict[int, dict[str, str]] = {}
+    for k, item in lane_keys:
+        left = bool(solver.value(side[k])) == first_lane_item((k, item))
+        sides.setdefault(k, {})[item] = "left" if left else "right"
+    per = assemble(spec, ctx.gd, w_sol, h, belts, rows, machines, chosen, poles, f, sides)
     per.meta["proved_optimal"] = status == cp_model.OPTIMAL or not optimize
     return name, per, solver.objective_value if optimize else math.inf
 
@@ -595,7 +672,7 @@ def solve(
     stats.variables.update(machines=spec.machines(), min_inserters=ctx.min_inserters)
     mw = max(w for w, _ in ctx.msize)
     mh = max(h for _, h in ctx.msize)
-    all_sets = belt_sets(ctx.flows, ctx.lanes)
+    all_sets = belt_sets(ctx.flows, ctx.lanes, spec.lane_items)
     skeletons = [
         bs for bs in all_sets if input_lanes_ok(bs, ctx.flows, ctx.lane_cap, ctx.lanes, repeats)
     ]

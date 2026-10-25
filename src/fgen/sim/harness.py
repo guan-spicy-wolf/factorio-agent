@@ -303,9 +303,13 @@ def attach_fixtures(
     terrain: Terrain,
     *,
     skip: set[int] | None = None,
+    side_from_upstream: bool = False,
 ) -> tuple[list[PlacedUnit], list[Link]]:
     """One fixture per interface of unit ``target`` (except indices in ``skip``),
-    placed next to the port it serves (falling back to the nearest free spot)."""
+    placed next to the port it serves (falling back to the nearest free spot). A
+    side-loading feeder sits beside the approach tile, or with ``side_from_upstream``
+    upstream of it on the approach row (its belt turns into the approach tile; used
+    when a feeder beside it would cross the row of another port)."""
     skip = skip or set()
     placed = list(site_units)
     unit = next(u for u in placed if u.name == target)
@@ -339,8 +343,12 @@ def attach_fixtures(
             if i.lane in ("left", "right"):
                 side = beltgeom.lane_side(i.direction, i.lane)  # type: ignore[arg-type]
                 approach = i.tile.neighbor(i.direction.opposite).neighbor(side)
-                want = approach.neighbor(side, FIXTURE_GAP - 1)
-                pu = place.place_port(fname, fx, 0, want, side.opposite)
+                if side_from_upstream:
+                    want = approach.neighbor(i.direction.opposite, FIXTURE_GAP - 1)
+                    pu = place.place_port(fname, fx, 0, want, i.direction)
+                else:
+                    want = approach.neighbor(side, FIXTURE_GAP - 1)
+                    pu = place.place_port(fname, fx, 0, want, side.opposite)
             else:
                 want = i.tile.neighbor(i.direction.opposite, FIXTURE_GAP)
                 pu = place.place_port(fname, fx, 0, want, i.direction)
@@ -400,12 +408,17 @@ def plan(unit: Unit, gd: GameData, origin: Tile, terrain: Terrain | None = None)
 
     terrain = terrain or _flat_terrain(unit, gd, origin)
     main = PlacedUnit("unit", unit, origin)
-    fixtures, links = attach_fixtures([main], "unit", gd, terrain)
-    site = Site(terrain, [main, *fixtures], links)
-    try:
-        conn = connect(site, gd)
-    except Exception as exc:
-        raise HarnessError(f"cannot wire the harness: {exc}") from exc
+    errors = []
+    for upstream in (False, True):
+        fixtures, links = attach_fixtures([main], "unit", gd, terrain, side_from_upstream=upstream)
+        site = Site(terrain, [main, *fixtures], links)
+        try:
+            conn = connect(site, gd)
+            break
+        except Exception as exc:
+            errors.append(str(exc))
+    else:
+        raise HarnessError(f"cannot wire the harness: {' | '.join(errors)}")
     bad = [v for v in conn.violations if v.code != "drill.no_ore"]
     if bad:
         raise HarnessError(f"harness violates invariants: {bad[:3]}")

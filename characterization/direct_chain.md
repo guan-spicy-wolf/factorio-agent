@@ -116,24 +116,31 @@ input  power -            at (3,3) facing E
 
 | case | machine | inserter | pole | target/s | result | ratio | periods | period WxH | unit area | machines | inserters/period | poles/period | solve s | measured/s |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.62 | 1 |
+| solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.51 | 1 |
 | baseline-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | - | 1 |
-| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.61 | 2 |
+| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.73 | 2 |
 | baseline-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.61 | 4 |
+| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.73 | 4 |
 | baseline-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.55 | 3 |
-| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.65 | 2 |
-| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.29 | 2 |
+| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.65 | 3 |
+| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.62 | 2 |
+| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.36 | 2 |
 | baseline-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 6 | - | 3 |
 | baseline-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
 | baseline-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 8 | - | 2 |
-| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 17.71 | 2 |
+| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 17.92 | 2 |
 | baseline-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 17.71 | 4 |
+| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 17.92 | 4 |
 | baseline-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 8. (try belt='fast-transport-belt'; target_rate=5) |  |  |  |  |  |  |  |  |  |
-| solver-r20 | assembling-machine-1 | fast-inserter | small-electric-pole | 20 | infeasible: 3:2: copper-plate 30/s exceeds one transport-belt (15/s); electronic-circuit 20/ (try target_rate=5) |  |  |  |  |  |  |  |  |  |
+| red-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:5 | 1 | 15x13 | 195 | 6 | 12 | 5 | 18.14 | 0.5 |
+| red-direct-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:2 | 3 | 11x7 | 231 | 9 | 7 | 2 | 3.02 | 0.6 |
+| red-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:10 | 1 | 30x13 | 390 | 11 | 22 | 9 | 40.64 | 1 |
+| red-direct-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:2 | 5 | 11x7 | 385 | 15 | 7 | 2 | 3.02 | 1 |
+| red-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 1:10 | 2 | 30x13 | 780 | 22 | 22 | 9 | 40.64 | 2 |
+| red-direct-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 1:2 | 10 | 11x7 | 770 | 30 | 7 | 2 | 3.02 | 2 |
+| red-direct-exhaustive-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:2 | 5 | 11x7 | 385 | 15 | 7 | 2 | 0.52 | 1 |
+| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 8. (try backend='cpsat'; belt='fast-transport-belt') |  |  |  |  |  |  |  |  |  |
+| solver-r20 | assembling-machine-1 | fast-inserter | small-electric-pole | 20 | infeasible: 3:2: copper-plate 30/s exceeds one transport-belt (15/s); electronic-circuit 20/ (try backend='cpsat'; target_rate=5) |  |  |  |  |  |  |  |  |  |
 
 ## Solver vs hand-written baseline
 
@@ -150,26 +157,33 @@ input  power -            at (3,3) facing E
 
 ## Measured
 
-Factorio headless 2.1.23: unit built from its blueprint (recipes unlocked first, see VERIFY §11), iron and copper side-loaded onto their lanes by infinity-chest fixtures, product counted at a loader + chest, free power. Throughput is the median of 6 samples of 10 s after 60 s warm-up.
+Factorio headless 2.1.23: unit built from its blueprint (recipes unlocked first, see VERIFY §11), iron and copper side-loaded onto their lanes by infinity-chest fixtures, product counted at a loader + chest, free power. Throughput is the median of 6 samples of 10 s after 73.7333 s warm-up.
 
 | case | target/s | predicted/s | measured/s | Δ vs predicted | samples/s | machine states (probes) | note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| solver-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 64, working 353 | producers idle with full output: the period's ratio makes surplus intermediate |
-| baseline-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 55, item_ingredient_shortage 10, working 364 | producers idle with full output: the period's ratio makes surplus intermediate |
-| solver-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 685 |  |
-| baseline-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
-| solver-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1420 |  |
-| baseline-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1380 |  |
-| solver-am2-r3 | 3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 675 |  |
-| solver-medium-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
-| solver-basic-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 695 |  |
-| baseline-am2-r3 | 3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 680 |  |
-| baseline-medium-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 715 |  |
+| solver-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 64, working 335 | producers idle with full output: the period's ratio makes surplus intermediate |
+| baseline-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 64, working 338 | producers idle with full output: the period's ratio makes surplus intermediate |
+| solver-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | item_ingredient_shortage 67, working 603 | brief ingredient waits seen by the probes; no loss at the sample resolution |
+| baseline-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 650 |  |
+| solver-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
+| baseline-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1340 |  |
+| solver-am2-r3 | 3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 660 |  |
+| solver-medium-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 650 |  |
+| solver-basic-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 660 |  |
+| baseline-am2-r3 | 3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | item_ingredient_shortage 17, working 653 | brief ingredient waits seen by the probes; no loss at the sample resolution |
+| baseline-medium-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 700 |  |
 | baseline-basic-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 670 |  |
-| solver-fastlong-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | item_ingredient_shortage 32, working 608 | brief ingredient waits seen by the probes; no loss at the sample resolution |
-| baseline-fastlong-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
-| solver-fastlong-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | item_ingredient_shortage 35, working 1355 | brief ingredient waits seen by the probes; no loss at the sample resolution |
-| baseline-fastlong-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1380 |  |
+| solver-fastlong-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 710 |  |
+| baseline-fastlong-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 655 |  |
+| solver-fastlong-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1350 |  |
+| baseline-fastlong-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1400 |  |
+| red-r0.5 | 0.5 | 0.5 | 0.5 | +0.0% | 0.5 0.5 0.5 0.5 0.5 0.5 | full_output 12, working 744 | producers idle with full output: the period's ratio makes surplus intermediate |
+| red-direct-r0.5 | 0.5 | 0.6 | 0.6 | +0.0% | 0.6 0.6 0.6 0.6 0.6 0.6 | full_output 323, item_ingredient_shortage 4, working 924 | producers idle with full output: the period's ratio makes surplus intermediate |
+| red-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | working 1364 |  |
+| red-direct-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 559, item_ingredient_shortage 1, working 1510 | producers idle with full output: the period's ratio makes surplus intermediate |
+| red-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 3080 |  |
+| red-direct-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | full_output 1110, item_ingredient_shortage 23, working 3127 | producers idle with full output: the period's ratio makes surplus intermediate |
+| red-direct-exhaustive-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 585, item_ingredient_shortage 2, working 1528 | producers idle with full output: the period's ratio makes surplus intermediate |
 
 ## Force state of the measurements
 

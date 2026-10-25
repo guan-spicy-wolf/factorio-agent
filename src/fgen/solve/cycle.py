@@ -162,6 +162,8 @@ class _Search:
             deadline,
             stats,
         )
+        if spec.lane_items:
+            raise ValueError("the exhaustive search has no lane intermediates (use cpsat)")
         self.flows: CycleFlows = flows(spec, gd)
         self.caps = {n: tp.inserter_throughput_estimate(gd, n) for n in spec.inserters}
         self.cap = max(self.caps.values())  # best tier: lower bounds on inserter counts
