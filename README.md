@@ -1,4 +1,4 @@
-# fgen — Factorio 蓝图生成器库（阶段 4b：CP-SAT 周期后端、运行时状态、科学包直插链）
+# fgen — Factorio 蓝图生成器库（阶段 5a：流体机器——塑料与硫酸）
 
 agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）、`docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论）与 `docs/plan-phase4a.md`（周期求解器，实验记录在 `docs/experiments/`），数值与约定的核对状态见 `docs/VERIFY.md`。
 
@@ -9,7 +9,8 @@ agent 的产出是**生成器参数或生成器代码**，不是坐标。总体�
 ```sh
 uv sync                      # core: no third-party runtime dependency
 uv sync --extra solver       # optional: OR-Tools for the CP-SAT period backend (`--backend cpsat`)
-uv run pytest
+                             # plain `uv run` re-syncs exactly and removes it: use `uv run --extra solver ...`
+uv run --extra solver pytest
 uv run ruff check . && uv run ruff format --check .
 
 uv run fgen gen smelting --rate 7.5                       # ASCII + 接口契约 + predict + 蓝图字符串
@@ -25,6 +26,9 @@ uv run fgen gen direct-chain --rate 2 --extra-inserters long-handed-inserter   #
 uv run fgen gen direct-chain --rate 2 --backend cpsat                # CP-SAT 周期后端（需 --extra solver）
 uv run fgen gen direct-chain --recipe automation-science-pack --rate 1 --backend cpsat   # 红瓶（齿轮走带的一条道）
 uv run fgen sweep direct-chain                            # 写 characterization/direct_chain.{jsonl,md}
+uv run --extra solver fgen gen direct-chain --recipe plastic-bar --machine chemical-plant --rate 2 --extra-inserters long-handed-inserter [--mirror]   # 塑料（管网由 CP-SAT 排）
+uv run --extra solver fgen gen direct-chain --recipe sulfuric-acid --machine chemical-plant --rate 50   # 硫酸（水进、酸出管）
+uv run --extra solver fgen sweep fluid                    # 写 characterization/fluid_chain.{jsonl,md}
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
 uv run fgen render <蓝图字符串或文件> [--rulers]
@@ -36,14 +40,15 @@ uv run fgen validate <蓝图字符串或文件>
 二进制位置：`$FACTORIO_DIR/bin/x64/factorio`（默认 `~/factorio`；`bin/headless.sh install` 下载，`bin/headless.sh dump` 按 `FGEN_MODS` 指定的 mod 组合导出，默认全开）。
 
 ```sh
-uv run pytest -m "not headless"     # 275 个，不启动服务器，约 5 分钟（CP-SAT 已装时直插链测试用它）
-uv run pytest -m headless           # 62 个，需要二进制；约 3 分钟（4 核容器实测）
+uv run --extra solver pytest -m "not headless"     # 306 个，不启动服务器，约 6 分钟（CP-SAT 已装时直插链、流体测试用它）
+uv run --extra solver pytest -m headless           # 64 个，需要二进制；约 3 分钟（4 核容器实测）
 uv run fgen verify                  # VERIFY.md 的 9 项实机检查，JSON 一行一项，约 15 秒
 uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characterization/，约 2 分钟
 uv run fgen sweep mining --measure     # 7 个画矿形状实测，约 30 秒
 uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-settings.json）端到端，约 15 秒
 uv run fgen sweep site --measure       # 平地整站仿真（M4），约 12 秒
 uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列），约 30 秒
+uv run --extra solver fgen sweep fluid --measure   # 11 行流体（塑料 7 + 硫酸 3 + 1 行不可行），约 7 分钟
 uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解器 vs 手写基线、红瓶、绿瓶；需 --extra solver），绿瓶周期求解约 30 分钟
 ```
 
@@ -77,7 +82,7 @@ uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解�
 | `fgen.layout` | `Placement`/`Interface`/`Layout`/`Unit`；平移/旋转/镜像；`validate()`（违例列表，不抛异常）；`to_ascii()` |
 | `fgen.blueprint` | 字符串编解码、`unit_to_blueprint`、`blueprint_to_layout` |
 | `fgen.gen` | `Generator` 协议与 `Infeasible`；`throughput`（解析吞吐模型、`predict`）；`smelting_row`（带供料行 → 冶炼列）；`sweep`（特征化）；`mining_patch`（钻机铺矿，锚定单元）；`mining_sweep`（采矿特征化）；`direct_chain`（配比周期的直插链）、`direct_chain_baseline`（手写经典 3:2 周期）、`direct_chain_sweep` |
-| `fgen.solve` | `period`：周期（`Period`）、边界条件 `check_period`、平铺 `tile`、配比与速率 `flows`/`ratio`；`cycle`：周期内穷尽搜索 `solve(spec, gd)`（阶段 4a） |
+| `fgen.solve` | `period`：周期（`Period`）、边界条件 `check_period`、平铺 `tile`、配比与速率 `flows`/`ratio`；`cycle`：周期内穷尽搜索 `solve(spec, gd)`（阶段 4a）；`cpsat`：CP-SAT 后端（阶段 4b，可选依赖）；`cpsat_fluid`：周期内管网的约束（阶段 5a） |
 | `fgen.terrain` | `model`：`Terrain` 快照（可建/资源/水/已占）、4 邻接矿区分块 `patches`、`nearest_patch`、渲染背景；`paint`：矩形/L 形/挖洞/随机 blob 形状 |
 | `fgen.sim` | 服务器相关：协议与 `NotAvailable` 默认值、RCON、部署、实测（见上节） |
 | `fgen.site` | `model`：`Site` = `Terrain` + `PlacedUnit` 列表 + `Link`（按 (单元名, 接口序号) 连接），占格合并、世界坐标接口；`place`：螺旋找空位 `find_spot`、按接口落点放置 `place_port` |
@@ -127,6 +132,15 @@ uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解�
 - 求解器（`fgen.solve.cycle.solve`）：尺寸（面积升序）→ 带骨架 → 机器锚点 → 电杆（迭代加深，下界 ⌈W/拉线⌉）→ 爪子（只在杆供到的空格里选，最大流检查铜线分配）；`SolveStats` 给出每层节点数和每条约束剪掉的分支数。零第三方依赖；3:2 单等级约 1.5 s，混长臂爪约 23 s。
 - 结果（`characterization/direct_chain.md`）：单等级时最小周期就是经典的 19×7（求解器证明 133 以内没有更小的），杆比手写少（小杆 3 vs 4）；允许长臂爪时 9×12 = 108。R = 1、2、4 及各等级变体实测全部达标（0% 偏差）。实验记录：`docs/experiments/4a-cycle-solver.md`。
 - 实测前要解锁配方（2.1 + space-age 开局铜线、绿板未解锁，VERIFY §11），`RconCharacterizer` 自动做。
+
+## 流体机器（阶段 5a）
+
+化工厂配方（塑料：石油气 + 煤；硫酸：硫 + 铁 + 水 → 硫酸）仍走 `direct_chain`（单阶段周期，`--machine chemical-plant`），只能用 CP-SAT 后端（穷尽搜索拒绝并提示 `backend='cpsat'`）。
+
+- 几何（`fgen.geom.fluid`，VERIFY §13 实测）：连接点先镜像后旋转；配方的液体按类进盒，同类只有一种液体时该类所有盒都装它（塑料两个输入角都是气），没用到的盒闲置；`validate` 把闲置口对着流体连接也算 `fluid.unintended_adjacency`（保守），另有 `fluid.box_unconnected`、`fluid.underground_unpaired`、`contract.fluid`。
+- 求解器（`fgen.solve.cpsat_fluid`）：周期里任意空格可放直管与地下管对，机器朝向是变量（镜像是参数 `mirror`），每种液体在周期内连成一个网并在 (0, y)/(W−1, y) 跨周期；整行母线只是它的一个解。硫酸必须用这种管网：整行母线会把化工厂上下两面都堵死。
+- 契约：液体口带 `rate`、`MinRate`、`temperature`、`segment_extent`（单元内这段管网的外包长边）；2.1 段内流量与管长无关，但一段外包超过 `pipeline_extent`（320）就不流，生成器与路由器都检查。
+- 结果（`characterization/fluid_chain.md`，全科技实测全部 0% 偏差）：塑料 1/2 棒/秒 3×7（快速 + 长臂，2.8 s 证明最小），4 棒/秒 3×13 两台；硫酸一台 8×5（50/s）、两台 11×7（100/s），输出口实测 = 契约。实验记录：`docs/experiments/5a-fluids.md`。
 
 ## 测试样本
 
