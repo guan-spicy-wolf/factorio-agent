@@ -8,7 +8,10 @@ Prototypes (seed or dump) and engine constants say what an entity *is*; a
 - ``bulk_inserter_capacity_bonus``: added to the hand size of bulk inserters;
 - ``belt_stack_size_bonus``: items an inserter may stack on one belt slot (recorded;
   no fgen layout uses stacking inserters yet);
-- ``mining_drill_productivity_bonus``: extra products per mining cycle (``0.1`` = +10%).
+- ``mining_drill_productivity_bonus``: extra products per mining cycle (``0.1`` = +10%);
+- ``recipe_productivity``: ``(recipe, bonus)`` for every recipe whose
+  ``LuaRecipe.productivity_bonus`` is not 0 (plan-phase5a: full research gives
+  ``plastic-bar`` +10% on 2.1.23 + space-age).
 
 The default instance is a force with nothing researched (all bonuses 0): generators
 design for it, so a layout stays valid at any research level; predictions take the
@@ -28,6 +31,7 @@ class RuntimeState:
     bulk_inserter_capacity_bonus: float = 0.0
     belt_stack_size_bonus: float = 0.0
     mining_drill_productivity_bonus: float = 0.0
+    recipe_productivity: tuple[tuple[str, float], ...] = ()
     technologies_researched: int = 0
     technologies_total: int = 0
     current_research: str | None = None
@@ -35,6 +39,9 @@ class RuntimeState:
 
     def hand_bonus(self, bulk: bool) -> float:
         return self.bulk_inserter_capacity_bonus if bulk else self.inserter_stack_size_bonus
+
+    def productivity(self, recipe: str) -> float:
+        return dict(self.recipe_productivity).get(recipe, 0.0)
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -44,6 +51,9 @@ class RuntimeState:
         if not d:
             return cls()
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
+        rp = known.get("recipe_productivity") or ()
+        items = rp.items() if isinstance(rp, dict) else rp
+        known["recipe_productivity"] = tuple(sorted((str(r), float(v)) for r, v in items))
         return cls(**known)
 
     def describe(self) -> str:
@@ -54,6 +64,7 @@ class RuntimeState:
             f"inserter hand +{self.inserter_stack_size_bonus:g} (bulk "
             f"+{self.bulk_inserter_capacity_bonus:g}), belt stack +{self.belt_stack_size_bonus:g}, "
             f"mining productivity +{self.mining_drill_productivity_bonus:.0%}"
+            + "".join(f", {r} +{v:.0%}" for r, v in self.recipe_productivity)
         )
 
 

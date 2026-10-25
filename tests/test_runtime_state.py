@@ -53,3 +53,10 @@ def test_mining_prediction_productivity_and_stacks(gd):
     # drills dropping full belt stacks fill a lane with stacks of 1 + bonus
     stacked = {**c, "drill_stacks": True}
     assert predicted(stacked, STATE) == [pytest.approx(2 * rate * 1.3 + n * rate * 1.3)]
+
+
+def test_recipe_productivity_round_trip():
+    rs = RuntimeState.from_json({"recipe_productivity": {"plastic-bar": 0.1}, "source": "force"})
+    assert rs.productivity("plastic-bar") == 0.1 and rs.productivity("x") == 0.0
+    assert RuntimeState.from_json(rs.to_json()) == rs
+    assert "plastic-bar +10%" in rs.describe()

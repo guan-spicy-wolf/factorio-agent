@@ -66,6 +66,7 @@ from fgen.gen import throughput as tp
 from fgen.geom import belt as beltgeom
 from fgen.geom import footprint, inserter, pole
 from fgen.geom.vec import CARDINALS, Direction, Tile
+from fgen.solve import cpsat_fluid
 from fgen.solve.cycle import SolveResult, SolveStats
 from fgen.solve.period import (
     FLOW,
@@ -139,22 +140,26 @@ class _Ctx:
         self.lane_cap = tp.belt_lane_capacity(gd, spec.belt)
         self.lanes = int(gd.constant("belt_lanes"))
         f = self.flows
+        # fluids (plan-phase5a): pipes instead of belts and inserters
+        self.fluid = (
+            cpsat_fluid.FluidCtx(spec, gd, f) if f.fluid_inputs or f.fluid_outputs else None
+        )
         best = max(self.caps.values())
         self.min_inserters = 0
         for s, sf in zip(spec.stages, f.stages, strict=True):
             lane = set(spec.lane_items)
             per = sum(ceil_div(v, best) for k, v in sf.internal_in.items() if k not in lane)
             per += ceil_div(
-                sum(sf.external_in.values())
+                sum(v for k, v in sf.external_in.items() if not gd.is_fluid(k))
                 + sum(v for k, v in sf.internal_in.items() if k in lane),
                 best,
             )
-            per += ceil_div(sf.rate, best) if sf.final else 0
+            per += ceil_div(sf.rate, best) if sf.final and not gd.is_fluid(sf.product) else 0
             self.min_inserters += per * s.count
         self.machine_tiles = sum(
             w * h for (w, h), s in zip(self.msize, spec.stages, strict=True) for _ in [s] * s.count
         )
-        out_total = sum(f.output_rate.values())
+        out_total = sum(v for k, v in f.output_rate.items() if not gd.is_fluid(k))
         self.output_lanes_bind = out_total * repeats > self.lane_cap + 1e-9
 
 
@@ -322,7 +327,7 @@ def _solve_height(
     for sf in f.stages:
         d: dict[int, float] = defaultdict(float)
         for mat, r in [*sf.external_in.items(), *sf.internal_in.items()]:
-            if mat in sf.external_in or mat in lane_set:
+            if (mat in sf.external_in and not ctx.gd.is_fluid(mat)) or mat in lane_set:
                 d[belt_of[("input", mat)]] += r
         need_in.append(dict(d))
     # belts that carry a lane intermediate: which item, which stages make it, its side
@@ -344,6 +349,7 @@ def _solve_height(
     def lane_dy(lane: str) -> int:
         return round(beltgeom.lane_side(FLOW, lane).vector().y)  # type: ignore[arg-type]
 
+    side_rows: list[tuple[Any, int, Any]] = []  # (belt on y, its feeder's side row, slack)
     for k, b in in_belts.items():
         raws = [mat for mat in b.materials if mat not in lane_set]
         if len(b.materials) < 2 or not raws:
@@ -358,6 +364,7 @@ def _solve_height(
                 yy = y + lane_dy(lane)
                 if 0 <= yy < h:
                     m.add(row[k][y] + sum(row[o][yy] for o in range(nb)) <= 1 + slack)
+                    side_rows.append((row[k][y], yy, slack))
 
     users = {k: [si for si in stages if k in need_in[si]] for k in in_belts}
     makers = {
@@ -472,7 +479,7 @@ def _solve_height(
                     m.add(pv == 0)
                     continue
                 m.add(sum(c * v for v, c in terms) >= _q(r) * pv)
-            if sf.final:
+            if sf.final and not ctx.gd.is_fluid(sf.product):
                 terms2 = [e for t in ts for e in out_pick.get(t, [])]
                 if not terms2:
                     m.add(pv == 0)
@@ -571,9 +578,16 @@ def _solve_height(
             return "INFEASIBLE", None, math.inf
     else:
         n_poles = 0
+    fv = None
+    if ctx.fluid is not None:
+        fv = cpsat_fluid.add(m, ctx.fluid, h, w, u, w_min == w, occ, P)
+        # nor may a fluid's crossing (its port at the west end) take that side row
+        for bv, yy, slack in side_rows:
+            for crossing in fv.cross.values():
+                m.add(bv + crossing[yy] <= 1 + slack)
     for t in tiles:
         m.add(sum(occ[t]) <= 1)
-    n_ins = sum(v for v, *_ in slots)
+    n_ins = sum(v for v, *_ in slots) + (fv.count if fv is not None else 0)
     if optimize:
         m.minimize(WIDTH_WEIGHT * width + POLE_WEIGHT * n_poles + n_ins)
 
@@ -627,11 +641,13 @@ def _solve_height(
     rows = [next(y for y in range(h) if solver.value(row[b][y])) for b in range(nb)]
     machines: list[tuple[int, int, int]] = []
     owner: dict[tuple[int, int], int] = {}
+    anchors: dict[tuple[int, tuple[int, int]], int] = {}
     for si in stages:
         for a, pv in sorted(P[si].items(), key=lambda kv: (kv[0][1], kv[0][0])):
             if solver.value(pv):
                 for t in fp(si, a):
                     owner[t] = len(machines)
+                anchors[(si, a)] = len(machines)
                 machines.append((si, a[0], a[1]))
     chosen: list[PlacedInserter] = []
     for v, pi, pt, dt in slots:
@@ -651,7 +667,26 @@ def _solve_height(
     for k, item in lane_keys:
         left = bool(solver.value(side[k])) == first_lane_item((k, item))
         sides.setdefault(k, {})[item] = "left" if left else "right"
-    per = assemble(spec, ctx.gd, w_sol, h, belts, rows, machines, chosen, poles, f, sides)
+    pipes, crossings, dirs = None, None, None
+    if fv is not None and ctx.fluid is not None:
+        pipes, crossings = cpsat_fluid.read(solver, ctx.fluid, fv)
+        dirs = cpsat_fluid.directions(solver, ctx.fluid, fv, anchors)
+    per = assemble(
+        spec,
+        ctx.gd,
+        w_sol,
+        h,
+        belts,
+        rows,
+        machines,
+        chosen,
+        poles,
+        f,
+        sides,
+        dirs,
+        pipes,
+        crossings,
+    )
     per.meta["proved_optimal"] = status == cp_model.OPTIMAL or not optimize
     return name, per, solver.objective_value if optimize else math.inf
 

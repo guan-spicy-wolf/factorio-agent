@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from fgen.blueprint import codec
 from fgen.blueprint.export import unit_to_blueprint
@@ -161,6 +162,7 @@ def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
         time_limit=args.time_limit,
         extra_inserters=tuple(x for x in (args.extra_inserters or "").split(",") if x),
         backend=args.backend or d.backend,
+        mirror=args.mirror,
     )
     try:
         unit = generate_chain(params, gd)
@@ -297,13 +299,16 @@ def _site_note() -> str:
     return FLAT_NOTE
 
 
-def cmd_sweep_direct_chain(args: argparse.Namespace) -> int:
+def cmd_sweep_direct_chain(args: argparse.Namespace, fluid: bool = False) -> int:
     from fgen.gen import direct_chain_sweep as dcs
+    from fgen.gen import fluid_sweep
+
+    mod: Any = fluid_sweep if fluid else dcs
 
     gd = _gd(args)
     out = Path(args.out_dir)
     if not args.measure:
-        jsonl, md = dcs.write(gd, out)
+        jsonl, md = mod.write(gd, out)
         print(f"wrote {jsonl} and {md}")
         return 0
     from fgen.sim.measure import RconCharacterizer
@@ -327,7 +332,7 @@ def cmd_sweep_direct_chain(args: argparse.Namespace) -> int:
             return m
 
         try:
-            jsonl, md = dcs.write(gd, out, measure)
+            jsonl, md = mod.write(gd, out, measure)
         finally:
             ch.clear_all()
     print(f"wrote {jsonl} and {md}")
@@ -339,6 +344,8 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         return cmd_sweep_mining(args)
     if args.family == "direct-chain":
         return cmd_sweep_direct_chain(args)
+    if args.family == "fluid":
+        return cmd_sweep_direct_chain(args, fluid=True)
     if args.family == "site":
         return cmd_sweep_site(args)
     gd = _gd(args)
@@ -444,6 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--extra-inserters", default=None, help="direct-chain: comma list of tiers to mix in"
     )
     p.add_argument("--pole", default=None, help=f"default {d.pole}")
+    p.add_argument("--mirror", action="store_true", help="direct-chain: mirror the machines")
     p.add_argument("--case", default="rect-2belt", help="mining: painted case name")
     p.add_argument("--resource", default=None, help="mining")
     p.add_argument("--drill", default=None, help="mining")
@@ -458,7 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_gen)
 
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
-    p.add_argument("family", choices=["smelting", "mining", "site", "direct-chain"])
+    p.add_argument("family", choices=["smelting", "mining", "site", "direct-chain", "fluid"])
     p.add_argument(
         "--real-map", action="store_true", help="mining/site: end-to-end run on the ore map"
     )

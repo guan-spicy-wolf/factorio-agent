@@ -123,6 +123,20 @@ def route_links(site: Any, gd: GameData, grid: RouteGrid, conn: Any) -> None:
             allowed,
             ln.label,
         )
+        # one fluid segment must stay within the pipeline extent (VERIFY §13): the link's
+        # own span plus what each end's unit already spans (contract segment_extent)
+        ts = [p.position.floor() for p in ps]
+        span = (
+            max(
+                max(t.x for t in ts) - min(t.x for t in ts),
+                max(t.y for t in ts) - min(t.y for t in ts),
+            )
+            + 1
+        )
+        total = span + (src.segment_extent or 0) + (dst.segment_extent or 0)
+        limit = gd.constants.get("pipeline_extent")
+        if limit is not None and total >= limit:
+            raise RouteError(ln.label, f"fluid segment would span {total} tiles (limit {limit:g})")
         f = src.material or dst.material
         grid.add(ps, ln.label, fluid_all=f)
         conn.routes.append(LinkRoute(ln.label, "fluid", ps, fluid=f))

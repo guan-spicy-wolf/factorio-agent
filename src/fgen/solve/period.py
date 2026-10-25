@@ -64,6 +64,10 @@ class CycleSpec:
     # intermediates that travel on a lane of an input belt inside the period instead of
     # machine to machine (dropped upstream of every pickup, surplus backs the lane up)
     lane_items: tuple[str, ...] = ()
+    # fluids (plan-phase5a): pipe entities the solver may place, machines' mirror flag
+    pipe: str = "pipe"
+    pipe_to_ground: str | None = "pipe-to-ground"
+    mirror: bool = False
 
     @property
     def inserters(self) -> tuple[str, ...]:
@@ -94,6 +98,8 @@ class CycleFlows:
     internal: dict[str, tuple[float, float]]  # item -> (supply, demand) per period
     surplus: dict[str, float]  # internal item -> supply / demand - 1 (0 = exact ratio)
     share: tuple[float, ...] = ()  # per stage: fraction of full speed it runs at
+    fluid_inputs: tuple[str, ...] = ()  # external fluids (pipes), sorted
+    fluid_outputs: tuple[str, ...] = ()  # fluid products leaving on pipes, sorted
 
 
 def flows(spec: CycleSpec, gd: GameData) -> CycleFlows:
@@ -153,15 +159,18 @@ def flows(spec: CycleSpec, gd: GameData) -> CycleFlows:
             output_rate[sf.product] = output_rate.get(sf.product, 0.0) + sf.rate * s.count
         for k, v in sf.external_in.items():
             input_rate[k] = input_rate.get(k, 0.0) + v * s.count * float(sh or 0.0)
+    externals = {k for sf in out for k in sf.external_in}
     return CycleFlows(
         stages=tuple(out),
-        inputs=tuple(sorted({k for sf in out for k in sf.external_in})),
-        outputs=tuple(sorted(output_rate)),
+        inputs=tuple(sorted(k for k in externals if not gd.is_fluid(k))),
+        outputs=tuple(sorted(k for k in output_rate if not gd.is_fluid(k))),
         output_rate=output_rate,
         input_rate=input_rate,
         internal=internal,
         surplus={k: s / d - 1 for k, (s, d) in internal.items()},
         share=tuple(float(x or 0.0) for x in share),
+        fluid_inputs=tuple(sorted(k for k in externals if gd.is_fluid(k))),
+        fluid_outputs=tuple(sorted(k for k in output_rate if gd.is_fluid(k))),
     )
 
 
@@ -189,6 +198,18 @@ class BeltRow:
 
 
 @dataclass(frozen=True)
+class FluidCrossing:
+    """Where a fluid's pipes cross the period cut: plain pipes on ``(0, y)`` and
+    ``(width - 1, y)`` (the copies' pipes join there; the unit's port). ``rate``: fluid
+    units/s per period, consumed (input) or produced (output)."""
+
+    y: int
+    role: Literal["input", "output"]
+    fluid: str
+    rate: float
+
+
+@dataclass(frozen=True)
 class Period:
     width: int
     height: int
@@ -197,6 +218,8 @@ class Period:
     spec: CycleSpec
     stage_of: tuple[int | None, ...]  # per placement: stage index for machines
     meta: dict[str, Any] = field(default_factory=dict)
+    pipes: tuple[FluidCrossing, ...] = ()
+    fluid_of: tuple[str | None, ...] = ()  # per placement: fluid of pipes (validate)
 
     @property
     def area(self) -> int:
@@ -238,6 +261,12 @@ def check_period(period: Period, gd: GameData) -> list[str]:
                 problems.append(
                     f"belt row y={b.y}: tile x={x} is not a {FLOW.name} {period.spec.belt}"
                 )
+    for c in period.pipes:
+        for x in (0, w - 1):
+            i = at.get(Tile(x, c.y))
+            p = period.placements[i] if i is not None else None
+            if p is None or p.name != period.spec.pipe or period.fluid_of[i] != c.fluid:
+                problems.append(f"{c.fluid} crossing y={c.y}: tile x={x} is not its pipe")
     for i, p in enumerate(period.placements):
         if gd.entity(p.name).type != "inserter":
             continue
@@ -371,19 +400,30 @@ def assemble(
     poles: list[tuple[int, int]],
     f: CycleFlows,
     lane_sides: dict[int, dict[str, str]] | None = None,
+    directions: dict[int, Direction] | None = None,
+    pipes: list[tuple[int, int, str, Direction | None]] | None = None,
+    crossings: dict[str, int] | None = None,
 ) -> Period:
     """The :class:`Period` of a solution: ``belts[k]`` on row ``rows[k]``, machines as
     ``(stage, x, y)`` anchors (top-left tile), poles as anchors. Output-belt lane rates
-    split each machine's product evenly over its output inserters."""
+    split each machine's product evenly over its output inserters. Fluids: machine
+    ``directions`` (by index in ``machines``; default N), ``pipes`` as ``(x, y, fluid,
+    None)`` for a pipe or ``(..., d)`` for a pipe-to-ground whose normal connection faces
+    ``d``, ``crossings`` fluid -> row of its crossing."""
     ps: list[Placement] = []
     stage_of: list[int | None] = []
+    directions = directions or {}
     for y in rows:
         for x in range(width):
             ps.append(Placement(spec.belt, center(gd, spec.belt, x, y, FLOW), FLOW))
             stage_of.append(None)
-    for si, x, y in machines:
+    for mi, (si, x, y) in enumerate(machines):
         st = spec.stages[si]
-        ps.append(Placement(st.machine, center(gd, st.machine, x, y), extra={"recipe": st.recipe}))
+        d = directions.get(mi, Direction.N)
+        extra: dict[str, Any] = {"recipe": st.recipe}
+        if spec.mirror and gd.entity(st.machine).use_mirroring:
+            extra["mirror"] = True
+        ps.append(Placement(st.machine, center(gd, st.machine, x, y, d), d, extra))
         stage_of.append(si)
     for s in sorted(inserters, key=lambda s: (s.y, s.x)):
         ps.append(Placement(s.tier, center(gd, s.tier, s.x, s.y), s.direction))
@@ -391,6 +431,20 @@ def assemble(
     for x, y in sorted(poles):
         ps.append(Placement(spec.pole, center(gd, spec.pole, x, y)))
         stage_of.append(None)
+    fluid_of: list[str | None] = [None] * len(ps)
+    for x, y, fl, d in sorted(pipes or [], key=lambda q: (q[1], q[0], q[2])):
+        if d is None:
+            ps.append(Placement(spec.pipe, center(gd, spec.pipe, x, y)))
+        else:
+            assert spec.pipe_to_ground is not None
+            ps.append(Placement(spec.pipe_to_ground, center(gd, spec.pipe_to_ground, x, y, d), d))
+        stage_of.append(None)
+        fluid_of.append(fl)
+    crossing_rows = []
+    for fl, y in sorted((crossings or {}).items()):
+        role: Literal["input", "output"] = "input" if fl in f.fluid_inputs else "output"
+        rate = f.input_rate[fl] if role == "input" else f.output_rate[fl]
+        crossing_rows.append(FluidCrossing(y, role, fl, rate))
     out_rows: list[BeltRow] = []
     lane_sides = lane_sides or {}
     for k, (b, y) in enumerate(zip(belts, rows, strict=True)):
@@ -439,5 +493,16 @@ def assemble(
         "links": sorted([p, c, n] for (p, c), n in links.items()),
         "inserters": len(inserters),
         "poles": len(poles),
+        "pipes": len(pipes or []),
     }
-    return Period(width, height, tuple(ps), tuple(out_rows), spec, tuple(stage_of), meta)
+    return Period(
+        width,
+        height,
+        tuple(ps),
+        tuple(out_rows),
+        spec,
+        tuple(stage_of),
+        meta,
+        tuple(crossing_rows),
+        tuple(fluid_of),
+    )

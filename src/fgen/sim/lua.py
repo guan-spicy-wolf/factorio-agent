@@ -247,11 +247,16 @@ def research_all() -> str:
 RUNTIME_STATE_BODY = (
     "local n, t = 0, 0\n"
     "for _, tech in pairs(F.technologies) do t = t + 1; if tech.researched then n = n + 1 end end\n"
+    "local prod = {}\n"
+    "for name, r in pairs(F.recipes) do\n"
+    "  if r.productivity_bonus ~= 0 then prod[name] = r.productivity_bonus end\n"
+    "end\n"
     + emit(
         "{inserter_stack_size_bonus=F.inserter_stack_size_bonus, "
         "bulk_inserter_capacity_bonus=F.bulk_inserter_capacity_bonus, "
         "belt_stack_size_bonus=F.belt_stack_size_bonus, "
         "mining_drill_productivity_bonus=F.mining_drill_productivity_bonus, "
+        "recipe_productivity=prod, "
         "technologies_researched=n, technologies_total=t, "
         "current_research=F.current_research and F.current_research.name or nil}"
     )

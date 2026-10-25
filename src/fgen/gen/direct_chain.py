@@ -85,6 +85,10 @@ class DirectChainParams:
     max_consumers: int = MAX_CONSUMERS  # final machines per period at most (search size)
     intermediates: Literal["auto", "direct", "lane"] = "auto"  # period kinds to consider
     max_lane_consumers: int = MAX_LANE_CONSUMERS  # lane periods: final machines at most
+    # fluids (plan-phase5a): pipe entities, the machines' blueprint mirror flag
+    pipe: str = "pipe"
+    pipe_to_ground: str | None = "pipe-to-ground"
+    mirror: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +119,12 @@ def _check_names(p: DirectChainParams, gd: GameData) -> None:
     need(p.belt, "transport-belt", "belt")
     need(p.inserter, "inserter", "inserter")
     need(p.pole, "electric-pole", "pole")
+    if _fluids(p, gd):
+        need(p.pipe, "pipe", "pipe")
+        if p.pipe_to_ground is not None:
+            need(p.pipe_to_ground, "pipe-to-ground", "pipe_to_ground")
+        if not gd.entity(p.machine).fluid_boxes:
+            raise Infeasible(f"{p.machine} has no fluid boxes for {p.recipe}")
     for n in p.extra_inserters:
         need(n, "inserter", "extra_inserters")
     if not p.target_rate > 0:
@@ -132,6 +142,12 @@ def _check_names(p: DirectChainParams, gd: GameData) -> None:
         raise Infeasible(f"backend={p.backend!r}", [f"backend={b!r}" for b in BACKENDS])
     if p.layout == "solver" and p.backend == "cpsat" and not cpsat.available():
         raise Infeasible(cpsat.INSTALL_HINT, ["backend='exhaustive'"], [{"backend": "exhaustive"}])
+
+
+def _fluids(p: DirectChainParams, gd: GameData) -> bool:
+    """The recipe takes or makes a fluid (pipes in the period)."""
+    r = gd.recipe(p.recipe)
+    return any(gd.is_fluid(n) for n, _ in (*r.ingredients, *r.results))
 
 
 def _producer(gd: GameData, item: str, machine: str, exclude: str) -> str | None:
@@ -197,7 +213,7 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
     p = resolve_backend(p)
     _check_names(p, gd)
     inter = tree(p, gd)
-    if not inter:
+    if not inter and not _fluids(p, gd):
         raise Infeasible(
             f"no ingredient of {p.recipe} can be made by {p.machine}: nothing to chain"
         )
@@ -205,6 +221,10 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
     rate = tp.machine_rate(gd, p.recipe, p.machine)
     product = tp.main_product(gd, p.recipe)[0]
     den = math.lcm(*(v.denominator for v in q.values()))
+    if not inter:
+        # one stage (a fluid recipe without intermediates): b' machines per period,
+        # no more than the target needs
+        den = max(1, math.ceil(p.target_rate / rate - _EPS))
     kinds: list[tuple[int, tuple[str, ...], int]] = []  # (rank, lane items, most b')
     if p.intermediates in ("auto", "direct"):
         kinds.append((0, (), min(den, p.max_consumers)))
@@ -233,9 +253,14 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
                 p.belt,
                 tuple(p.extra_inserters),
                 lane_items,
+                p.pipe,
+                p.pipe_to_ground,
+                p.mirror,
             )
             exact: tuple[int, ...]
-            if len(inter) == 1:
+            if not inter:
+                exact = (1,)
+            elif len(inter) == 1:
                 v = q[inter[0][1]]
                 exact = (v.numerator, v.denominator)
             else:
@@ -244,7 +269,13 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
                 (
                     (k * (b + sum(counts.values())), rank, -b),
                     ChainPlan(
-                        spec, k, exact, b * rate, product, inter[0][0], tuple(i for i, _ in inter)
+                        spec,
+                        k,
+                        exact,
+                        b * rate,
+                        product,
+                        inter[0][0] if inter else "",
+                        tuple(i for i, _ in inter),
                     ),
                 )
             )
@@ -267,6 +298,8 @@ def _capacity_problems(pl: ChainPlan, p: DirectChainParams, gd: GameData) -> lis
     full = beltgeom.items_per_second(gd, p.belt)
     out = []
     for m, r in sorted({**f.input_rate, **f.output_rate}.items()):
+        if gd.is_fluid(m):
+            continue  # pipes: no rate limit inside a segment (VERIFY §13); extent below
         if r * pl.periods > full + _EPS:
             out.append(f"{m} {r * pl.periods:g}/s exceeds one {p.belt} ({full:g}/s)")
     return out
@@ -342,6 +375,11 @@ def solve_period(
     per process (generators and sweeps call it repeatedly)."""
     if spec.lane_items and backend != "cpsat":
         raise Infeasible("lane intermediates need the CP-SAT backend", ["backend='cpsat'"])
+    fl = flows(spec, gd)
+    if (fl.fluid_inputs or fl.fluid_outputs) and backend != "cpsat":
+        raise Infeasible(
+            "fluids (pipes in the period) need the CP-SAT backend", ["backend='cpsat'"]
+        )
     key = (spec, id(gd), repeats, time_limit, backend)
     if key not in _SOLVED:
         solve = cpsat.solve if backend == "cpsat" else cycle.solve
@@ -484,6 +522,37 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                     space=PortSpace.item("direct"),
                 )
             )
+    fluids = {
+        c * len(per.placements) + i: fl
+        for c in range(k)
+        for i, fl in enumerate(per.fluid_of)
+        if fl is not None
+    }
+    for c in per.pipes:
+        extent = _segment_extent(layout, fluids, c.fluid, gd)
+        total = c.rate * k
+        out = c.role == "output"
+        ifaces.append(
+            Interface(
+                "fluid",
+                c.fluid,
+                Tile(k * w - 1, c.y) if out else Tile(0, c.y),
+                FLOW if out else FLOW.opposite,
+                None,
+                total,
+                c.role,
+                [
+                    f"{p.pipe} at the {'east' if out else 'west'} end of the {c.fluid} pipes; "
+                    f"the segment spans {extent} tiles of the unit (limit "
+                    f"{gd.constant('pipeline_extent'):g} with the link)"
+                ],
+                rate_profile=RateProfile.fixed(total),
+                requires=() if out else (MinRate(total * scale),),
+                entity=p.pipe,
+                temperature=gd.fluids[c.fluid].default_temperature,
+                segment_extent=extent,
+            )
+        )
     poles = [q for q in layout.placements if gd.entity(q.name).type == "electric-pole"]
     first = min(poles, key=lambda q: (q.position.x, q.position.y))
     ifaces.append(
@@ -501,6 +570,7 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
     )
     meta = {
         "belt_terminals": terminals,
+        "fluids": fluids,
         "recipe": p.recipe,
         "machine": p.machine,
         "target_rate": p.target_rate,
@@ -509,18 +579,31 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
     return Unit(layout, ifaces, meta, tuple(groups))
 
 
+def _segment_extent(layout: Layout, fluids: dict[int, str], fl: str, gd: GameData) -> int:
+    """Longest side (tiles) of the bounding box of the unit's ``fl`` pipes."""
+    ts = [t for i, f in fluids.items() if f == fl for t in layout.placements[i].tiles(gd)]
+    return (
+        max(
+            max(t.x for t in ts) - min(t.x for t in ts), max(t.y for t in ts) - min(t.y for t in ts)
+        )
+        + 1
+    )
+
+
 def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[str, Any]:
     """Analytic throughput of a chain from its contract and period meta; the output
     inserters' capacity (per final machine, capped at its rate) is counted under the
     force state ``rs`` (hand size bonus)."""
     m = unit.meta
     w, h = unit.layout.size(gd)
-    rate = m["period"]["rate"] * m["periods"]
+    # the force's recipe productivity adds products per craft (plastic +10% at full research)
+    prod = 1 + rs.productivity(m["recipe"])
+    rate = m["period"]["rate"] * m["periods"] * prod
     limits = {"machines": rate}
     finals = [q for q in unit.layout.placements if q.extra.get("recipe") == m["recipe"]]
     machine_tiles = [q.tiles(gd) for q in unit.layout.placements if q.extra.get("recipe")]
     every = set().union(*machine_tiles) if machine_tiles else set()
-    per_machine = tp.machine_rate(gd, m["recipe"], m["machine"])
+    per_machine = tp.machine_rate(gd, m["recipe"], m["machine"]) * prod
     out_cap = 0.0
     for q in finals:
         ts = q.tiles(gd)
@@ -533,6 +616,8 @@ def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[st
             if pu in ts and dr not in every:
                 cap += tp.inserter_throughput_estimate(gd, e.name, rs)
         out_cap += min(per_machine, cap)
+    if gd.is_fluid(m["icon"]):
+        out_cap = rate  # a fluid product leaves through the machines' own ports
     limits["output_inserters"] = out_cap
     for i in unit.interfaces:
         if i.kind != "item" or i.role != "output" or i.entity is None:
@@ -581,7 +666,9 @@ class DirectChain:
             break
         if found is None:
             changes = _belt_suggestions(p, gd)
-            if p.backend != "cpsat" and any(pl.spec.lane_items for pl in options):
+            if p.backend != "cpsat" and (
+                _fluids(p, gd) or any(pl.spec.lane_items for pl in options)
+            ):
                 changes.insert(0, {"backend": "cpsat"})
             raise Infeasible(" | ".join(failures), [_fmt(c) for c in changes], changes)
         pl, per, info = found
@@ -590,6 +677,14 @@ class DirectChain:
         if bad:
             raise Infeasible(f"period breaks its boundary conditions: {bad[:3]}")
         unit = build_unit(per, pl, p, gd)
+        limit = gd.constant("pipeline_extent")
+        for i in unit.interfaces:
+            if i.kind == "fluid" and (i.segment_extent or 0) >= limit:
+                raise Infeasible(
+                    f"{i.material} pipes span {i.segment_extent} tiles, a fluid segment stops "
+                    f"flowing beyond {limit:g} (VERIFY §13)",
+                    [f"target_rate={p.target_rate / 2:g}"],
+                )
         meta = {
             **unit.meta,
             "family": self.family,
@@ -608,6 +703,7 @@ class DirectChain:
                 "machines": pl.spec.machines(),
                 "inserters": per.meta["inserters"],
                 "poles": per.meta["poles"],
+                **({"pipes": per.meta["pipes"]} if per.meta.get("pipes") else {}),
                 "links": per.meta["links"],
                 **info,
             },

@@ -61,10 +61,13 @@ def char_for(gd: GameData, p: Placement) -> str:
     return TYPE_CHARS.get(e.type, UNKNOWN)
 
 
-def to_grid(gd: GameData, layout: Layout) -> dict[Tile, str]:
+def to_grid(
+    gd: GameData, layout: Layout, chars: Mapping[str, str] | None = None
+) -> dict[Tile, str]:
+    """Tile -> character; ``chars`` overrides the character of entities by name."""
     grid: dict[Tile, str] = {}
     for p in layout.placements:
-        ch = char_for(gd, p)
+        ch = (chars or {}).get(p.name) or char_for(gd, p)
         if p.name in gd.entities:
             try:
                 ts = footprint.tiles_of(gd, p.name, p.position, p.direction)
@@ -84,10 +87,12 @@ def to_ascii(
     *,
     rulers: bool = False,
     background: Mapping[Tile, str] | None = None,
+    chars: Mapping[str, str] | None = None,
 ) -> str:
     """Render ``layout``; ``rulers`` adds x (mod 10) and y coordinate labels;
-    ``background`` characters show through where no entity is (and widen the frame)."""
-    grid = to_grid(gd, layout)
+    ``background`` characters show through where no entity is (and widen the frame);
+    ``chars`` overrides characters by entity name."""
+    grid = to_grid(gd, layout, chars)
     if background:
         grid = {**background, **grid}
     if not grid:
