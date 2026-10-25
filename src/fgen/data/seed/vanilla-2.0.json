@@ -3570,6 +3570,442 @@
           "amount": 50
         }
       ]
+    },
+    "fast-inserter": {
+      "name": "fast-inserter",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "electronic-circuit",
+          "amount": 2
+        },
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 2
+        },
+        {
+          "type": "item",
+          "name": "inserter",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "fast-inserter",
+          "amount": 1
+        }
+      ]
+    },
+    "long-handed-inserter": {
+      "name": "long-handed-inserter",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "inserter",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "long-handed-inserter",
+          "amount": 1
+        }
+      ]
+    },
+    "bulk-inserter": {
+      "name": "bulk-inserter",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 15
+        },
+        {
+          "type": "item",
+          "name": "electronic-circuit",
+          "amount": 15
+        },
+        {
+          "type": "item",
+          "name": "advanced-circuit",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "fast-inserter",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "bulk-inserter",
+          "amount": 1
+        }
+      ]
+    },
+    "small-electric-pole": {
+      "name": "small-electric-pole",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "wood",
+          "amount": 1
+        },
+        {
+          "type": "item",
+          "name": "copper-cable",
+          "amount": 2
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "small-electric-pole",
+          "amount": 2
+        }
+      ],
+      "categories": [
+        "crafting",
+        "electromagnetics"
+      ]
+    },
+    "medium-electric-pole": {
+      "name": "medium-electric-pole",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-stick",
+          "amount": 4
+        },
+        {
+          "type": "item",
+          "name": "steel-plate",
+          "amount": 2
+        },
+        {
+          "type": "item",
+          "name": "copper-cable",
+          "amount": 2
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "medium-electric-pole",
+          "amount": 1
+        }
+      ],
+      "categories": [
+        "crafting",
+        "electromagnetics"
+      ]
+    },
+    "big-electric-pole": {
+      "name": "big-electric-pole",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-stick",
+          "amount": 8
+        },
+        {
+          "type": "item",
+          "name": "steel-plate",
+          "amount": 5
+        },
+        {
+          "type": "item",
+          "name": "copper-cable",
+          "amount": 4
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "big-electric-pole",
+          "amount": 1
+        }
+      ],
+      "categories": [
+        "crafting",
+        "electromagnetics"
+      ]
+    },
+    "substation": {
+      "name": "substation",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "steel-plate",
+          "amount": 10
+        },
+        {
+          "type": "item",
+          "name": "advanced-circuit",
+          "amount": 5
+        },
+        {
+          "type": "item",
+          "name": "copper-cable",
+          "amount": 6
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "substation",
+          "amount": 1
+        }
+      ],
+      "categories": [
+        "crafting",
+        "electromagnetics"
+      ]
+    },
+    "fast-transport-belt": {
+      "name": "fast-transport-belt",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 5
+        },
+        {
+          "type": "item",
+          "name": "transport-belt",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "fast-transport-belt",
+          "amount": 1
+        }
+      ],
+      "categories": [
+        "crafting",
+        "metallurgy"
+      ]
+    },
+    "express-transport-belt": {
+      "name": "express-transport-belt",
+      "categories": [
+        "crafting-with-fluid",
+        "metallurgy"
+      ],
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 10
+        },
+        {
+          "type": "item",
+          "name": "fast-transport-belt",
+          "amount": 1
+        },
+        {
+          "type": "fluid",
+          "name": "lubricant",
+          "amount": 20
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "express-transport-belt",
+          "amount": 1
+        }
+      ]
+    },
+    "underground-belt": {
+      "name": "underground-belt",
+      "energy_required": 1,
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 10
+        },
+        {
+          "type": "item",
+          "name": "transport-belt",
+          "amount": 5
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "underground-belt",
+          "amount": 2
+        }
+      ],
+      "categories": [
+        "crafting",
+        "metallurgy"
+      ]
+    },
+    "fast-underground-belt": {
+      "name": "fast-underground-belt",
+      "energy_required": 2,
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 40
+        },
+        {
+          "type": "item",
+          "name": "underground-belt",
+          "amount": 2
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "fast-underground-belt",
+          "amount": 2
+        }
+      ],
+      "categories": [
+        "crafting",
+        "metallurgy"
+      ]
+    },
+    "express-underground-belt": {
+      "name": "express-underground-belt",
+      "energy_required": 2,
+      "categories": [
+        "crafting-with-fluid",
+        "metallurgy"
+      ],
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-gear-wheel",
+          "amount": 80
+        },
+        {
+          "type": "item",
+          "name": "fast-underground-belt",
+          "amount": 2
+        },
+        {
+          "type": "fluid",
+          "name": "lubricant",
+          "amount": 40
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "express-underground-belt",
+          "amount": 2
+        }
+      ]
+    },
+    "pipe": {
+      "name": "pipe",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "pipe",
+          "amount": 1
+        }
+      ]
+    },
+    "pipe-to-ground": {
+      "name": "pipe-to-ground",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "pipe",
+          "amount": 10
+        },
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 5
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "pipe-to-ground",
+          "amount": 2
+        }
+      ]
+    },
+    "iron-stick": {
+      "name": "iron-stick",
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "iron-stick",
+          "amount": 2
+        }
+      ]
+    },
+    "advanced-circuit": {
+      "name": "advanced-circuit",
+      "energy_required": 6,
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "electronic-circuit",
+          "amount": 2
+        },
+        {
+          "type": "item",
+          "name": "plastic-bar",
+          "amount": 2
+        },
+        {
+          "type": "item",
+          "name": "copper-cable",
+          "amount": 4
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "advanced-circuit",
+          "amount": 1
+        }
+      ],
+      "categories": [
+        "crafting",
+        "electromagnetics"
+      ]
     }
   },
   "resource": {
