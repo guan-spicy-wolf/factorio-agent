@@ -28,10 +28,18 @@ CP = "chemical-plant"
 LONG = "long-handed-inserter"
 PLASTIC_RATES = (1.0, 2.0, 4.0)
 ACID_RATES = (1.0, 2.0, 100.0)  # the plan's 1 and 2 units/s are 1/50 of one plant; 100 = two
+# phase-5a rows: the given tiers, proved (plan-phase4c keeps them as they were)
 PLASTIC = DirectChainParams(
-    recipe="plastic-bar", machine=CP, backend="cpsat", extra_inserters=(LONG,)
+    recipe="plastic-bar",
+    machine=CP,
+    backend="cpsat",
+    extra_inserters=(LONG,),
+    palette="given",
+    prove=True,
 )
-ACID = DirectChainParams(recipe="sulfuric-acid", machine=CP, backend="cpsat")
+ACID = DirectChainParams(
+    recipe="sulfuric-acid", machine=CP, backend="cpsat", palette="given", prove=True
+)
 CHARS = {"pipe-to-ground": "u"}  # tell the underground ends from plain pipes
 DEVIATION_NOTE = 0.02
 

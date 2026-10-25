@@ -77,11 +77,19 @@ class SolveStats:
     seconds: float = 0.0
     timed_out: bool = False
     variables: dict[str, int] = field(default_factory=dict)
+    # plan-phase4c: is the best period proven best for the objective (or, with none
+    # found, the spec proven infeasible)? ``unproven_infeasible``: none found within the
+    # time box without a proof. ``phases``: seconds to the first feasible period, to
+    # the final area, to the final objective value, in total
+    proven: bool = False
+    unproven_infeasible: bool = False
+    phases: dict[str, float] = field(default_factory=dict)
 
     def summary(self) -> str:
         nodes = ", ".join(f"{k} {v}" for k, v in sorted(self.nodes.items()))
         pruned = ", ".join(f"{k} {v}" for k, v in self.pruned.most_common())
-        return f"{self.seconds:.2f} s; nodes: {nodes}; pruned: {pruned}"
+        proof = "proven" if self.proven else "unproven"
+        return f"{self.seconds:.2f} s ({proof}); nodes: {nodes}; pruned: {pruned}"
 
 
 @dataclass
@@ -984,6 +992,11 @@ def solve(
     """Smallest periods for ``spec`` (up to ``candidates`` of the smallest feasible
     area, fewest entities first). ``repeats``: how many periods will share each belt
     lane (lane capacity is checked for that many)."""
+    if not spec.single_tier():
+        raise ValueError(
+            "the exhaustive search takes one pole tier and one belt tier, no undergrounds "
+            "(a palette needs the CP-SAT backend)"
+        )
     t0 = time.monotonic()
     stats = SolveStats()
     s = _Search(spec, gd, repeats, t0 + time_limit, stats, inserter_budget, pole_budget)
@@ -1039,4 +1052,18 @@ def solve(
         stats.timed_out = True
     stats.seconds = time.monotonic() - t0
     found.sort(key=lambda p: (p.area, len(p.placements)))
+    finish_stats(stats, found)
     return SolveResult(found, stats)
+
+
+def finish_stats(stats: SolveStats, found: list[Period]) -> None:
+    """``proven`` / ``unproven_infeasible`` / ``phases`` of a search that proves (the
+    exhaustive one, CP-SAT with ``prove=True``): proven unless it timed out."""
+    stats.proven = not stats.timed_out
+    stats.unproven_infeasible = not found and stats.timed_out
+    t = [p.meta["seconds_to_find"] for p in found if "seconds_to_find" in p.meta]
+    if found:
+        stats.phases["first_feasible_s"] = min(t) if t else stats.seconds
+        stats.phases["area_s"] = found[0].meta.get("seconds_to_find", stats.seconds)
+        stats.phases["objective_s"] = stats.phases["area_s"]
+    stats.phases["total_s"] = round(stats.seconds, 3)

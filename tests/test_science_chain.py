@@ -20,16 +20,18 @@ needs_ortools = pytest.mark.skipif(not cpsat.available(), reason=cpsat.INSTALL_H
 
 
 def test_trees_and_exact_counts(gd):
-    red = dc.DirectChainParams(recipe=RED)
+    red = dc.DirectChainParams(palette="given", recipe=RED)
     assert [i for i, _ in dc.tree(red, gd)] == ["iron-gear-wheel"]
     q = dc.exact_counts(red, gd)["iron-gear-wheel"]
     need = tp.ingredient_rates(gd, RED, AM1)["iron-gear-wheel"]
     assert q == Fraction(need / tp.machine_rate(gd, "iron-gear-wheel", AM1)).limit_denominator()
-    green = dc.DirectChainParams(recipe=GREEN, belt_inputs=("electronic-circuit",))
+    green = dc.DirectChainParams(palette="given", recipe=GREEN, belt_inputs=("electronic-circuit",))
     items = {i for i, _ in dc.tree(green, gd)}
     assert items == {"inserter", "transport-belt", "iron-gear-wheel"}
     # without belt_inputs the circuit (and its cable) would be made in the chain too
-    assert "electronic-circuit" in {i for i, _ in dc.tree(dc.DirectChainParams(recipe=GREEN), gd)}
+    assert "electronic-circuit" in {
+        i for i, _ in dc.tree(dc.DirectChainParams(palette="given", recipe=GREEN), gd)
+    }
 
 
 def test_flows_propagate_shares_down_the_tree(gd):
@@ -54,7 +56,7 @@ def test_flows_propagate_shares_down_the_tree(gd):
 
 
 def test_plans_prefer_fewer_machines_lanes_on_ties(gd):
-    p = dc.DirectChainParams(recipe=RED, target_rate=1.0, backend="cpsat")
+    p = dc.DirectChainParams(palette="given", recipe=RED, target_rate=1.0, backend="cpsat")
     first = dc.plans(p, gd)[0]
     # one gear machine serves the whole exact ratio only through a belt lane
     assert first.spec.lane_items == ("iron-gear-wheel",) and first.periods == 1
@@ -76,7 +78,7 @@ def test_lane_skeletons_fit_the_lanes(gd):
 
 def test_exhaustive_has_no_lanes(gd):
     p = dc.DirectChainParams(
-        recipe=RED, target_rate=1.0, intermediates="lane", backend="exhaustive"
+        palette="given", recipe=RED, target_rate=1.0, intermediates="lane", backend="exhaustive"
     )
     with pytest.raises(Infeasible) as exc:
         dc.generate(p, gd)
@@ -88,7 +90,12 @@ def test_red_direct_surplus_period_both_backends(gd):
     """1 gear machine : 2 red machines, the most direct insertion reaches (1:3 and up
     are proved infeasible by CP-SAT); both backends give the same smallest area."""
     p = dc.DirectChainParams(
-        recipe=RED, target_rate=0.5, intermediates="direct", max_consumers=2, backend="cpsat"
+        palette="given",
+        recipe=RED,
+        target_rate=0.5,
+        intermediates="direct",
+        max_consumers=2,
+        backend="cpsat",
     )
     a = dc.generate(p, gd)
     b = dc.generate(dc.DirectChainParams(**{**p.__dict__, "backend": "exhaustive"}), gd)
@@ -101,7 +108,7 @@ def test_red_direct_surplus_period_both_backends(gd):
 
 @needs_ortools
 def test_red_lane_period(gd):
-    p = dc.DirectChainParams(recipe=RED, target_rate=0.5, backend="cpsat")
+    p = dc.DirectChainParams(palette="given", recipe=RED, target_rate=0.5, backend="cpsat")
     u = dc.generate(p, gd)
     assert u.meta["ratio"] == [1, 5] and u.meta["periods"] == 1
     assert dc.predict(u, gd)["throughput"] == pytest.approx(p.target_rate)

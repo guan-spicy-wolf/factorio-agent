@@ -69,11 +69,12 @@ def test_cpsat_proves_lane_capacity_infeasible(gd):
 
 @needs_ortools
 def test_generator_backend_switch(gd):
-    p = dc.DirectChainParams(target_rate=1.0, backend="cpsat")
+    p = dc.DirectChainParams(palette="given", target_rate=1.0, backend="cpsat")
     unit = dc.generate(p, gd)
     assert unit.meta["period"]["backend"] == "cpsat"
     ex = dc.generate(replace(p, backend="exhaustive"), gd)
     assert unit.meta["period"]["area"] == ex.meta["period"]["area"]
+    assert ex.meta["params"]["palette"] == "given" and ex.meta["params"]["prove"]
     assert dc.predict(unit, gd)["throughput"] >= p.target_rate
 
 
@@ -90,12 +91,12 @@ def test_unavailable_backend_is_explained(gd, monkeypatch):
     with pytest.raises(cpsat.SolverUnavailable, match="--extra solver"):
         cpsat.solve(spec(2, 1), gd)
     with pytest.raises(Infeasible) as exc:
-        dc.generate(dc.DirectChainParams(backend="cpsat"), gd)
+        dc.generate(dc.DirectChainParams(palette="given", backend="cpsat"), gd)
     assert "backend='exhaustive'" in exc.value.suggestions
 
 
 def test_auto_backend_follows_the_install(gd, monkeypatch):
-    p = dc.DirectChainParams()
+    p = dc.DirectChainParams(palette="given")
     assert p.backend == "auto"
     want = "cpsat" if cpsat.available() else "exhaustive"
     assert dc.resolve_backend(p).backend == want

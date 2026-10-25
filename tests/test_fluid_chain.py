@@ -17,13 +17,16 @@ from fgen.solve.period import CycleSpec, Stage, check_period, flows, tile
 
 CP = "chemical-plant"
 PLASTIC = dc.DirectChainParams(
+    palette="given",
     recipe="plastic-bar",
     machine=CP,
     target_rate=2.0,
     backend="cpsat",
     extra_inserters=("long-handed-inserter",),
 )
-ACID = dc.DirectChainParams(recipe="sulfuric-acid", machine=CP, target_rate=1.0, backend="cpsat")
+ACID = dc.DirectChainParams(
+    palette="given", recipe="sulfuric-acid", machine=CP, target_rate=1.0, backend="cpsat"
+)
 needs_ortools = pytest.mark.skipif(not cpsat.available(), reason=cpsat.INSTALL_HINT)
 
 

@@ -22,7 +22,9 @@ from fgen.layout.render import LEGEND, to_ascii
 from fgen.solve.period import tile
 
 RATES = (1.0, 2.0, 4.0)
-PHASE_4A = DirectChainParams(backend="exhaustive")  # the phase-4a rows keep their backend
+# the phase-4a rows keep their backend; every existing row keeps the given tiers and the
+# proving driver (plan-phase4c: characterization proves)
+PHASE_4A = DirectChainParams(backend="exhaustive", palette="given", prove=True)
 SCIENCE_RATES = (0.5, 1.0, 2.0)
 RED = "automation-science-pack"
 GREEN = "logistic-science-pack"
@@ -99,8 +101,12 @@ def warmup_s(unit: Any, gd: GameData, base: float) -> float:
     materials reach the last machine, products travel back out) plus two crafts of its
     slowest recipe (input buffers and the first outputs)."""
     w, _ = unit.layout.size(gd)
-    belt = unit.meta["params"]["belt"]
-    tiles_s = gd.entity(belt).speed * gd.constant("ticks_per_second")
+    speeds = [
+        gd.entity(q.name).speed
+        for q in unit.layout.placements
+        if gd.entity(q.name).type == "transport-belt"
+    ]
+    tiles_s = min(speeds) * gd.constant("ticks_per_second")  # the slowest belt row
     craft = max(
         gd.recipe(q.extra["recipe"]).energy_required / gd.entity(q.name).crafting_speed
         for q in unit.layout.placements
@@ -110,7 +116,16 @@ def warmup_s(unit: Any, gd: GameData, base: float) -> float:
 
 
 def _key(params: dict[str, Any]) -> str:
-    return json.dumps(params, sort_keys=True)
+    """Rows match earlier measurements on their params; the phase-4c fields at their
+    legacy values are left out (rows written before they existed match)."""
+    from fgen.gen.direct_chain import LEGACY
+
+    kept = {k: v for k, v in params.items() if not (k in LEGACY and _norm(v) == LEGACY[k])}
+    return json.dumps(kept, sort_keys=True)
+
+
+def _norm(v: Any) -> Any:
+    return list(v) if isinstance(v, tuple) else v
 
 
 def load_previous(path: Path) -> dict[str, dict[str, Any]]:

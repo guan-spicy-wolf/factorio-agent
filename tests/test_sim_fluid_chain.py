@@ -20,6 +20,7 @@ pytestmark = [
 
 CP = "chemical-plant"
 PLASTIC = dc.DirectChainParams(
+    palette="given",
     recipe="plastic-bar",
     machine=CP,
     target_rate=1.0,

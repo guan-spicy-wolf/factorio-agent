@@ -27,7 +27,7 @@ def ch(server, gd):
 @pytest.mark.parametrize("layout", ["solver", "baseline"])
 @pytest.mark.parametrize("rate", [1.0, 2.0, 4.0])
 def test_chain_meets_target(ch, gd, rate, layout):
-    unit = generate(DirectChainParams(target_rate=rate, layout=layout), gd)
+    unit = generate(DirectChainParams(palette="given", target_rate=rate, layout=layout), gd)
     m = ch.measure(unit, warmup_s=60, sample_s=SAMPLE_S, samples=6, speed=64)
     assert m["power"]["harness_on_unit_network"] and m["power"]["unpowered_inserters"] == 0
     assert m["power"]["inserter_networks"] == 1
@@ -38,7 +38,7 @@ def test_chain_meets_target(ch, gd, rate, layout):
 
 def test_basic_inserter_chain(ch, gd):
     """24 basic inserters per period: the estimate (0.84/s) still carries 2/s."""
-    unit = generate(DirectChainParams(target_rate=2.0, inserter="inserter"), gd)
+    unit = generate(DirectChainParams(palette="given", target_rate=2.0, inserter="inserter"), gd)
     m = ch.measure(unit, warmup_s=60, sample_s=SAMPLE_S, samples=6, speed=64)
     assert m["throughput"] >= 2.0 - 1 / SAMPLE_S, m
 
@@ -46,7 +46,9 @@ def test_basic_inserter_chain(ch, gd):
 def test_mixed_tier_chain(ch, gd):
     """The two-row period with long-handed inserters (over the iron belt onto the
     output belt) carries its target too."""
-    p = DirectChainParams(target_rate=2.0, extra_inserters=("long-handed-inserter",))
+    p = DirectChainParams(
+        palette="given", target_rate=2.0, extra_inserters=("long-handed-inserter",)
+    )
     unit = generate(p, gd)
     assert (
         unit.meta["period"]["area"]

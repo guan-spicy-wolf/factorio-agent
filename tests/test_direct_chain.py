@@ -29,7 +29,7 @@ def _product_rate(gd, machine="assembling-machine-1"):
 @pytest.mark.parametrize("layout", ["solver", "baseline"])
 @pytest.mark.parametrize("rate", RATES)
 def test_units_pass_validate_and_meet_target(gd, rate, layout):
-    p = DirectChainParams(recipe=RECIPE, target_rate=rate, layout=layout)
+    p = DirectChainParams(palette="given", recipe=RECIPE, target_rate=rate, layout=layout)
     unit = generate(p, gd)
     assert validate_unit(unit, gd) == []
     pred = predict(unit, gd)
@@ -54,8 +54,8 @@ def test_units_pass_validate_and_meet_target(gd, rate, layout):
 def test_ratio_follows_target(gd):
     """Exact 3:2 when the target needs two consumers, approximate 2:1 for one."""
     r = _product_rate(gd)
-    one = generate(DirectChainParams(target_rate=r), gd)
-    two = generate(DirectChainParams(target_rate=2 * r), gd)
+    one = generate(DirectChainParams(palette="given", target_rate=r), gd)
+    two = generate(DirectChainParams(palette="given", target_rate=2 * r), gd)
     assert one.meta["ratio"][1] == 1 and two.meta["ratio"][1] == 2
     assert two.meta["ratio"] == list(two.meta["exact_ratio"])
     assert one.meta["ratio"][0] / 1 > two.meta["exact_ratio"][0] / two.meta["exact_ratio"][1]
@@ -64,7 +64,7 @@ def test_ratio_follows_target(gd):
 
 
 def test_contract_fields(gd):
-    p = DirectChainParams(target_rate=4.0)
+    p = DirectChainParams(palette="given", target_rate=4.0)
     unit = generate(p, gd)
     assert check_contract(unit, gd) == []
     items = [i for i in unit.interfaces if i.kind == "item"]
@@ -116,14 +116,16 @@ def test_contract_fields(gd):
 )
 @pytest.mark.parametrize("layout", ["solver", "baseline"])
 def test_tiers_are_parameters(gd, change, layout):
-    unit = generate(replace(DirectChainParams(layout=layout), **change), gd)
+    unit = generate(replace(DirectChainParams(palette="given", layout=layout), **change), gd)
     assert validate_unit(unit, gd) == []
     assert predict(unit, gd)["throughput"] >= unit.meta["target_rate"] - 1e-9
 
 
 def test_solver_period_no_worse_than_baseline(gd):
-    s = generate(DirectChainParams(target_rate=2.0), gd).meta["period"]
-    b = generate(DirectChainParams(target_rate=2.0, layout="baseline"), gd).meta["period"]
+    s = generate(DirectChainParams(palette="given", target_rate=2.0), gd).meta["period"]
+    b = generate(DirectChainParams(palette="given", target_rate=2.0, layout="baseline"), gd).meta[
+        "period"
+    ]
     assert s["area"] <= b["area"]
     assert (s["area"], s["poles"] + s["inserters"]) <= (b["area"], b["poles"] + b["inserters"])
     assert s["seconds"] < 60 and not s["timed_out"]
@@ -132,27 +134,30 @@ def test_solver_period_no_worse_than_baseline(gd):
 def test_infeasible_beyond_one_belt(gd):
     full = beltgeom.items_per_second(gd, "transport-belt")
     with pytest.raises(Infeasible) as e:
-        generate(DirectChainParams(target_rate=full + 5), gd)
+        generate(DirectChainParams(palette="given", target_rate=full + 5), gd)
     assert "exceeds one transport-belt" in e.value.reason
     best = [c["target_rate"] for c in e.value.changes if "target_rate" in c]
     assert best and best[0] < full
     # the suggested target is feasible
-    unit = generate(DirectChainParams(target_rate=best[0]), gd)
+    unit = generate(DirectChainParams(palette="given", target_rate=best[0]), gd)
     assert validate_unit(unit, gd) == []
 
 
 def test_bad_names(gd):
     with pytest.raises(Infeasible):
-        generate(DirectChainParams(machine="stone-furnace"), gd)
+        generate(DirectChainParams(palette="given", machine="stone-furnace"), gd)
     with pytest.raises(Infeasible):
-        generate(DirectChainParams(recipe="iron-plate", machine="assembling-machine-1"), gd)
+        generate(
+            DirectChainParams(palette="given", recipe="iron-plate", machine="assembling-machine-1"),
+            gd,
+        )
     with pytest.raises(Infeasible):
-        generate(DirectChainParams(inserter="burner-inserter"), gd)
+        generate(DirectChainParams(palette="given", inserter="burner-inserter"), gd)
 
 
 def test_harness_wires_a_chain(gd):
     """Fixtures for every port route without violations (offline half of the measure)."""
-    unit = generate(DirectChainParams(target_rate=2.0), gd)
+    unit = generate(DirectChainParams(palette="given", target_rate=2.0), gd)
     h = hs.plan(unit, gd, Tile(0, 0))
     items = {item for _, item in h.sources}
     assert items == {i.material for i in unit.interfaces if i.role == "input" and i.kind == "item"}

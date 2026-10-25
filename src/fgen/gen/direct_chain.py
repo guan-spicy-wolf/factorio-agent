@@ -36,7 +36,7 @@ from fgen.data.schema import GameData
 from fgen.gen import throughput as tp
 from fgen.gen.base import Infeasible
 from fgen.geom import belt as beltgeom
-from fgen.geom import inserter
+from fgen.geom import footprint, inserter
 from fgen.geom.vec import Tile
 from fgen.layout.model import (
     Interface,
@@ -59,9 +59,13 @@ BACKENDS = ("auto", "exhaustive", "cpsat")
 
 
 def resolve_backend(p: DirectChainParams) -> DirectChainParams:
-    if p.backend != "auto":
-        return p
-    return replace(p, backend="cpsat" if cpsat.available() else "exhaustive")
+    """``auto`` -> CP-SAT when installed; the exhaustive search (and the hand-written
+    baseline) only take the given tiers and always prove (phase-4a behaviour)."""
+    if p.backend == "auto":
+        p = replace(p, backend="cpsat" if cpsat.available() else "exhaustive")
+    if p.backend == "exhaustive" or p.layout == "baseline":
+        p = replace(p, palette="given", prove=True)
+    return p
 
 
 MAX_LANE_CONSUMERS = 12  # search-size bound for lane periods (not a game number)
@@ -89,6 +93,29 @@ class DirectChainParams:
     pipe: str = "pipe"
     pipe_to_ground: str | None = "pipe-to-ground"
     mirror: bool = False
+    # plan-phase4c: the objective preset after the hard constraints (compact / cheap /
+    # simple, fgen.solve.preset); prove: the proving driver (characterization), else the
+    # anytime one within time_limit; palette "full": every inserter, pole, belt and
+    # underground belt of the data (minus ``exclude``) with inserter/pole/belt as the
+    # primary tiers, "given": exactly inserter + extra_inserters, pole, belt
+    preset: Literal["compact", "cheap", "simple"] = "compact"
+    prove: bool = False
+    palette: Literal["full", "given"] = "full"
+    exclude: tuple[str, ...] = ()
+
+
+# DirectChainParams fields added after phase 4b (5a: pipes, mirror; 4c: preset, prove,
+# palette) at the values that reproduce the earlier behaviour: sweeps key earlier
+# measurements on the params without them
+LEGACY = {
+    "pipe": "pipe",
+    "pipe_to_ground": "pipe-to-ground",
+    "mirror": False,
+    "preset": "compact",
+    "prove": True,
+    "palette": "given",
+    "exclude": [],
+}
 
 
 @dataclass(frozen=True)
@@ -104,6 +131,38 @@ class ChainPlan:
 
 def _names_of_type(gd: GameData, type_: str) -> list[str]:
     return sorted(n for n, e in gd.entities.items() if e.type == type_)
+
+
+def palette(p: DirectChainParams, gd: GameData) -> dict[str, tuple[str, ...]]:
+    """The tiers the solver may use (primary first): ``given`` the params' own; ``full``
+    every entity of the type in the data the period can use (electric 1x1 inserters,
+    all poles, all belts, the underground belt of each belt's speed), minus
+    ``exclude``."""
+    if p.palette == "given":
+        return {
+            "inserters": (p.inserter, *(i for i in p.extra_inserters if i != p.inserter)),
+            "poles": (p.pole,),
+            "belts": (p.belt,),
+            "undergrounds": (),
+        }
+
+    def pick(type_: str, ok: Any = lambda e: True) -> list[str]:
+        return [n for n in _names_of_type(gd, type_) if n not in p.exclude and ok(gd.entity(n))]
+
+    ins = pick("inserter", lambda e: e.is_electric and footprint.size(gd, e.name) == (1, 1))
+    belts = pick("transport-belt")
+    speeds = {gd.entity(b).speed for b in belts}
+    ugs = pick("underground-belt", lambda e: e.speed in speeds)
+
+    def primary(first: str, names: list[str]) -> tuple[str, ...]:
+        return (first, *(n for n in names if n != first)) if first in names else tuple(names)
+
+    return {
+        "inserters": primary(p.inserter, ins),
+        "poles": primary(p.pole, pick("electric-pole")),
+        "belts": primary(p.belt, belts),
+        "undergrounds": tuple(ugs),
+    }
 
 
 def _check_names(p: DirectChainParams, gd: GameData) -> None:
@@ -127,11 +186,20 @@ def _check_names(p: DirectChainParams, gd: GameData) -> None:
             raise Infeasible(f"{p.machine} has no fluid boxes for {p.recipe}")
     for n in p.extra_inserters:
         need(n, "inserter", "extra_inserters")
+    if p.preset not in ("compact", "cheap", "simple"):
+        raise Infeasible(
+            f"preset={p.preset!r}", ["preset='compact'", "preset='cheap'", "preset='simple'"]
+        )
+    if p.palette not in ("full", "given"):
+        raise Infeasible(f"palette={p.palette!r}", ["palette='full'", "palette='given'"])
+    pal = palette(p, gd)
+    if not pal["inserters"] or not pal["poles"] or not pal["belts"]:
+        raise Infeasible(f"exclude={p.exclude!r} leaves an empty palette")
     if not p.target_rate > 0:
         raise Infeasible("target_rate must be positive")
     if not set(gd.recipe(p.recipe).categories) & set(gd.entity(p.machine).crafting_categories):
         raise Infeasible(f"{p.machine} cannot craft {p.recipe}")
-    if not all(gd.entity(n).is_electric for n in (p.inserter, *p.extra_inserters)):
+    if not all(gd.entity(n).is_electric for n in pal["inserters"]):
         raise Infeasible(
             "inserters between machines would never receive fuel",
             [f"inserter={n!r}" for n in _names_of_type(gd, "inserter") if gd.entity(n).is_electric],
@@ -239,6 +307,7 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
             if lane_items and all(lane_items != li for _, li, _ in kinds):
                 kinds.append((len(kinds), lane_items, min(den, p.max_lane_consumers)))
     options = []
+    pal = palette(p, gd)
     for rank, lane_items, most in kinds:
         for b in range(1, most + 1):
             counts = {r: math.ceil(b * v - _EPS) for r, v in q.items()}
@@ -248,14 +317,17 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
                     Stage(p.recipe, p.machine, b),
                     *(Stage(r, p.machine, counts[r]) for _, r in inter),
                 ),
-                p.inserter,
-                p.pole,
-                p.belt,
-                tuple(p.extra_inserters),
+                pal["inserters"][0],
+                pal["poles"][0],
+                pal["belts"][0],
+                pal["inserters"][1:],
                 lane_items,
                 p.pipe,
                 p.pipe_to_ground,
                 p.mirror,
+                pal["poles"][1:],
+                pal["belts"][1:],
+                pal["undergrounds"],
             )
             exact: tuple[int, ...]
             if not inter:
@@ -295,21 +367,22 @@ def plan(p: DirectChainParams, gd: GameData) -> ChainPlan:
 def _capacity_problems(pl: ChainPlan, p: DirectChainParams, gd: GameData) -> list[str]:
     """Rates one belt cannot carry whatever the period looks like."""
     f = flows(pl.spec, gd)
-    full = beltgeom.items_per_second(gd, p.belt)
+    fast = max(pl.spec.belts, key=lambda b: beltgeom.items_per_second(gd, b))
+    full = beltgeom.items_per_second(gd, fast)
     out = []
     for m, r in sorted({**f.input_rate, **f.output_rate}.items()):
         if gd.is_fluid(m):
             continue  # pipes: no rate limit inside a segment (VERIFY §13); extent below
         if r * pl.periods > full + _EPS:
-            out.append(f"{m} {r * pl.periods:g}/s exceeds one {p.belt} ({full:g}/s)")
+            out.append(f"{m} {r * pl.periods:g}/s exceeds one {fast} ({full:g}/s)")
     return out
 
 
 def lane_repeats(per: Period, gd: GameData) -> int:
     """How many copies of ``per`` one belt's lanes carry (the period's own lane loads)."""
-    cap = tp.belt_lane_capacity(gd, per.spec.belt)
     k = 10**6
     for b in per.belts:
+        cap = tp.belt_lane_capacity(gd, b.belt or per.spec.belt)
         for _, v in b.rates:
             if v > _EPS:
                 k = min(k, math.floor(cap / v + _EPS))
@@ -331,7 +404,7 @@ def _belt_suggestions(p: DirectChainParams, gd: GameData) -> list[dict[str, Any]
         if _capacity_problems(pl, q, gd):
             continue
         try:
-            res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend)
+            res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend, p.preset, p.prove)
         except Infeasible:
             continue
         if res.best is not None and lane_repeats(res.best, gd) >= pl.periods:
@@ -348,7 +421,7 @@ def _belt_suggestions(p: DirectChainParams, gd: GameData) -> list[dict[str, Any]
                 per = None
         else:
             try:
-                per = solve_period(pl.spec, gd, 1, p.time_limit, p.backend).best
+                per = solve_period(pl.spec, gd, 1, p.time_limit, p.backend, p.preset, p.prove).best
             except Infeasible:
                 per = None
         if per is not None:
@@ -369,10 +442,17 @@ _SOLVED: dict[tuple[Any, ...], cycle.SolveResult] = {}
 
 
 def solve_period(
-    spec: CycleSpec, gd: GameData, repeats: int, time_limit: float, backend: str = "exhaustive"
+    spec: CycleSpec,
+    gd: GameData,
+    repeats: int,
+    time_limit: float,
+    backend: str = "exhaustive",
+    preset: str = "compact",
+    prove: bool = True,
 ) -> cycle.SolveResult:
-    """The solver (``backend``: exhaustive search or CP-SAT, same interface), memoised
-    per process (generators and sweeps call it repeatedly)."""
+    """The solver (``backend``: exhaustive search or CP-SAT, same interface; the
+    exhaustive one always proves, compact), memoised per process (generators and sweeps
+    call it repeatedly)."""
     if spec.lane_items and backend != "cpsat":
         raise Infeasible("lane intermediates need the CP-SAT backend", ["backend='cpsat'"])
     fl = flows(spec, gd)
@@ -380,10 +460,14 @@ def solve_period(
         raise Infeasible(
             "fluids (pipes in the period) need the CP-SAT backend", ["backend='cpsat'"]
         )
-    key = (spec, id(gd), repeats, time_limit, backend)
+    key = (spec, id(gd), repeats, time_limit, backend, preset, prove)
     if key not in _SOLVED:
-        solve = cpsat.solve if backend == "cpsat" else cycle.solve
-        _SOLVED[key] = solve(spec, gd, repeats=repeats, time_limit=time_limit)
+        if backend == "cpsat":
+            _SOLVED[key] = cpsat.solve(
+                spec, gd, repeats=repeats, time_limit=time_limit, preset=preset, prove=prove
+            )
+        else:
+            _SOLVED[key] = cycle.solve(spec, gd, repeats=repeats, time_limit=time_limit)
     return _SOLVED[key]
 
 
@@ -395,6 +479,9 @@ def _solver_info(res: cycle.SolveResult, repeats: int, backend: str) -> dict[str
         "solved_for_repeats": repeats,
         "seconds": round(st.seconds, 3),
         "timed_out": st.timed_out,
+        "proven": st.proven,
+        "unproven_infeasible": st.unproven_infeasible,
+        "phases": dict(st.phases),
         "nodes": dict(st.nodes),
         "pruned": dict(st.pruned),
         "variables": dict(st.variables),
@@ -424,14 +511,20 @@ def period_for(pl: ChainPlan, p: DirectChainParams, gd: GameData) -> tuple[Perio
         if lane_repeats(per, gd) < pl.periods:
             raise Infeasible(f"{pl.periods} baseline periods overload a {p.belt} lane")
         return per, {"layout": "baseline"}
-    res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend)
+    res = solve_period(pl.spec, gd, 1, p.time_limit, p.backend, p.preset, p.prove)
     reps = 1
     if res.best is not None and lane_repeats(res.best, gd) < pl.periods:
-        res = solve_period(pl.spec, gd, pl.periods, p.time_limit, p.backend)
+        res = solve_period(pl.spec, gd, pl.periods, p.time_limit, p.backend, p.preset, p.prove)
         reps = pl.periods
     if res.best is None:
         st = res.stats
-        why = "timed out" if st.timed_out else "no period within the search bounds"
+        why = (
+            "timed out"
+            if st.timed_out
+            else "unproven: nothing within the time box"
+            if st.unproven_infeasible
+            else "no period within the search bounds"
+        )
         raise Infeasible(
             f"solver found no {pl.spec.machines()}-machine period ({why}; {st.summary()})"
         )
@@ -454,6 +547,7 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
     for b in per.belts:
         g = f"{b.role}-y{b.y}"
         lanes = dict(b.rates)
+        belt = b.belt or per.spec.belt
         if b.role == "input":
             terminals.append(Tile(k * w - 1, b.y))
             mats = sorted(set(b.materials()))
@@ -476,10 +570,10 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                         _lane(lns),
                         total,
                         "input",
-                        [f"{p.belt} enters from the west, {m} on lane(s) {'/'.join(lns)}"],
+                        [f"{belt} enters from the west, {m} on lane(s) {'/'.join(lns)}"],
                         rate_profile=RateProfile.fixed(total, rates),  # type: ignore[arg-type]
                         requires=(MinRate(total * scale),),
-                        entity=p.belt,
+                        entity=belt,
                         port_group=g,
                         space=PortSpace.item("both"),
                     )
@@ -517,7 +611,7 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                     "output",
                     note,
                     rate_profile=RateProfile.fixed(total, rates),  # type: ignore[arg-type]
-                    entity=p.belt,
+                    entity=belt,
                     port_group=g,
                     space=PortSpace.item("direct"),
                 )
@@ -564,8 +658,8 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
             None,
             None,
             "input",
-            [f"connect a {p.pole}-compatible wire to this pole"],
-            entity=p.pole,
+            [f"connect a {first.name}-compatible wire to this pole"],
+            entity=first.name,
         )
     )
     meta = {
@@ -705,6 +799,9 @@ class DirectChain:
                 "poles": per.meta["poles"],
                 **({"pipes": per.meta["pipes"]} if per.meta.get("pipes") else {}),
                 "links": per.meta["links"],
+                "preset": p.preset,
+                "metrics": per.meta.get("metrics"),
+                "entities": sorted({q.name for q in per.placements}),
                 **info,
             },
         }
