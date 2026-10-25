@@ -10,6 +10,9 @@ a chain fed and powered):
 1. every footprint lies inside the rectangle (nothing straddles the cut);
 2. every belt row holds one east-facing belt of the cycle's tier on each of its
    ``width`` tiles (so the first tile of copy k+1 continues the last tile of copy k);
+   with a palette (plan-phase4c) the row's tier is the row's own, and an underground
+   pair of that tier's underground belt may replace a run of the row's tiles, wholly
+   inside the period (entrance, free tiles, exit; first and last tile stay plain);
 3. every inserter's pickup and drop tiles lie inside the rectangle: items move only
    within a period, never across the cut;
 4. every electric consumer is supplied by a pole of its **own** period;
@@ -68,10 +71,28 @@ class CycleSpec:
     pipe: str = "pipe"
     pipe_to_ground: str | None = "pipe-to-ground"
     mirror: bool = False
+    # palette (plan-phase4c): further pole and belt tiers the solver may choose from (per
+    # pole, per belt row), and underground belts it may put into a belt row (each row's
+    # tier with its own underground, matched by speed); every one may go unused
+    extra_poles: tuple[str, ...] = ()
+    extra_belts: tuple[str, ...] = ()
+    undergrounds: tuple[str, ...] = ()
 
     @property
     def inserters(self) -> tuple[str, ...]:
         return (self.inserter, *(i for i in self.extra_inserters if i != self.inserter))
+
+    @property
+    def poles(self) -> tuple[str, ...]:
+        return (self.pole, *(i for i in self.extra_poles if i != self.pole))
+
+    @property
+    def belts(self) -> tuple[str, ...]:
+        return (self.belt, *(i for i in self.extra_belts if i != self.belt))
+
+    def single_tier(self) -> bool:
+        """One pole tier, one belt tier, no undergrounds (the phase-4a vocabulary)."""
+        return len(self.poles) == 1 and len(self.belts) == 1 and not self.undergrounds
 
     def machines(self) -> int:
         return sum(s.count for s in self.stages)
@@ -192,6 +213,7 @@ class BeltRow:
     role: Literal["input", "output"]
     lanes: tuple[tuple[Lane, str], ...]
     rates: tuple[tuple[Lane, float], ...] = ()
+    belt: str = ""  # the row's belt tier ("" = the spec's ``belt``)
 
     def materials(self) -> frozenset[str]:
         return frozenset(m for _, m in self.lanes)
@@ -254,13 +276,7 @@ def check_period(period: Period, gd: GameData) -> list[str]:
         for t in ts:
             at[t] = i
     for b in period.belts:
-        for x in range(w):
-            i = at.get(Tile(x, b.y))
-            p = period.placements[i] if i is not None else None
-            if p is None or p.name != period.spec.belt or p.direction != FLOW:
-                problems.append(
-                    f"belt row y={b.y}: tile x={x} is not a {FLOW.name} {period.spec.belt}"
-                )
+        problems += _check_row(period, gd, b, at)
     for c in period.pipes:
         for x in (0, w - 1):
             i = at.get(Tile(x, c.y))
@@ -302,6 +318,56 @@ def check_period(period: Period, gd: GameData) -> list[str]:
         ):
             problems.append("no pole reaches a pole of the next period")
     return problems
+
+
+def _check_row(period: Period, gd: GameData, b: BeltRow, at: dict[Tile, int]) -> list[str]:
+    """Condition 2 with undergrounds: the row is east-facing belts of its tier, except
+    underground pairs of that tier's underground (entrance, free tiles, exit) wholly
+    inside the period; the first and the last tile are plain belts."""
+    belt = b.belt or period.spec.belt
+    ug = underground_of(gd, belt, period.spec.undergrounds)
+    out: list[str] = []
+    x, w = 0, period.width
+    while x < w:
+        i = at.get(Tile(x, b.y))
+        p = period.placements[i] if i is not None else None
+        if p is not None and p.name == belt and p.direction == FLOW:
+            x += 1
+            continue
+        if (
+            0 < x < w - 1
+            and p is not None
+            and p.name == ug
+            and p.direction == FLOW
+            and p.extra.get("type") == "input"
+        ):
+            reach, k, q = int(gd.entity(ug).max_distance or 0), 0, None
+            for k in range(1, reach + 1):
+                j = at.get(Tile(x + k, b.y))
+                q = period.placements[j] if j is not None else None
+                if q is not None and q.name == ug:
+                    break
+            if (
+                x + k < w - 1
+                and q is not None
+                and q.name == ug
+                and q.direction == FLOW
+                and q.extra.get("type") == "output"
+            ):
+                x += k + 1
+                continue
+        out.append(f"belt row y={b.y}: tile x={x} is not a {FLOW.name} {belt} or underground pair")
+        x += 1
+    return out
+
+
+def underground_of(gd: GameData, belt: str, allowed: tuple[str, ...]) -> str | None:
+    """The underground belt of ``belt``'s tier (same speed) among ``allowed``."""
+    speed = gd.entity(belt).speed
+    for n in allowed:
+        if gd.entity(n).speed == speed:
+            return n
+    return None
 
 
 def ceil_div(a: float, b: float) -> int:
@@ -403,19 +469,34 @@ def assemble(
     directions: dict[int, Direction] | None = None,
     pipes: list[tuple[int, int, str, Direction | None]] | None = None,
     crossings: dict[str, int] | None = None,
+    belt_tiers: list[str] | None = None,
+    belt_undergrounds: dict[int, dict[int, str]] | None = None,
 ) -> Period:
     """The :class:`Period` of a solution: ``belts[k]`` on row ``rows[k]``, machines as
     ``(stage, x, y)`` anchors (top-left tile), poles as anchors. Output-belt lane rates
     split each machine's product evenly over its output inserters. Fluids: machine
     ``directions`` (by index in ``machines``; default N), ``pipes`` as ``(x, y, fluid,
     None)`` for a pipe or ``(..., d)`` for a pipe-to-ground whose normal connection faces
-    ``d``, ``crossings`` fluid -> row of its crossing."""
+    ``d``, ``crossings`` fluid -> row of its crossing. Palette: ``belt_tiers[k]`` is belt
+    ``k``'s tier (default the spec's), ``belt_undergrounds[k]`` maps x -> ``input`` /
+    ``output`` / ``gap`` for the underground pairs in its row; poles may be ``(name, x,
+    y)``."""
     ps: list[Placement] = []
     stage_of: list[int | None] = []
     directions = directions or {}
-    for y in rows:
+    tiers = belt_tiers or [spec.belt] * len(belts)
+    ugs = belt_undergrounds or {}
+    for k, y in enumerate(rows):
+        ug = underground_of(gd, tiers[k], spec.undergrounds)
         for x in range(width):
-            ps.append(Placement(spec.belt, center(gd, spec.belt, x, y, FLOW), FLOW))
+            kind = ugs.get(k, {}).get(x)
+            if kind == "gap":
+                continue
+            if kind is not None:
+                assert ug is not None
+                ps.append(Placement(ug, center(gd, ug, x, y, FLOW), FLOW, {"type": kind}))
+            else:
+                ps.append(Placement(tiers[k], center(gd, tiers[k], x, y, FLOW), FLOW))
             stage_of.append(None)
     for mi, (si, x, y) in enumerate(machines):
         st = spec.stages[si]
@@ -428,8 +509,9 @@ def assemble(
     for s in sorted(inserters, key=lambda s: (s.y, s.x)):
         ps.append(Placement(s.tier, center(gd, s.tier, s.x, s.y), s.direction))
         stage_of.append(None)
-    for x, y in sorted(poles):
-        ps.append(Placement(spec.pole, center(gd, spec.pole, x, y)))
+    named = [(spec.pole, *q) if len(q) == 2 else q for q in poles]
+    for name, x, y in sorted(named, key=lambda q: (q[1], q[2], q[0])):
+        ps.append(Placement(name, center(gd, name, x, y)))  # type: ignore[arg-type]
         stage_of.append(None)
     fluid_of: list[str | None] = [None] * len(ps)
     for x, y, fl, d in sorted(pipes or [], key=lambda q: (q[1], q[0], q[2])):
@@ -457,7 +539,7 @@ def assemble(
                 sorted([*((ln, it) for it, ln in placed.items()), *zip(rest, raw, strict=False)])
             )
             rates = tuple((ln, belt_rate(f, mat)) for ln, mat in lanes)
-            out_rows.append(BeltRow(y, "input", lanes, rates))
+            out_rows.append(BeltRow(y, "input", lanes, rates, tiers[k]))
         elif b.role == "input":
             if len(b.materials) == 1:
                 lanes: tuple[tuple[Any, str], ...] = (
@@ -469,7 +551,7 @@ def assemble(
             else:
                 lanes = tuple(zip(("left", "right"), b.materials, strict=False))
                 rates = tuple((ln, f.input_rate[mat]) for ln, mat in lanes)
-            out_rows.append(BeltRow(y, "input", lanes, rates))
+            out_rows.append(BeltRow(y, "input", lanes, rates, tiers[k]))
         else:
             load: dict[str, float] = {}
             for m in {s.machine for s in inserters if s.kind == "out" and s.other == k}:
@@ -483,6 +565,7 @@ def assemble(
                     "output",
                     tuple((ln, b.materials[0]) for ln in sorted(load)),  # type: ignore[misc]
                     tuple(sorted(load.items())),  # type: ignore[arg-type]
+                    tiers[k],
                 )
             )
     links: dict[tuple[int, int], int] = {}
