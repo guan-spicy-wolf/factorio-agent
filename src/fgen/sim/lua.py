@@ -236,3 +236,28 @@ def enable_recipes(names: list[str]) -> str:
         + "  out[r] = F.recipes[r].enabled\n  F.recipes[r].enabled = true\nend\n"
         + emit("out")
     )
+
+
+def research_all() -> str:
+    """Research every technology of the player force (plan-phase4b §2) and read the
+    force numbers that change throughput (``fgen.data.runtime.RuntimeState``)."""
+    return PRELUDE + "F.research_all_technologies()\n" + RUNTIME_STATE_BODY
+
+
+RUNTIME_STATE_BODY = (
+    "local n, t = 0, 0\n"
+    "for _, tech in pairs(F.technologies) do t = t + 1; if tech.researched then n = n + 1 end end\n"
+    + emit(
+        "{inserter_stack_size_bonus=F.inserter_stack_size_bonus, "
+        "bulk_inserter_capacity_bonus=F.bulk_inserter_capacity_bonus, "
+        "belt_stack_size_bonus=F.belt_stack_size_bonus, "
+        "mining_drill_productivity_bonus=F.mining_drill_productivity_bonus, "
+        "technologies_researched=n, technologies_total=t, "
+        "current_research=F.current_research and F.current_research.name or nil}"
+    )
+)
+
+
+def runtime_state() -> str:
+    """Read the force numbers of ``RuntimeState`` without changing anything."""
+    return PRELUDE + RUNTIME_STATE_BODY

@@ -18,7 +18,7 @@ from fgen.data.schema import GameData
 from fgen.geom.vec import Tile
 from fgen.layout.model import Unit
 from fgen.sim import harness as hs
-from fgen.sim import lua
+from fgen.sim import lua, runtime
 from fgen.sim.deployer import RconDeployer, world_area
 from fgen.sim.server import HeadlessServer
 
@@ -143,6 +143,7 @@ class RconCharacterizer:
         sample_ticks = round(sample_s * tps)
         if sample_ticks in (1, PROBE_TICKS) or sample_ticks < 1:
             raise ValueError(f"sample period of {sample_ticks} ticks clashes with the probes")
+        state = runtime.prepare(srv)  # research everything first (plan-phase4b §2)
         self.clear(unit)
         srv.rcon.lua_json(lua.generate_chunks((self.origin.x, self.origin.y), 4))
         srv.set_speed(1)
@@ -180,6 +181,7 @@ class RconCharacterizer:
             speed=speed,
             ticks_per_second=tps,
             game_version=srv.rcon.command("/version").strip(),
+            runtime=state.to_json(),
         )
         return out
 
@@ -263,8 +265,12 @@ class RconCharacterizer:
             for k, (a, b) in enumerate(zip(input_starved, fuel_starved, strict=True), start=1)
             if a > 0 or b > 0
         ]
+        span = (ticks[-1] - ticks[0]) / tps if len(ticks) > 1 else 0.0
+        mean = (sum(snaps[ticks[-1]]) - sum(snaps[ticks[0]])) / span if span else 0.0
         return {
             "throughput": statistics.median(rates) if rates else 0.0,
+            # whole window: resolves 1 item per window instead of 1 item per sample
+            "throughput_mean": round(mean, 6),
             "samples": [round(r, 4) for r in rates],
             # per harness sink, in the order of the unit's output interfaces
             "sink_throughput": [statistics.median(r) if r else 0.0 for r in per_sink],

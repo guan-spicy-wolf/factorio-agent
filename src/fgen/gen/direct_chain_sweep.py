@@ -13,10 +13,11 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from fgen.data.runtime import RuntimeState
 from fgen.data.schema import GameData
 from fgen.gen.base import Infeasible
 from fgen.gen.direct_chain import DirectChainParams, generate, predict
-from fgen.gen.sweep import Measurer, _jsonable, blueprint_sha, format_interface
+from fgen.gen.sweep import Measurer, _jsonable, blueprint_sha, format_interface, runtime_section
 from fgen.layout.render import LEGEND, to_ascii
 from fgen.solve.period import tile
 
@@ -98,6 +99,9 @@ def sweep(
         if measure is not None:
             m = dict(measure(unit))
             m["blueprint_sha"] = sha
+            pr = predict(unit, gd, RuntimeState.from_json(m.get("runtime")))
+            m["predicted_throughput"] = pr["throughput"]
+            m["predicted_limits"] = pr["limits"]
             row["measured"] = _jsonable(m)
         else:
             old = previous.get(_key(row["params"]))
@@ -280,12 +284,14 @@ def _measured(rows: list[dict[str, Any]]) -> list[str]:
         f"is the median of {len(m0['samples'])} samples of {m0['sample_s']:g} s after "
         f"{m0['warmup_s']:g} s warm-up.",
         "",
-        "| case | target/s | measured/s | Δ | samples/s | machine states (probes) | note |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| case | target/s | predicted/s | measured/s | Δ vs predicted | samples/s | "
+        "machine states (probes) | note |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in meas:
         m, t = r["measured"], r["params"]["target_rate"]
-        delta = (m["throughput"] - t) / t
+        pred = m.get("predicted_throughput", (r.get("predicted") or {}).get("throughput", t))
+        delta = (m["throughput"] - pred) / pred
         states = ", ".join(f"{k} {v}" for k, v in sorted(m["machine_status_probes"].items()))
         note = ""
         if delta < -DEVIATION_NOTE:
@@ -295,7 +301,7 @@ def _measured(rows: list[dict[str, Any]]) -> list[str]:
         elif "item_ingredient_shortage" in m["machine_status_probes"]:
             note = "brief ingredient waits seen by the probes; no loss at the sample resolution"
         out.append(
-            f"| {r['case']} | {t:g} | {m['throughput']:g} | {delta:+.1%} | "
+            f"| {r['case']} | {t:g} | {pred:g} | {m['throughput']:g} | {delta:+.1%} | "
             f"{' '.join(f'{x:g}' for x in m['samples'])} | {states} | {note} |"
         )
-    return [*out, ""]
+    return [*out, "", *runtime_section(rows, "direct_chain.predict")]

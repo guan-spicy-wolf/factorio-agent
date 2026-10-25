@@ -31,10 +31,12 @@ from dataclasses import asdict, dataclass, replace
 from fractions import Fraction
 from typing import Any, Literal
 
+from fgen.data.runtime import NO_RESEARCH, RuntimeState
 from fgen.data.schema import GameData
 from fgen.gen import throughput as tp
 from fgen.gen.base import Infeasible
 from fgen.geom import belt as beltgeom
+from fgen.geom import inserter
 from fgen.geom.vec import Tile
 from fgen.layout.model import (
     Interface,
@@ -453,12 +455,31 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
     return Unit(layout, ifaces, meta, tuple(groups))
 
 
-def predict(unit: Unit, gd: GameData) -> dict[str, Any]:
-    """Analytic throughput of a chain from its contract and period meta."""
+def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[str, Any]:
+    """Analytic throughput of a chain from its contract and period meta; the output
+    inserters' capacity (per final machine, capped at its rate) is counted under the
+    force state ``rs`` (hand size bonus)."""
     m = unit.meta
     w, h = unit.layout.size(gd)
     rate = m["period"]["rate"] * m["periods"]
     limits = {"machines": rate}
+    finals = [q for q in unit.layout.placements if q.extra.get("recipe") == m["recipe"]]
+    machine_tiles = [q.tiles(gd) for q in unit.layout.placements if q.extra.get("recipe")]
+    every = set().union(*machine_tiles) if machine_tiles else set()
+    per_machine = tp.machine_rate(gd, m["recipe"], m["machine"])
+    out_cap = 0.0
+    for q in finals:
+        ts = q.tiles(gd)
+        cap = 0.0
+        for e in unit.layout.placements:
+            if gd.entity(e.name).type != "inserter":
+                continue
+            pu = inserter.pickup_tile(gd, e.name, e.position, e.direction)
+            dr = inserter.drop_tile(gd, e.name, e.position, e.direction)
+            if pu in ts and dr not in every:
+                cap += tp.inserter_throughput_estimate(gd, e.name, rs)
+        out_cap += min(per_machine, cap)
+    limits["output_inserters"] = out_cap
     for i in unit.interfaces:
         if i.kind != "item" or i.role != "output" or i.entity is None:
             continue
@@ -478,6 +499,7 @@ def predict(unit: Unit, gd: GameData) -> dict[str, Any]:
         "limits": limits,
         "target_rate": m["target_rate"],
         "product": m["icon"],
+        "runtime": rs.to_json(),
     }
 
 

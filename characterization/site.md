@@ -19,15 +19,17 @@ Contract checks: row/feed LaneMaterial(left, iron-ore) -> True (left lane gets [
 
 Warnings: -. Violations (whole site): none.
 
-| port | material | contract/s | measured/s | Δ |
-| --- | --- | --- | --- | --- |
-| row#0 | iron-ore | 7.5 | 7.508 | +0.1% |
-| row#1 | coal | 0.54 | 0.525 | -2.8% |
-| row#2 | iron-plate | 7.5 | 7.5 | +0.0% |
+| port | material | contract/s (no research) | predicted/s (measured force state) | measured/s | Δ vs predicted |
+| --- | --- | --- | --- | --- | --- |
+| row#0 | iron-ore | 7.5 | 7.5 | 7.5 | +0.0% |
+| row#1 | coal | 0.54 | 0.54 | 0.5389 | -0.2% |
+| row#2 | iron-plate | 7.5 | 7.5 | 7.5 | +0.0% |
 
-Measured in 2.1.23: warm-up 60.0 s, 6 samples of 20.0 s; electric networks {'pole_networks': 1, 'consumer_networks': 1, 'unpowered': 0}; consumed (mean) {'coal': 0.525, 'iron-ore': 7.5083}; produced (mean) {'iron-plate': 7.5083}.
+Measured in 2.1.23: warm-up 60.0 s, 6 samples of 60.0 s; electric networks {'pole_networks': 1, 'consumer_networks': 1, 'unpowered': 0}; consumed (mean) {'coal': 0.5389, 'iron-ore': 7.5}; produced (mean) {'iron-plate': 7.5}.
 
-Fuel (coal) is consumed in whole items: each stone furnace burns one coal per fuel_value / energy_usage seconds and the consumption counter moves when a coal starts burning, so over a 120 s window every furnace counts 2 or 3 coal; a few percent either way on the coal port is quantisation, not a shortfall (no furnace ran out: the plate output meets the contract).
+Fuel (coal) is consumed in whole items: each stone furnace burns one coal per fuel_value / energy_usage seconds and the consumption counter moves when a coal starts burning, so over the window every furnace counts a whole number of coal (phase 4b: the window is 6 x 60 s, about 8 coal per furnace, so the quantisation is about 1% instead of the 3% of the earlier 120 s window); no furnace ran out: the plate output meets the contract.
+
+Force state: 254/277 technologies; inserter hand +3 (bulk +11), belt stack +3, mining productivity +30% (after `force.research_all_technologies()`). `predicted` = `site_sweep.predict`: the smelting row runs at min(its own `throughput.predict` under this state, the ore its supply delivers: drills x rate x (1 + mining productivity), each lane capped); ore, fuel and the mining port follow the plates. Contract values are the no-research design numbers.
 
 ```
     654321098765432101234567890123456789012345678901234567890123456789012345678901
@@ -75,16 +77,18 @@ Contract checks: row/feed LaneMaterial(left, iron-ore) -> True (left lane gets [
 
 Warnings: -. Violations (whole site): none.
 
-| port | material | contract/s | measured/s | Δ |
-| --- | --- | --- | --- | --- |
-| mine#0 | iron-ore | 7.5 | 7.5 | +0.0% |
-| row#0 | iron-ore | 7.5 | 7.478 | -0.3% |
-| row#1 | coal | 0.54 | 0.5333 | -1.2% |
-| row#2 | iron-plate | 7.5 | 7.467 | -0.4% |
+| port | material | contract/s (no research) | predicted/s (measured force state) | measured/s | Δ vs predicted |
+| --- | --- | --- | --- | --- | --- |
+| mine#0 | iron-ore | 7.5 | 7.5 | 7.567 | +0.9% |
+| row#0 | iron-ore | 7.5 | 7.5 | 7.456 | -0.6% |
+| row#1 | coal | 0.54 | 0.54 | 0.5333 | -1.2% |
+| row#2 | iron-plate | 7.5 | 7.5 | 7.467 | -0.4% |
 
-Measured in 2.1.23: warm-up 120.0 s, 6 samples of 15.0 s; electric networks {'pole_networks': 1, 'consumer_networks': 1, 'unpowered': 0}; consumed (mean) {'coal': 0.5333, 'iron-ore': 7.4778}; produced (mean) {'iron-ore': 7.5, 'iron-plate': 7.4667}.
+Measured in 2.1.23: warm-up 120.0 s, 6 samples of 15.0 s; electric networks {'pole_networks': 1, 'consumer_networks': 1, 'unpowered': 0}; consumed (mean) {'coal': 0.5333, 'iron-ore': 7.4556}; produced (mean) {'iron-ore': 7.5667, 'iron-plate': 7.4556}.
 
-plates 7.467/s = 99.6% of min(ore belt initial 7.5, 7.5)/s; the drills produced 7.500/s (+0.0% vs their contract). Drills minus furnaces = 0.033/s, i.e. 3 ore over the 90 s window still going into the route belt and the furnaces' input slots: with supply equal to demand the row's buffers fill only slowly (the upstream furnaces take first), so the plates lag the ore by that much; it is not lost ore and not a lane problem (the left lane carries only ore).
+plates 7.467/s = 99.6% of min(ore belt initial 7.5, 7.5)/s; the drills produced 7.567/s (+0.9% vs their contract). Drills minus furnaces = 0.100/s, i.e. 9 ore over the 90 s window still going into the route belt and the furnaces' input slots: with supply equal to demand the row's buffers fill only slowly (the upstream furnaces take first), so the plates lag the ore by that much; it is not lost ore and not a lane problem (the left lane carries only ore).
+
+Force state: 254/277 technologies; inserter hand +3 (bulk +11), belt stack +3, mining productivity +30% (after `force.research_all_technologies()`). `predicted` = `site_sweep.predict`: the smelting row runs at min(its own `throughput.predict` under this state, the ore its supply delivers: drills x rate x (1 + mining productivity), each lane capped); ore, fuel and the mining port follow the plates. Contract values are the no-research design numbers.
 
 ```
    876543210987654321098765432109876543210987654321098

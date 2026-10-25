@@ -23,7 +23,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from fgen.data.runtime import RuntimeState
 from fgen.data.schema import GameData
+from fgen.gen import throughput as tp
 from fgen.gen.mining_patch import MiningPatchParams
 from fgen.gen.mining_patch import generate as gen_mining
 from fgen.gen.smelting_row import SmeltingRowParams
@@ -265,10 +267,66 @@ def plan_row(
     return row, conn
 
 
-def judge(row: dict[str, Any], measured: dict[str, Any]) -> dict[str, Any]:
+def predict(site: Site, gd: GameData, rs: RuntimeState) -> dict[str, float]:
+    """Steady flow per judged port under the force state ``rs``.
+
+    The smelting row runs at the smaller of its own throughput (``throughput.predict``
+    under ``rs``) and what its ore supply delivers: a fixture delivers on demand, a
+    mining unit every lane's drills x drill rate x (1 + mining productivity), at most the
+    lane capacity. Ore and fuel follow the plates by the recipe and the fuel model; a
+    mining port produces what the row takes (its belt backs up otherwise)."""
+    rows = [u for u in site.units if u.unit.meta.get("family") == "belt-fed-row/smelting"]
+    out: dict[str, float] = {}
+    for ru in rows:
+        unit = ru.unit
+        pr = tp.predict(unit, gd, rs)
+        meta = unit.meta
+        product, per_craft = tp.main_product(gd, meta["recipe"])
+        ingr = {n: a / per_craft for n, a in gd.recipe(meta["recipe"]).ingredients}
+        rate = tp.machine_rate(gd, meta["recipe"], meta["machine"])
+        fuel = meta.get("fuel")
+        fuel_pp = tp.fuel_rate(gd, meta["machine"], fuel) / rate if fuel else 0.0
+        plates = pr["throughput"]
+        feeds: list[tuple[Endpoint, Endpoint]] = [
+            (ln.src, ln.dst) for ln in site.links if ln.dst.unit == ru.name
+        ]
+        for src, dst in feeds:
+            i = site.interface(dst)
+            mu = site.placed(src.unit).unit
+            if mu.meta.get("family") != "anchor/mining-patch" or i.material not in ingr:
+                continue
+            si = site.interface(src)
+            lanes = si.rate_profile.lanes if si.rate_profile else ()
+            cap = tp.belt_lane_capacity(gd, si.entity or mu.meta["params"]["belt"])
+            supply = sum(min(v * (1.0 + rs.mining_drill_productivity_bonus), cap) for _, v in lanes)
+            plates = min(plates, supply / ingr[i.material])
+        for src, dst in feeds:
+            i = site.interface(dst)
+            if i.material in ingr:
+                out[str(dst)] = plates * ingr[i.material]
+                if "fixture" not in site.placed(src.unit).unit.meta:
+                    out[str(src)] = plates * ingr[i.material]
+            elif i.material == fuel:
+                out[str(dst)] = plates * fuel_pp
+        for ln in site.links:
+            if ln.src.unit == ru.name and site.interface(ln.src).material == product:
+                out[str(ln.src)] = plates
+    return out
+
+
+def judge(
+    row: dict[str, Any],
+    measured: dict[str, Any],
+    site: Site | None = None,
+    gd: GameData | None = None,
+) -> dict[str, Any]:
     """Measured value (whole-window mean) and deviation per port (inputs: consumption
-    of the material; outputs: the sink's count, else production of the material)."""
+    of the material; outputs: the sink's count, else production of the material), from
+    the prediction under the measured force state (``measured.runtime``) when the site is
+    given, else from the contract."""
     sinks = {name: k for k, name in enumerate(measured.get("sink_units", []))}
+    rs = RuntimeState.from_json(measured.get("runtime"))
+    pred = predict(site, gd, rs) if site is not None and gd is not None else {}
     out = []
     for p in row["ports"]:
         if p["role"] == "input":
@@ -282,16 +340,21 @@ def judge(row: dict[str, Any], measured: dict[str, Any]) -> dict[str, Any]:
                 else measured["produced_mean"].get(p["material"])
             )
             ref = p["initial"]
+        exp = pred.get(p["port"], ref)
         out.append(
             {
                 "port": p["port"],
                 "material": p["material"],
                 "contract": ref,
+                "predicted": exp,
                 "measured": got,
-                "deviation": None if not ref or got is None else round(got / ref - 1, 4),
+                "deviation": None if not exp or got is None else round(got / exp - 1, 4),
+                "deviation_vs_contract": None
+                if not ref or got is None
+                else round(got / ref - 1, 4),
             }
         )
-    return {"ports": out}
+    return {"ports": out, "runtime": rs.to_json()}
 
 
 # ---- characterization file ------------------------------------------------------------
@@ -377,8 +440,9 @@ def _section(r: dict[str, Any]) -> list[str]:
         f"Warnings: {'; '.join(c['warnings']) or '-'}. Violations (whole site): "
         f"{'; '.join(c['violations']) or 'none'}.",
         "",
-        "| port | material | contract/s | measured/s | Δ |",
-        "| --- | --- | --- | --- | --- |",
+        "| port | material | contract/s (no research) | predicted/s (measured force state) | "
+        "measured/s | Δ vs predicted |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     judged = (r.get("judged") or {}).get("ports") or [
         {
@@ -393,8 +457,8 @@ def _section(r: dict[str, Any]) -> list[str]:
     for p in judged:
         dev = "-" if p["deviation"] is None else f"{p['deviation']:+.1%}"
         out.append(
-            f"| {p['port']} | {p['material']} | {_fmt(p['contract'])} | {_fmt(p['measured'])} "
-            f"| {dev} |"
+            f"| {p['port']} | {p['material']} | {_fmt(p['contract'])} | "
+            f"{_fmt(p.get('predicted'))} | {_fmt(p['measured'])} | {dev} |"
         )
     m = r.get("measured")
     if m:
@@ -407,5 +471,16 @@ def _section(r: dict[str, Any]) -> list[str]:
         ]
         if m.get("explanation"):
             out += ["", m["explanation"]]
+        rt = (r.get("judged") or {}).get("runtime") or m.get("runtime")
+        if rt:
+            out += [
+                "",
+                f"Force state: {RuntimeState.from_json(rt).describe()} (after "
+                "`force.research_all_technologies()`). `predicted` = `site_sweep.predict`: the "
+                "smelting row runs at min(its own `throughput.predict` under this state, the "
+                "ore its supply delivers: drills x rate x (1 + mining productivity), each lane "
+                "capped); ore, fuel and the mining port follow the plates. Contract values are "
+                "the no-research design numbers.",
+            ]
     out += ["", "```", r["render"], "```", ""]
     return out

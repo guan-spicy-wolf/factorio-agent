@@ -116,23 +116,23 @@ input  power -            at (3,3) facing E
 
 | case | machine | inserter | pole | target/s | result | ratio | periods | period WxH | unit area | machines | inserters/period | poles/period | solve s | measured/s |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.46 | 1 |
+| solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.62 | 1 |
 | baseline-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | - | 1 |
-| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.58 | 2 |
+| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.61 | 2 |
 | baseline-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.58 | 4 |
+| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.61 | 4 |
 | baseline-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.65 | 3 |
-| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.56 | 2 |
-| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.13 | 2 |
+| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.55 | 3 |
+| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.65 | 2 |
+| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.29 | 2 |
 | baseline-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 6 | - | 3 |
 | baseline-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
 | baseline-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 8 | - | 2 |
-| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 16.98 | 2 |
+| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 17.71 | 2 |
 | baseline-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 16.98 | 4 |
+| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 17.71 | 4 |
 | baseline-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 7. (try belt='fast-transport-belt'; target_rate=5) |  |  |  |  |  |  |  |  |  |
+| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 8. (try belt='fast-transport-belt'; target_rate=5) |  |  |  |  |  |  |  |  |  |
 | solver-r20 | assembling-machine-1 | fast-inserter | small-electric-pole | 20 | infeasible: 3:2: copper-plate 30/s exceeds one transport-belt (15/s); electronic-circuit 20/ (try target_rate=5) |  |  |  |  |  |  |  |  |  |
 
 ## Solver vs hand-written baseline
@@ -152,22 +152,28 @@ input  power -            at (3,3) facing E
 
 Factorio headless 2.1.23: unit built from its blueprint (recipes unlocked first, see VERIFY §11), iron and copper side-loaded onto their lanes by infinity-chest fixtures, product counted at a loader + chest, free power. Throughput is the median of 6 samples of 10 s after 60 s warm-up.
 
-| case | target/s | measured/s | Δ | samples/s | machine states (probes) | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| solver-r1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 76, working 353 | producers idle with full output: the period's ratio makes surplus intermediate |
-| baseline-r1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 70, working 350 | producers idle with full output: the period's ratio makes surplus intermediate |
-| solver-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
-| baseline-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 675 |  |
-| solver-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1430 |  |
-| baseline-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
-| solver-am2-r3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 685 |  |
-| solver-medium-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
-| solver-basic-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 690 |  |
-| baseline-am2-r3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 695 |  |
-| baseline-medium-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 700 |  |
-| baseline-basic-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 700 |  |
-| solver-fastlong-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 665 |  |
-| baseline-fastlong-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 715 |  |
-| solver-fastlong-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
-| baseline-fastlong-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
+| case | target/s | predicted/s | measured/s | Δ vs predicted | samples/s | machine states (probes) | note |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| solver-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 64, working 353 | producers idle with full output: the period's ratio makes surplus intermediate |
+| baseline-r1 | 1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 55, item_ingredient_shortage 10, working 364 | producers idle with full output: the period's ratio makes surplus intermediate |
+| solver-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 685 |  |
+| baseline-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
+| solver-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1420 |  |
+| baseline-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1380 |  |
+| solver-am2-r3 | 3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 675 |  |
+| solver-medium-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
+| solver-basic-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 695 |  |
+| baseline-am2-r3 | 3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 680 |  |
+| baseline-medium-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 715 |  |
+| baseline-basic-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 670 |  |
+| solver-fastlong-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | item_ingredient_shortage 32, working 608 | brief ingredient waits seen by the probes; no loss at the sample resolution |
+| baseline-fastlong-r2 | 2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
+| solver-fastlong-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | item_ingredient_shortage 35, working 1355 | brief ingredient waits seen by the probes; no loss at the sample resolution |
+| baseline-fastlong-r4 | 4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1380 |  |
+
+## Force state of the measurements
+
+Every measurement ran after `force.research_all_technologies()`: 254/277 technologies; inserter hand +3 (bulk +11), belt stack +3, mining productivity +30%. `predicted/s` above is `direct_chain.predict` under that state; the layouts are generated for a force with nothing researched.
+
+No predicted limit changed.
 

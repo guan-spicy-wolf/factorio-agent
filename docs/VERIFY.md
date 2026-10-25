@@ -186,3 +186,16 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 长臂爪跨带放货 | 长臂爪（pickup (0,-2)、insert (0,2.2)）从绿板机取货、跨过紧邻的铁带放到下一条输出带；9×12 周期实测 2/s、4/s 达标 | `solve/cycle.py`（`extra_inserters`） | `fgen sweep direct-chain --measure` 的 `fastlong-*` | 部分核对：吞吐已测；落在输出带哪一道（契约写 right = 远道）没有单独读道，夹具汇点两道都收 |
 | 长臂爪从组装机取货的速率 | 估计 1.2/s（箱到箱已测 1.198，§6）；9×12 周期里每只长臂爪只运 1/s，没有逼到上限 | `gen/throughput.py` | 未单测组装机场景 | 待核：用 3 型铜线机→长臂爪→绿板机测封顶速率 |
 
+
+## 12. 运行时状态（阶段 4b，2.1.23 实机）
+
+核对方法：阶段 4b 的 spike（`force.research_all_technologies()` 前后读 `LuaForce`，记录见 `docs/experiments/4b-cpsat-and-science.md`
+迭代 B0），之后由 `tests/test_sim_runtime.py` 与四份 `fgen sweep ... --measure` 持续覆盖（每条实测记录带 `runtime`）。
+
+| 条目 | 结论 | 所在文件 | 核对方法 | 状态 |
+| --- | --- | --- | --- | --- |
+| 全科技后的 force 加成 | 2.1.23 + 目标 mod 组合：254/277 科技研究完（无限科技停在当前等级）；`inserter_stack_size_bonus` 3、`bulk_inserter_capacity_bonus` 11、`belt_stack_size_bonus` 3、`mining_drill_productivity_bonus` 0.3 | `data/runtime.py`、`sim/runtime.py` | spike + `test_sim_runtime.py`（只断言 > 0，不写死数值） | 已核对 |
+| 采矿产能进入产量 | 电钻每道产量 = 钻数 × 钻速 × (1 + 产能)，未满道的带实测与预测差 ≤ 1.5%（8 个画矿用例 + 真实地图） | `gen/mining_sweep.py` `predicted` | `fgen sweep mining --measure --real-map` | 已核对 |
+| 大钻成叠放带 | `drops_full_belt_stacks` 的钻机按 `1 + belt_stack_size_bonus` 一叠放到带上：快带一道（22.5/s 件数上限）实测 29.2/s，不封顶 | `gen/mining_sweep.py` | big-drill-medium 用例 | 已核对（只测了 big-mining-drill + express 带） |
+| 手持 4 的普通/快速/长臂爪 | 直插链、冶炼列在手持 4 下实测与研究前相同（机器封顶）；爪子估计按 `hand × tps × rotation_speed` 线性放大，未在爪子封顶的场景单测 | `gen/throughput.py` | 四份 characterization | 部分核对：没有用"爪子是瓶颈"的单元测手持 4 的实际速率 |
+| 冶炼列测量统计量 | 10 s 样本只能分辨 1 件（5/s 时 2%），对比改用整窗口均值 `throughput_mean` | `sim/measure.py`、`gen/sweep.py` | 冶炼列重测：中位数 ±2%、均值 ≤ 0.7% | 已核对 |

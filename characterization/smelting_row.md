@@ -25,12 +25,10 @@ legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furna
 
 interfaces:
   input  item  iron-ore     at (0,0) facing E lane=left 5/s
-           requires: left lane carries only iron-ore
            requires: at least 5/s
            requires: compressed input (not checked)
            assumes: transport-belt enters from the west, iron-ore on the left lane, compressed enough for 5/s
   input  item  coal         at (0,0) facing E lane=right 0.36/s
-           requires: right lane carries only coal
            requires: at least 0.36/s
            assumes: coal on the right lane, at least 0.36/s
   output item  iron-plate   at (31,5) facing E lane=right 5/s
@@ -57,12 +55,10 @@ limits: machines=5, input:iron-ore=7.5, fuel:coal=104.167, output_belt=7.5, inse
 
 interfaces:
   input  item  iron-ore     at (0,0) facing E lane=left 7.5/s
-           requires: left lane carries only iron-ore
            requires: at least 7.5/s
            requires: compressed input (not checked)
            assumes: transport-belt enters from the west, iron-ore on the left lane, compressed enough for 7.5/s
   input  item  coal         at (0,0) facing E lane=right 0.54/s
-           requires: right lane carries only coal
            requires: at least 0.54/s
            assumes: coal on the right lane, at least 0.54/s
   output item  iron-plate   at (47,5) facing E lane=right 7.5/s
@@ -95,12 +91,10 @@ Rendered with the first suggestion applied: `belt='fast-transport-belt'`.
 
 interfaces:
   input  item  iron-ore     at (0,0) facing E lane=left 15/s
-           requires: left lane carries only iron-ore
            requires: at least 15/s
            requires: compressed input (not checked)
            assumes: fast-transport-belt enters from the west, iron-ore on the left lane, compressed enough for 15/s
   input  item  coal         at (0,0) facing E lane=right 1.08/s
-           requires: right lane carries only coal
            requires: at least 1.08/s
            assumes: coal on the right lane, at least 1.08/s
   output item  iron-plate   at (95,5) facing E lane=right 15/s
@@ -137,26 +131,32 @@ limits: machines=15, input:iron-ore=15, fuel:coal=208.333, output_belt=15, inser
 
 ## Predicted vs measured
 
-Measured in Factorio headless 2.1.23 (base mod only) by `uv run fgen sweep smelting --measure`: unit placed from its blueprint, inputs fed by infinity chests through loaders (side-loaded onto the declared lanes), output counted at a loader + chest, free power. Throughput is the median over 6 samples of 10 s game time after 60 s warm-up. *starved* lists furnaces (1 = upstream end) that reported `no_ingredients`/`no_fuel` in any probe.
+Measured in Factorio headless 2.1.23 by `uv run fgen sweep smelting --measure`: unit placed from its blueprint, inputs fed by infinity chests through loaders (side-loaded onto the declared lanes), output counted at a loader + chest, free power. Throughput is the median over 6 samples of 10 s game time after 60 s warm-up; `measured/s` is the whole-window mean (a 10 s sample resolves one item, 2% at 5/s; the window one item in 60 s). *starved* lists furnaces (1 = upstream end) that reported `no_ingredients`/`no_fuel` in any probe.
 
 | furnace | pole | target/s | measured as | predicted/s | measured/s | Δ | samples/s | startup s | starved | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| stone-furnace | small-electric-pole | 5 | default | 5 | 4.95 | -1.0% | 5 4.9 4.9 4.9 5.1 5.1 | 25.1 | - | no starvation and power ok; model/measurement gap (see samples) |
-| stone-furnace | small-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 33.7 | - |  |
-| stone-furnace | small-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 14.9 15 15 15 | 32.4 | 47 | input:iron-ore limit = 15/s = demand (no headroom): the last furnaces wait briefly; the loss is below the sample resolution |
-| stone-furnace | medium-electric-pole | 5 | default | 5 | 5.05 | +1.0% | 4.8 5.1 5.1 5.1 5 4.9 | 25.1 | - |  |
-| stone-furnace | medium-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 33.7 | - |  |
-| stone-furnace | medium-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 14.9 15 15 15 15 | 32.4 | 47 | input:iron-ore limit = 15/s = demand (no headroom): the last furnaces wait briefly; the loss is below the sample resolution |
-| steel-furnace | small-electric-pole | 5 | default | 5 | 5.1 | +2.0% | 5.1 5.1 4.8 5 5.1 5.1 | 15.0 | - |  |
-| steel-furnace | small-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 19.3 | - |  |
-| steel-furnace | small-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 18.0 | - |  |
-| steel-furnace | medium-electric-pole | 5 | default | 5 | 5 | +0.0% | 5 4.8 5.1 5.1 5 4.8 | 15.0 | - |  |
-| steel-furnace | medium-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 19.3 | - |  |
-| steel-furnace | medium-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 18.0 | - |  |
-| electric-furnace | small-electric-pole | 5 | default | 5 | 5.05 | +1.0% | 5.1 5 4.8 5.1 5.1 5 | 18.2 | - |  |
-| electric-furnace | small-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 24.6 | - |  |
-| electric-furnace | small-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 23.3 | - |  |
-| electric-furnace | medium-electric-pole | 5 | default | 5 | 4.9 | -2.0% | 4.9 4.9 5.1 5.1 4.9 4.9 | 18.2 | - | no starvation and power ok; model/measurement gap (see samples) |
-| electric-furnace | medium-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 24.6 | - |  |
-| electric-furnace | medium-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 23.3 | - |  |
+| stone-furnace | small-electric-pole | 5 | default | 5 | 4.96667 | -0.7% | 5.1 5 4.8 4.9 4.9 5.1 | 27.2 | - | no starvation and power ok; model/measurement gap (see samples) |
+| stone-furnace | small-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 35.7 | - |  |
+| stone-furnace | small-electric-pole | 15 | belt=fast-transport-belt | 15 | 14.9667 | -0.2% | 14.9 15 15 15 14.9 15 | 33.4 | 42,43,46 | furnaces 42..46 at the downstream end starve: the input lane delivers less than the furnaces take |
+| stone-furnace | medium-electric-pole | 5 | default | 5 | 4.96667 | -0.7% | 4.9 4.8 4.9 5 5.1 5.1 | 27.2 | - | no starvation and power ok; model/measurement gap (see samples) |
+| stone-furnace | medium-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 35.7 | - |  |
+| stone-furnace | medium-electric-pole | 15 | belt=fast-transport-belt | 15 | 14.9667 | -0.2% | 14.9 15 15 15 14.9 15 | 33.4 | 42,43,46 | furnaces 42..46 at the downstream end starve: the input lane delivers less than the furnaces take |
+| steel-furnace | small-electric-pole | 5 | default | 5 | 5 | +0.0% | 4.9 5.1 5 5 4.9 5.1 | 17.1 | - |  |
+| steel-furnace | small-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 21.3 | - |  |
+| steel-furnace | small-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 19.0 | - |  |
+| steel-furnace | medium-electric-pole | 5 | default | 5 | 4.98333 | -0.3% | 5 4.9 5.1 5 5 4.9 | 17.1 | - | no starvation and power ok; model/measurement gap (see samples) |
+| steel-furnace | medium-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 21.3 | - |  |
+| steel-furnace | medium-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 19.0 | - |  |
+| electric-furnace | small-electric-pole | 5 | default | 5 | 5 | +0.0% | 5 5 5 5 5 5 | 19.6 | - |  |
+| electric-furnace | small-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 26.0 | - |  |
+| electric-furnace | small-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 23.9 | - |  |
+| electric-furnace | medium-electric-pole | 5 | default | 5 | 5.01667 | +0.3% | 5.1 5 4.9 5 5.1 5 | 19.6 | - |  |
+| electric-furnace | medium-electric-pole | 7.5 | default | 7.5 | 7.5 | +0.0% | 7.5 7.5 7.5 7.5 7.5 7.5 | 26.0 | - |  |
+| electric-furnace | medium-electric-pole | 15 | belt=fast-transport-belt | 15 | 15 | +0.0% | 15 15 15 15 15 15 | 23.9 | - |  |
+
+## Force state of the measurements
+
+Every measurement ran after `force.research_all_technologies()`: 254/277 technologies; inserter hand +3 (bulk +11), belt stack +3, mining productivity +30%. `predicted/s` above is `throughput.predict` under that state; the layouts are generated for a force with nothing researched.
+
+No predicted limit changed.
 

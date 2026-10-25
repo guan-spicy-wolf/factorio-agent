@@ -47,4 +47,5 @@ def test_nearest_iron_patch_end_to_end(ore_server, gd):
     assert m["power"]["inserter_networks"] == 1 and m["power"]["unpowered_inserters"] == 0
     assert "no_minable_resources" not in m["machine_status_probes"]
     assert m["max_abs_deviation"] <= TOLERANCE, (c["interfaces"], m["sink_samples"])
-    assert abs(sum(m["sink_throughput"]) - c["total"]) <= TOLERANCE * c["total"]
+    # against the prediction under the measured force state (research: productivity)
+    assert abs(sum(m["sink_throughput"]) - sum(m["predicted"])) <= TOLERANCE * sum(m["predicted"])

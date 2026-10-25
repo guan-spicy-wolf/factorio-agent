@@ -17,6 +17,7 @@ from typing import Any
 
 from fgen.blueprint import codec
 from fgen.blueprint.export import unit_to_blueprint
+from fgen.data.runtime import RuntimeState
 from fgen.data.schema import GameData
 from fgen.gen import throughput as tp
 from fgen.gen.base import Infeasible
@@ -39,7 +40,7 @@ def _jsonable(x: Any) -> Any:
 
 type Measurer = Callable[[Unit], dict[str, Any]]
 
-DEVIATION_NOTE = 0.10  # relative predicted/measured gap that must be explained in the .md
+DEVIATION_NOTE = 0.02  # relative predicted/measured gap that must be explained in the .md
 
 
 def blueprint_sha(unit: Unit, gd: GameData) -> str:
@@ -92,9 +93,11 @@ def sweep_smelting(
             m["blueprint_sha"] = sha
             if change:
                 m["params_changed"] = change
-                pr = tp.predict(unit, gd)
-                m["predicted_throughput"] = pr["throughput"]
-                m["predicted_limits"] = pr["limits"]
+            # the prediction under the force state the measurement ran with
+            pr = tp.predict(unit, gd, RuntimeState.from_json(m.get("runtime")))
+            m["predicted_throughput"] = pr["throughput"]
+            m["predicted_limits"] = pr["limits"]
+            m["predicted_bottleneck"] = pr["bottleneck"]
             row["measured"] = _jsonable(m)
         else:
             old = previous.get(_key(row["params"]))
@@ -175,13 +178,14 @@ def _compare_section(rows: list[dict[str, Any]]) -> list[str]:
     out = [
         "## Predicted vs measured",
         "",
-        f"Measured in Factorio headless {m0.get('game_version', '?')} (base mod only) by "
+        f"Measured in Factorio headless {m0.get('game_version', '?')} by "
         "`uv run fgen sweep smelting --measure`: unit placed from its blueprint, inputs fed "
         "by infinity chests through loaders (side-loaded onto the declared lanes), output "
         "counted at a loader + chest, free power. Throughput is the median over "
         f"{len(m0['samples'])} samples of {m0['sample_s']:g} s game time after "
-        f"{m0['warmup_s']:g} s warm-up. *starved* lists furnaces (1 = upstream end) that "
-        "reported `no_ingredients`/`no_fuel` in any probe.",
+        f"{m0['warmup_s']:g} s warm-up; `measured/s` is the whole-window mean (a 10 s "
+        "sample resolves one item, 2% at 5/s; the window one item in 60 s). *starved* lists "
+        "furnaces (1 = upstream end) that reported `no_ingredients`/`no_fuel` in any probe.",
         "",
         "| furnace | pole | target/s | measured as | predicted/s | measured/s | Δ | "
         "samples/s | startup s | starved | note |",
@@ -190,7 +194,7 @@ def _compare_section(rows: list[dict[str, Any]]) -> list[str]:
     for r in measured:
         p, m = r["params"], r["measured"]
         pred = m.get("predicted_throughput", (r["predicted"] or {}).get("throughput"))
-        meas = m["throughput"]
+        meas = m.get("throughput_mean", m["throughput"])
         delta = (meas - pred) / pred if pred else 0.0
         changed = m.get("params_changed")
         as_ = ", ".join(f"{k}={v}" for k, v in changed.items()) if changed else "default"
@@ -206,6 +210,39 @@ def _compare_section(rows: list[dict[str, Any]]) -> list[str]:
             f"{'' if startup is None else f'{startup:.1f}'} | "
             f"{','.join(map(str, starved)) or '-'} | {note} |"
         )
+    out.append("")
+    return out + runtime_section(measured)
+
+
+def runtime_section(rows: list[dict[str, Any]], model: str = "throughput.predict") -> list[str]:
+    """What the force state of the measurements changed in the prediction: per limit,
+    no-research value -> value under the measured state (``RuntimeState``)."""
+    meas = [r for r in rows if r.get("measured") and r["measured"].get("runtime")]
+    if not meas:
+        return []
+    rs = RuntimeState.from_json(meas[0]["measured"]["runtime"])
+    changed: dict[str, list[str]] = {}
+    for r in meas:
+        before = (r.get("predicted") or {}).get("limits") or {}
+        after = r["measured"].get("predicted_limits") or {}
+        for k, v in after.items():
+            b = before.get(k)
+            if b is not None and abs(v - b) > 1e-9:
+                changed.setdefault(k, []).append(f"{b:g} -> {v:g}")
+    out = [
+        "## Force state of the measurements",
+        "",
+        f"Every measurement ran after `force.research_all_technologies()`: {rs.describe()}. "
+        f"`predicted/s` above is `{model}` under that state; the layouts are "
+        "generated for a force with nothing researched.",
+        "",
+    ]
+    if not changed:
+        out += ["No predicted limit changed.", ""]
+        return out
+    out += ["Limits that changed (no research -> measured state):", ""]
+    for k, vs in changed.items():
+        out.append(f"- `{k}`: {', '.join(sorted(set(vs)))}")
     out.append("")
     return out
 

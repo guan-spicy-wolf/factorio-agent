@@ -10,9 +10,10 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from fgen.data.runtime import NO_RESEARCH, RuntimeState
 from fgen.data.schema import GameData, parse_energy
 from fgen.geom import belt as beltgeom
-from fgen.geom import footprint, inserter
+from fgen.geom import footprint, inserter, mining
 from fgen.layout.model import Unit
 
 _EPS = 1e-9
@@ -69,20 +70,35 @@ def belt_lane_capacity(gd: GameData, belt: str) -> float:
     return beltgeom.lane_items_per_second(gd, belt)
 
 
-def inserter_throughput_estimate(gd: GameData, name: str) -> float:
-    """Items per second, chest to chest, no research: ``hand * tps * rotation_speed``."""
+def inserter_hand_size(gd: GameData, name: str, rs: RuntimeState = NO_RESEARCH) -> float:
+    """Items per swing: the engine's base hand size plus the force's research bonus
+    (bulk inserters and the others have separate bonuses, ``RuntimeState``)."""
     e = gd.entity(name)
     if e.rotation_speed is None:
         raise ValueError(f"{name} is not an inserter")
-    hand = gd.constant("inserter_base_hand_size")
-    return hand * gd.constant("ticks_per_second") * e.rotation_speed
+    return gd.constant("inserter_base_hand_size") + rs.hand_bonus(e.bulk)
+
+
+def inserter_throughput_estimate(gd: GameData, name: str, rs: RuntimeState = NO_RESEARCH) -> float:
+    """Items per second, chest to chest: ``hand * tps * rotation_speed`` (one full arm
+    revolution per swing), ``hand`` from :func:`inserter_hand_size`."""
+    e = gd.entity(name)
+    hand = inserter_hand_size(gd, name, rs)
+    return hand * gd.constant("ticks_per_second") * float(e.rotation_speed or 0.0)
+
+
+def drill_output_rate(
+    gd: GameData, drill: str, resource: str, rs: RuntimeState = NO_RESEARCH
+) -> float:
+    """Products per second of one drill with the force's mining productivity bonus."""
+    return mining.drill_rate(gd, drill, resource) * (1.0 + rs.mining_drill_productivity_bonus)
 
 
 def _lane_count(gd: GameData, lane: str | None) -> float:
     return gd.constant("belt_lanes") if lane == "both" else 1.0
 
 
-def predict(unit: Unit, gd: GameData) -> dict[str, Any]:
+def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[str, Any]:
     """Area, machine count, theoretical throughput and bottleneck of a belt-fed row.
 
     Reads ``meta['recipe']``, ``meta['machine']`` and ``meta.get('fuel')``; everything
@@ -138,7 +154,7 @@ def predict(unit: Unit, gd: GameData) -> dict[str, Any]:
     for p in layout.placements:
         if gd.entity(p.name).type != "inserter":
             continue
-        est = inserter_throughput_estimate(gd, p.name)
+        est = inserter_throughput_estimate(gd, p.name, rs)
         pu = inserter.pickup_tile(gd, p.name, p.position, p.direction)
         dr = inserter.drop_tile(gd, p.name, p.position, p.direction)
         for k, ts in enumerate(machine_tiles):
@@ -163,4 +179,5 @@ def predict(unit: Unit, gd: GameData) -> dict[str, Any]:
         "target_rate": meta.get("target_rate"),
         "product": product,
         "footprint_machine": footprint.size(gd, machine),
+        "runtime": rs.to_json(),
     }

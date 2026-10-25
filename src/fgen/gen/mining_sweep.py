@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from fgen.data.runtime import RuntimeState
 from fgen.data.schema import GameData
 from fgen.gen.mining_patch import MiningPatchParams, generate, render
 from fgen.gen.sweep import blueprint_sha
@@ -24,7 +25,7 @@ from fgen.terrain.model import Patch, Terrain, patches
 from fgen.terrain.paint import ShapeSpec
 
 AMOUNT = 5000  # ore per painted tile: far more than a measurement mines
-TOLERANCE = 0.05  # plan-phase2 §4 M4: measured vs contract per interface
+TOLERANCE = 0.02  # plan-phase4b §4 B: measured vs predicted per interface
 REAL_MAP = "real-map"
 BEFORE = "mining_patch.before.json"  # numbers before phase 6a, for the comparison
 
@@ -112,16 +113,36 @@ def contract(unit: Unit) -> dict[str, Any]:
         "dropped_by_reason": m["dropped_by_reason"],
         "suggestions": m["suggestions"],
         "anchor": m["anchor"],
+        "drill_rate": m["drill_rate"],
+        "lane_capacity": m["lane_capacity"],
+        "drill_stacks": m.get("drill_stacks", False),
     }
 
 
+def predicted(c: dict[str, Any], rs: RuntimeState) -> list[float]:
+    """Per output belt under the force state ``rs``: every lane carries its drills'
+    output with the mining productivity bonus, at most the lane capacity (the contract
+    is the same with no research: drills per lane were cut to fit the lane). A drill
+    that drops full belt stacks fills a lane with stacks of ``1 + belt_stack_size_bonus``
+    items, so its lane holds that many times more."""
+    rate = c["drill_rate"] * (1.0 + rs.mining_drill_productivity_bonus)
+    cap = c["lane_capacity"] * ((1.0 + rs.belt_stack_size_bonus) if c.get("drill_stacks") else 1)
+    return [sum(min(n * rate, cap) for n in lanes.values() if n) for lanes in c["lanes"]]
+
+
 def compare(c: dict[str, Any], measured: dict[str, Any]) -> dict[str, Any]:
-    """Per-interface deviation (measured / contract - 1)."""
+    """Per-interface deviation from the prediction under the force state the
+    measurement ran with (``measured.runtime``), and from the no-research contract."""
+    rs = RuntimeState.from_json(measured.get("runtime"))
+    pred = predicted(c, rs) if "drill_rate" in c else [i["rate"] for i in c["interfaces"]]
     rates = [i["rate"] for i in c["interfaces"]]
     got = list(measured["sink_throughput"])
-    devs = [(g - r) / r if r else 0.0 for g, r in zip(got, rates, strict=True)]
+    devs = [(g - r) / r if r else 0.0 for g, r in zip(got, pred, strict=True)]
+    vs_contract = [(g - r) / r if r else 0.0 for g, r in zip(got, rates, strict=True)]
     return {
+        "predicted": [round(x, 6) for x in pred],
         "deviation": [round(d, 4) for d in devs],
+        "deviation_vs_contract": [round(d, 4) for d in vs_contract],
         "max_abs_deviation": round(max((abs(d) for d in devs), default=0.0), 4),
         "within_tolerance": all(abs(d) <= TOLERANCE for d in devs),
     }
@@ -174,28 +195,74 @@ def _measured_cells(r: dict[str, Any]) -> list[str]:
     c, m = r["contract"], r["measured"]
     rates = " / ".join(f"{i['rate']:g}" for i in c["interfaces"])
     if not m:
-        return [rates, "-", "-", "-"]
+        return [rates, "-", "-", "-", "-"]
+    pred = " / ".join(f"{x:g}" for x in m.get("predicted", []))
     got = " / ".join(f"{x:g}" for x in m["sink_throughput"])
     devs = " / ".join(f"{d:+.1%}" for d in m["deviation"])
     status = ", ".join(f"{k} {v}" for k, v in sorted(m.get("machine_status_probes", {}).items()))
-    return [rates, got, devs, status]
+    return [rates, pred or "-", got, devs, status]
 
 
 def _table(rows: list[dict[str, Any]]) -> list[str]:
     out = [
-        "| case | shape | drills | belts | contract/s per belt | measured/s | Δ | dropped | "
+        "| case | shape | drills | belts | contract/s per belt (no research) | "
+        "predicted/s (measured force state) | measured/s | Δ vs predicted | dropped | "
         "drill status probes |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in rows:
         c = r["contract"]
-        rates, got, devs, status = _measured_cells(r)
+        rates, pred, got, devs, status = _measured_cells(r)
         dropped = ", ".join(f"{k} {v}" for k, v in sorted(c["dropped_by_reason"].items())) or "-"
         out.append(
             f"| {r['case']} | {r['shape']} | {c['drills']} | {len(c['interfaces'])} | {rates} | "
-            f"{got} | {devs} | {dropped} | {status} |"
+            f"{pred} | {got} | {devs} | {dropped} | {status} |"
         )
     return out
+
+
+def _runtime_section(rows: list[dict[str, Any]]) -> list[str]:
+    """What the measured force state changed: per belt, contract (no research) ->
+    prediction, and why."""
+    meas = [r for r in rows if r.get("measured") and r["measured"].get("runtime")]
+    if not meas:
+        return []
+    rs = RuntimeState.from_json(meas[0]["measured"]["runtime"])
+    out = [
+        "## Force state of the measurements",
+        "",
+        f"Every measurement ran after `force.research_all_technologies()`: {rs.describe()}. "
+        "The layouts and contracts are generated for a force with nothing researched; the "
+        "prediction (`mining_sweep.predicted`) multiplies each lane's drills by the drill "
+        "rate x (1 + mining productivity) and caps it at the lane capacity (x (1 + belt "
+        "stack bonus) for drills that drop full belt stacks).",
+        "",
+        "| case | belt | lanes (left, right drills) | contract/s | predicted/s | why |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for r in meas:
+        c, m = r["contract"], r["measured"]
+        for k, (i, p) in enumerate(zip(c["interfaces"], m.get("predicted", []), strict=False)):
+            if abs(p - i["rate"]) < 1e-9:
+                continue
+            lanes = c["lanes"][k]
+            cap = c["lane_capacity"]
+            stacked = c.get("drill_stacks")
+            why = []
+            for ln, n in lanes.items():
+                if not n:
+                    continue
+                raw = n * c["drill_rate"] * (1 + rs.mining_drill_productivity_bonus)
+                lim = cap * ((1 + rs.belt_stack_size_bonus) if stacked else 1)
+                why.append(
+                    f"{ln}: {n} x {c['drill_rate']:g} x {1 + rs.mining_drill_productivity_bonus:g}"
+                    f" = {raw:g}" + (f" > lane {lim:g}" if raw > lim + 1e-9 else "")
+                )
+            out.append(
+                f"| {r['case']} | {k} | ({lanes.get('left', 0)}, {lanes.get('right', 0)}) | "
+                f"{i['rate']:g} | {p:g} | {'; '.join(why)} |"
+            )
+    return [*out, ""]
 
 
 def _real_map_section(r: dict[str, Any]) -> list[str]:
@@ -289,7 +356,7 @@ def write(
         "Painted cases: ore painted on the flat test field (`RconTerrain.paint`, "
         f"{AMOUNT} per tile), unit built from its blueprint, each belt end feeds a loader + "
         "chest sink, free power. Measured per belt as the median of 20 s game-time samples "
-        f"after a 10 s warm-up. Tolerance |Δ| <= {TOLERANCE:.0%} per belt.",
+        f"after a 10 s warm-up. Tolerance |Δ vs predicted| <= {TOLERANCE:.0%} per belt.",
         "",
         "Coordinates are world tiles (anchor unit). " + LEGEND,
         TERRAIN_LEGEND,
@@ -298,6 +365,7 @@ def write(
         "",
         *_table(rows),
         "",
+        *_runtime_section(rows + ([real] if real else [])),
     ]
     for case in CASES:
         r = next(x for x in rows if x["case"] == case.name)

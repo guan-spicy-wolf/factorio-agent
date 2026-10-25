@@ -1179,6 +1179,7 @@ class MiningPatch:
             "icon": product,
             "drill_rate": rate,
             "lane_capacity": cap,
+            "drill_stacks": gd.entity(p.drill).drops_full_belt_stacks,
             "anchor": {
                 "resource": p.resource,
                 "patch_bounds": [[lo.x, lo.y], [hi.x, hi.y]],

@@ -26,7 +26,7 @@ from fgen.data.schema import GameData
 from fgen.layout.model import Layout
 from fgen.route.connect import Connection
 from fgen.sim import harness as hs
-from fgen.sim import lua
+from fgen.sim import lua, runtime
 from fgen.sim.deployer import RconDeployer
 from fgen.sim.server import HeadlessServer
 from fgen.site.model import Site
@@ -218,6 +218,7 @@ def measure(
     srv: HeadlessServer, gd: GameData, site: Site, conn: Connection, **opts: Any
 ) -> dict[str, Any]:
     """Deploy the routed site, run it and read every sink and item counter."""
+    state = runtime.prepare(srv)  # research everything first (plan-phase4b §2)
     h = deploy(srv, gd, site, conn)
     area = site_area(site, conn, gd)
     nets = networks(srv, area)
@@ -230,6 +231,7 @@ def measure(
         "unpowered": nets["unpowered"],
     }
     m["game_version"] = srv.rcon.command("/version").strip()
+    m["runtime"] = state.to_json()
     return m
 
 
@@ -239,7 +241,7 @@ def clear_site(srv: HeadlessServer, area: Area) -> None:
     srv.rcon.lua_json(lua.clear_area(((a.x, a.y), (b.x + 1, b.y + 1))))
 
 
-FLAT_MEASURE = {"warmup_s": 60.0, "sample_s": 20.0, "samples": 6, "speed": 32.0}
+FLAT_MEASURE = {"warmup_s": 60.0, "sample_s": 60.0, "samples": 6, "speed": 32.0}
 
 
 def flat_row(srv: HeadlessServer, gd: GameData, **opts: Any) -> dict[str, Any]:
@@ -258,7 +260,7 @@ def flat_row(srv: HeadlessServer, gd: GameData, **opts: Any) -> dict[str, Any]:
     finally:
         clear_site(srv, ss.FLAT_AREA)
     row["measured"] = m
-    row["judged"] = ss.judge(row, m)
+    row["judged"] = ss.judge(row, m, site, gd)
     m["explanation"] = FUEL_EXPLANATION
     return row
 
@@ -266,9 +268,10 @@ def flat_row(srv: HeadlessServer, gd: GameData, **opts: Any) -> dict[str, Any]:
 FUEL_EXPLANATION = (
     "Fuel (coal) is consumed in whole items: each stone furnace burns one coal per "
     "fuel_value / energy_usage seconds and the consumption counter moves when a coal "
-    "starts burning, so over a 120 s window every furnace counts 2 or 3 coal; a few "
-    "percent either way on the coal port is quantisation, not a shortfall (no furnace "
-    "ran out: the plate output meets the contract)."
+    "starts burning, so over the window every furnace counts a whole number of coal "
+    "(phase 4b: the window is 6 x 60 s, about 8 coal per furnace, so the quantisation is "
+    "about 1% instead of the 3% of the earlier 120 s window); no furnace ran out: the "
+    "plate output meets the contract."
 )
 
 
@@ -349,7 +352,7 @@ def real_map_row(
     finally:
         clear_site(srv, area)
     row["measured"] = m
-    row["judged"] = ss.judge(row, m)
+    row["judged"] = ss.judge(row, m, site, gd)
     m["explanation"] = explain_real(row)
     return row
 
