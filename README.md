@@ -1,4 +1,4 @@
-# fgen — Factorio 蓝图生成器库（阶段 5a：流体机器——塑料与硫酸）
+# fgen — Factorio 蓝图生成器库（阶段 4c：随时可用求解、目标预设、组件调色板）
 
 agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`，任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）、`docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论）与 `docs/plan-phase4a.md`（周期求解器，实验记录在 `docs/experiments/`），数值与约定的核对状态见 `docs/VERIFY.md`。
 
@@ -29,6 +29,13 @@ uv run fgen sweep direct-chain                            # 写 characterization
 uv run --extra solver fgen gen direct-chain --recipe plastic-bar --machine chemical-plant --rate 2 --extra-inserters long-handed-inserter [--mirror]   # 塑料（管网由 CP-SAT 排）
 uv run --extra solver fgen gen direct-chain --recipe sulfuric-acid --machine chemical-plant --rate 50   # 硫酸（水进、酸出管）
 uv run --extra solver fgen sweep fluid                    # 写 characterization/fluid_chain.{jsonl,md}
+uv run --extra solver fgen gen direct-chain --rate 2                      # 默认：全调色板、compact、随时可用（60 s 时间盒）
+uv run --extra solver fgen gen direct-chain --rate 2 --preset cheap       # 预设：compact / cheap / simple
+uv run --extra solver fgen gen direct-chain --rate 2 --prove              # 证明最小（慢，特征化用）
+uv run --extra solver fgen gen direct-chain --rate 2 --palette given      # 只用 --inserter/--extra-inserters/--pole/--belt
+uv run --extra solver fgen gen direct-chain --rate 2 --exclude substation,big-electric-pole   # 收窄调色板
+uv run --extra solver fgen gen direct-chain --rate 2 --simulate           # 生成后在 headless 里实测（默认不起仿真）
+uv run --extra solver fgen sweep palette                  # 写 characterization/palette.{jsonl,md}
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
 uv run fgen render <蓝图字符串或文件> [--rulers]
@@ -40,7 +47,7 @@ uv run fgen validate <蓝图字符串或文件>
 二进制位置：`$FACTORIO_DIR/bin/x64/factorio`（默认 `~/factorio`；`bin/headless.sh install` 下载，`bin/headless.sh dump` 按 `FGEN_MODS` 指定的 mod 组合导出，默认全开）。
 
 ```sh
-uv run --extra solver pytest -m "not headless"     # 306 个，不启动服务器，约 6 分钟（CP-SAT 已装时直插链、流体测试用它）
+uv run --extra solver pytest -m "not headless"     # 315 个，不启动服务器，约 11 分钟（CP-SAT 已装时直插链、流体测试用它）
 uv run --extra solver pytest -m headless           # 64 个，需要二进制；约 3 分钟（4 核容器实测）
 uv run fgen verify                  # VERIFY.md 的 9 项实机检查，JSON 一行一项，约 15 秒
 uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characterization/，约 2 分钟
@@ -49,6 +56,7 @@ uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-setti
 uv run fgen sweep site --measure       # 平地整站仿真（M4），约 12 秒
 uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列），约 30 秒
 uv run --extra solver fgen sweep fluid --measure   # 11 行流体（塑料 7 + 硫酸 3 + 1 行不可行），约 7 分钟
+uv run --extra solver fgen sweep palette --measure   # 17 行全调色板 × 预设（含两行证明驱动，约 20 分钟），实测约 40 分钟
 uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解器 vs 手写基线、红瓶、绿瓶；需 --extra solver），绿瓶周期求解约 30 分钟
 ```
 
@@ -141,6 +149,15 @@ uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解�
 - 求解器（`fgen.solve.cpsat_fluid`）：周期里任意空格可放直管与地下管对，机器朝向是变量（镜像是参数 `mirror`），每种液体在周期内连成一个网并在 (0, y)/(W−1, y) 跨周期；整行母线只是它的一个解。硫酸必须用这种管网：整行母线会把化工厂上下两面都堵死。
 - 契约：液体口带 `rate`、`MinRate`、`temperature`、`segment_extent`（单元内这段管网的外包长边）；2.1 段内流量与管长无关，但一段外包超过 `pipeline_extent`（320）就不流，生成器与路由器都检查。
 - 结果（`characterization/fluid_chain.md`，全科技实测全部 0% 偏差）：塑料 1/2 棒/秒 3×7（快速 + 长臂，2.8 s 证明最小），4 棒/秒 3×13 两台；硫酸一台 8×5（50/s）、两台 11×7（100/s），输出口实测 = 契约。实验记录：`docs/experiments/5a-fluids.md`。
+
+## 随时可用求解、目标预设、组件调色板（阶段 4c）
+
+- **调色板**（`DirectChainParams.palette`，默认 `"full"`）：种子里每种可用的爪子（电动、1×1）、电杆、带与同速地下带都可以用，`inserter`/`pole`/`belt` 只是首选等级；`exclude` 收窄，`palette="given"` 回到"指定等级（+ `extra_inserters`）"。被支配的项（同取放格、吞吐不高、更贵：无研究时的集装爪对快速爪）自动去掉。每个槛位的等级是变量，可不用；带等级按行选，道容量随之约束；带行里可以有本行等级的地下带对（中间的格子空出来放别的）。
+- **预设**（`preset`）：硬约束不变，排序不同。`compact` 面积 → 杆数 → 爪数；`cheap` 实体总成本 → 面积（成本由 `fgen.data.cost` 从种子配方递归到原料，每单位原料记 1）；`simple` 实体种类数 → 面积。
+- **随时可用**（默认）：先在解析上界的宽松尺寸给出首个可行周期（先只用首选等级），再在时间盒（`time_limit`，按 CP-SAT 确定性时间折算，同一规格总给同一个周期）内逐高度二分收紧宽度、优化预设目标；结果标 `proven`、各阶段耗时（`phases`），时间盒内无解且未证明标 `unproven_infeasible`。`prove=True`（`--prove`）是证明最小的驱动，只给特征化表用；穷尽搜索后端只支持它（且只用给定等级）。
+- **仿真什么时候跑**：`fgen gen` 默认不起服务器（`--simulate` 显式触发），sweep 的 `--measure` 不变。只有两种情况需要仿真：(1) **新实体类型或新结构词汇**（例如本阶段带行里的地下带对、变电站）——解析预测从没对它们核对过，仿真的价值是发现缺失的不变量；(2) **轮末回归**。其余时候循环是：可行解 → `validate` → 解析预测（六轮实测偏差 ≤ 2%）。
+- 结果（`characterization/palette.md`，17 个单元全部实测）：已有 23 个规格的首个可行解除绿瓶（52.7 s）外全部 ≤ 6.4 s，`prove=True` 结果与 4b/5a 逐项相同；只给全调色板、不提示长臂爪，3:2 绿板证明最小是 **9×11 = 99**（变电站压在带行的地下带对上，1086 s），排除 4a 之后的词汇（中/大杆、变电站、地下带）时自己得出 **9×12 = 108**（92.5 s）；60 s 盒里全调色板只给到首选等级的结果（133）。`cheap` 在平手多的地方最值（硫酸同一个 8×5：92.5 vs 503.5 原料单位），`simple` 把绿瓶从 7 种实体减到 4 种。
+- 实验记录：`docs/experiments/4c-anytime-palette.md`；特征化：`characterization/palette.md`。
 
 ## 测试样本
 

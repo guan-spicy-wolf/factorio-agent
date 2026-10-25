@@ -1490,7 +1490,7 @@ def _anytime(
         return left() if prove else min(left(), max(MIN_SLICE, share * left()))
 
     def bnd() -> int | None:
-        return best[0] - 1 if (best is not None and area_first) else None
+        return best[0] - 1 if best is not None else None
 
     def at(h: int, wf: int, belts: list[SkeletonBelt], share: float = PROBE_SHARE) -> Any:
         st, per, key = run(h, wf, wf, belts, cap(share), optimize=False, bound=bnd())

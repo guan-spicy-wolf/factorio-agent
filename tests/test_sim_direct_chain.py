@@ -46,8 +46,9 @@ def test_basic_inserter_chain(ch, gd):
 def test_mixed_tier_chain(ch, gd):
     """The two-row period with long-handed inserters (over the iron belt onto the
     output belt) carries its target too."""
+    # the 4a result (9x12) is the proven one; a 60 s anytime box stops at 133 (4c record)
     p = DirectChainParams(
-        palette="given", target_rate=2.0, extra_inserters=("long-handed-inserter",)
+        palette="given", prove=True, target_rate=2.0, extra_inserters=("long-handed-inserter",)
     )
     unit = generate(p, gd)
     assert (

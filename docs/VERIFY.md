@@ -222,3 +222,13 @@ headless `tests/test_sim_fluid_chain.py` 与 `fgen sweep fluid --measure` 持续
 | 储罐读量 | `get_fluid(1)` 只给储罐那一份（按容量摊分）；整段用 `get_fluid_segment_fluid(1)`；计量汇每 tick 读整段、累加、`clear_fluid_segment_fluid(1)`：一台硫酸厂 10 次合成累计 499.9；`force.get_fluid_production_statistics(surface).get_input_count('sulfuric-acid')` 同为 500 | `sim/measure.py` | 累计 vs 合成数 vs 统计 | 已核对 |
 | 全科技后的配方产能 | `research_all_technologies()` 后 `force.recipes['plastic-bar'].productivity_bonus = 0.1`（space-age 的塑料产能科技）：一台化工厂实测 2.2 棒/秒。`RuntimeState.recipe_productivity` 记录所有非 0 的配方产能，`direct_chain.predict` 按它算；生成器仍按无研究设计 | `data/runtime.py`、`sim/lua.py` | 实测 vs 预测 | 已核对 |
 | 化工厂的状态名 | 缺液体时 `fluid_ingredient_shortage`（计入 `machine_input_starved`） | `sim/measure.py` | `defines.entity_status` | 部分核对（名字存在；本轮实测里没出现过） |
+
+## 14. 组件调色板与成本（阶段 4c，2.1.23 实机）
+
+| 项 | 内容 | 用在 | 核对方式 | 状态 |
+| --- | --- | --- | --- | --- |
+| 实体成本 | `fgen.data.cost`：配方递归到"种子里没有配方产出"的原料，每单位记 1（约定，不是游戏数字；液体同样每单位 1，所以快/蓝带的润滑油按 20/40 单位计）。只用来比较实体，不对游戏作任何断言 | `solve/preset.py` `cheap` | 测试从种子配方重算 | 约定（无需核对） |
+| 带行里的地下带对 | 带行可以是"平带…进口、空格、出口…平带"，空格里放爪子或 2×2 的变电站，物料穿过：99 的周期（快速 + 长臂爪、蓝带 + 蓝地下带、变电站压在带行上）实测 2/s = 目标 | `solve/period.py` `_check_row`、`solve/cpsat.py` `_belt_palette` | `fgen sweep palette --measure` | 已核对 |
+| 地下带端的取放 | 求解器只让爪子在**平带格**上取放（保守：游戏里爪子也能从地下带端取放，但半格的道归属没核对过） | `solve/cpsat.py` | — | 约定（保守，未核对放宽） |
+| 变电站、混带等级 | 一个周期里不同带行可以是不同等级（行内同级）；变电站供电 + 拉线跨周期（18）在 sweep 的 17 个单元里全部正常 | `solve/cpsat.py` `_poles` | 同上 | 已核对 |
+| 集装爪无研究时的手持 | 种子里集装爪的取放格与快速爪相同、`rotation_speed` 相同、`bulk = true`，无研究时手持 = 引擎基础手持（与快速爪相同），所以被快速爪支配、调色板里自动去掉；有研究时 `bulk_inserter_capacity_bonus` 不同（§12），生成器按无研究设计 | `solve/cpsat.py` `undominated` | dump 字段 | 已核对（dump）；基础手持见 §12 |

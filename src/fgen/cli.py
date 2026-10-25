@@ -109,6 +109,12 @@ def cmd_gen_mining(args: argparse.Namespace) -> int:
     from fgen.layout.render import TERRAIN_LEGEND
 
     gd = _gd(args)
+    if args.simulate:
+        print(
+            "--simulate: mining units are measured by `fgen sweep mining --measure`",
+            file=sys.stderr,
+        )
+        return 1
     case, params = _mining_params(args)
     patch, terrain = case_terrain(case)
     try:
@@ -163,6 +169,10 @@ def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
         extra_inserters=tuple(x for x in (args.extra_inserters or "").split(",") if x),
         backend=args.backend or d.backend,
         mirror=args.mirror,
+        preset=args.preset,
+        prove=args.prove,
+        palette=args.palette,
+        exclude=tuple(x for x in (args.exclude or "").split(",") if x),
     )
     try:
         unit = generate_chain(params, gd)
@@ -189,12 +199,47 @@ def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
             f"tiles, {pred['throughput']:g}/s (target {params.target_rate:g})"
         )
         if per["layout"] == "solver":
-            print(f"solver: {per['seconds']:.2f} s, nodes {per['nodes']}, pruned {per['pruned']}")
+            proof = "proven" if per["proven"] else "not proven (time box)"
+            print(
+                f"solver: {per['seconds']:.2f} s, {proof}, phases {per['phases']}, preset "
+                f"{per['preset']} {per['metrics']}, entities {per['entities']}"
+            )
         print(LEGEND)
         print()
     label = f"direct-chain {params.recipe} {params.target_rate:g}/s"
     print(codec.encode(unit_to_blueprint(unit, gd, label=label)))
+    if args.simulate:
+        from fgen.gen.direct_chain_sweep import warmup_s
+
+        _simulate(args, gd, unit, pred, lambda u: warmup_s(u, gd, args.warmup))
     return 0
+
+
+def _simulate(args: argparse.Namespace, gd: GameData, unit: Any, pred: dict, warmup: Any) -> None:
+    """``--simulate``: measure the unit in a headless server (README: when to)."""
+    from fgen.data.runtime import RuntimeState
+    from fgen.sim.measure import RconCharacterizer
+
+    with _server(args) as srv:
+        ch = RconCharacterizer(srv, gd)
+        try:
+            m = ch.measure(unit, warmup_s=warmup(unit), sample_s=10.0, samples=6, speed=64.0)
+        finally:
+            ch.clear_all()
+    rs = RuntimeState.from_json(m.get("runtime"))
+    family = unit.meta.get("family")
+    if family == "direct-chain":
+        from fgen.gen.direct_chain import predict as predict_chain
+
+        expect = predict_chain(unit, gd, rs)["throughput"]
+    else:
+        expect = tp.predict(unit, gd, rs)["throughput"]
+    got = m.get("throughput_mean", m["throughput"])
+    print(
+        f"simulated: {got:g}/s measured, {expect:g}/s predicted under the measured force "
+        f"state (contract {pred['throughput']:g}/s)",
+        file=sys.stderr,
+    )
 
 
 def cmd_gen(args: argparse.Namespace) -> int:
@@ -219,6 +264,8 @@ def cmd_gen(args: argparse.Namespace) -> int:
         print()
     label = f"smelting {params.recipe} {params.target_rate:g}/s"
     print(codec.encode(unit_to_blueprint(unit, gd, label=label)))
+    if args.simulate:
+        _simulate(args, gd, unit, tp.predict(unit, gd), lambda u: args.warmup)
     return 0
 
 
@@ -299,11 +346,11 @@ def _site_note() -> str:
     return FLAT_NOTE
 
 
-def cmd_sweep_direct_chain(args: argparse.Namespace, fluid: bool = False) -> int:
+def cmd_sweep_direct_chain(args: argparse.Namespace, fluid: bool = False, kind: str = "") -> int:
     from fgen.gen import direct_chain_sweep as dcs
-    from fgen.gen import fluid_sweep
+    from fgen.gen import fluid_sweep, palette_sweep
 
-    mod: Any = fluid_sweep if fluid else dcs
+    mod: Any = fluid_sweep if fluid else palette_sweep if kind == "palette" else dcs
 
     gd = _gd(args)
     out = Path(args.out_dir)
@@ -346,6 +393,8 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         return cmd_sweep_direct_chain(args)
     if args.family == "fluid":
         return cmd_sweep_direct_chain(args, fluid=True)
+    if args.family == "palette":
+        return cmd_sweep_direct_chain(args, kind="palette")
     if args.family == "site":
         return cmd_sweep_site(args)
     gd = _gd(args)
@@ -452,6 +501,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--pole", default=None, help=f"default {d.pole}")
     p.add_argument("--mirror", action="store_true", help="direct-chain: mirror the machines")
+    p.add_argument(
+        "--preset",
+        choices=["compact", "cheap", "simple"],
+        default="compact",
+        help="direct-chain: objective after the hard constraints",
+    )
+    p.add_argument(
+        "--prove", action="store_true", help="direct-chain: prove the best (slow; default anytime)"
+    )
+    p.add_argument(
+        "--palette",
+        choices=["full", "given"],
+        default="full",
+        help="direct-chain: every tier in the data (default) or only the given ones",
+    )
+    p.add_argument(
+        "--exclude", default=None, help="direct-chain: comma list to drop from the palette"
+    )
+    p.add_argument(
+        "--simulate",
+        action="store_true",
+        help="smelting/direct-chain: also measure the unit in headless (off by default)",
+    )
+    p.add_argument("--warmup", type=float, default=60.0, help="--simulate: warm-up, game seconds")
+    p.add_argument("--attach", metavar="PORT", help="--simulate: use a running server's RCON port")
+    p.add_argument("--password", default="fgen", help="RCON password with --attach")
     p.add_argument("--case", default="rect-2belt", help="mining: painted case name")
     p.add_argument("--resource", default=None, help="mining")
     p.add_argument("--drill", default=None, help="mining")
@@ -466,7 +541,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_gen)
 
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
-    p.add_argument("family", choices=["smelting", "mining", "site", "direct-chain", "fluid"])
+    p.add_argument(
+        "family", choices=["smelting", "mining", "site", "direct-chain", "fluid", "palette"]
+    )
     p.add_argument(
         "--real-map", action="store_true", help="mining/site: end-to-end run on the ore map"
     )
