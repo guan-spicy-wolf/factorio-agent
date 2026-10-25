@@ -152,6 +152,12 @@ class Interface:
     entity: str | None = None  # the entity at the port: belt (tier), pole (wire), fluid box
     port_group: str | None = None  # ports sharing one belt (``Unit.groups``)
     space: PortSpace | None = None  # item ports: approach and free tiles in front
+    # fluid ports (plan-phase5a): the fluid's temperature at the port (output: what the
+    # unit delivers; input: what it expects, the fluid's default when any will do) and
+    # the longest side, in tiles, of the unit's own part of the port's fluid segment (a
+    # link may add at most ``pipeline_extent`` minus both ends' extents)
+    temperature: float | None = None
+    segment_extent: int | None = None
 
     def on_demand(self) -> bool:
         return self.rate_profile is not None and self.rate_profile.supply == "on_demand"

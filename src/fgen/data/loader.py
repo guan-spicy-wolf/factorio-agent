@@ -19,6 +19,7 @@ from fgen.data.schema import (
     EnergySource,
     EntityProto,
     FluidBox,
+    FluidProto,
     GameData,
     ItemProto,
     PipeConnection,
@@ -47,7 +48,16 @@ _ENTITY_FIELDS: dict[str, list[str]] = {
     ],
     "electric-pole": [*_COMMON, "supply_area_distance", "maximum_wire_distance"],
     "furnace": [*_COMMON, "crafting_speed", "crafting_categories", *_ENERGY],
-    "assembling-machine": [*_COMMON, "crafting_speed", "crafting_categories", *_ENERGY],
+    "assembling-machine": [
+        *_COMMON,
+        "crafting_speed",
+        "crafting_categories",
+        *_ENERGY,
+        "fluid_boxes[].production_type",
+        "fluid_boxes[].pipe_connections",
+        "fluid_boxes_off_when_no_fluid_recipe",
+        "use_mirroring",
+    ],
     "mining-drill": [
         *_COMMON,
         "mining_speed",
@@ -75,6 +85,7 @@ _ENTITY_FIELDS: dict[str, list[str]] = {
 }
 
 _OTHER_FIELDS: dict[str, list[str]] = {
+    "fluid": ["name", "default_temperature"],
     "item": ["name", "type", "stack_size", "fuel_value", "fuel_category"],
     "resource": [
         "name",
@@ -148,6 +159,15 @@ def _direction(v: Any) -> int:
     return int(v)
 
 
+def _fluid_boxes(raw: Any) -> tuple[FluidBox, ...]:
+    out = []
+    for fb in raw or ():
+        box = _pipe_connections(fb)
+        if box is not None:
+            out.append(box)
+    return tuple(out)
+
+
 def _pipe_connections(fb: Mapping[str, Any] | None) -> FluidBox | None:
     if fb is None:
         return None
@@ -172,7 +192,7 @@ def _pipe_connections(fb: Mapping[str, Any] | None) -> FluidBox | None:
                 max_underground_distance=int(mud) if mud is not None else None,
             )
         )
-    return FluidBox(pipe_connections=tuple(conns))
+    return FluidBox(pipe_connections=tuple(conns), production_type=fb.get("production_type"))
 
 
 def _energy_source(es: Mapping[str, Any] | None) -> EnergySource | None:
@@ -233,6 +253,11 @@ def _entity(raw: Mapping[str, Any]) -> EntityProto:
         ),
         fluid_box=fb,
         output_fluid_box=_pipe_connections(raw.get("output_fluid_box")),
+        fluid_boxes=_fluid_boxes(raw.get("fluid_boxes")),
+        fluid_boxes_off_when_no_fluid_recipe=bool(
+            raw.get("fluid_boxes_off_when_no_fluid_recipe", False)
+        ),
+        use_mirroring=bool(raw.get("use_mirroring", False)),
         max_underground_distance=mud,
         inventory_size=_opt_int(raw, "inventory_size"),
     )
@@ -283,6 +308,10 @@ def _resource(raw: Mapping[str, Any]) -> ResourceProto:
     )
 
 
+def _fluid(raw: Mapping[str, Any]) -> FluidProto:
+    return FluidProto(name=raw["name"], default_temperature=float(raw["default_temperature"]))
+
+
 def _item(raw: Mapping[str, Any]) -> ItemProto:
     return ItemProto(
         name=raw["name"],
@@ -311,6 +340,7 @@ def from_raw(
     }
     items = {n: _item({"name": n, **i}) for n, i in (raw.get("item") or {}).items()}
     res = {n: _resource({"name": n, **r}) for n, r in (raw.get("resource") or {}).items()}
+    fluids = {n: _fluid({"name": n, **f}) for n, f in (raw.get("fluid") or {}).items()}
     return GameData(
         entities=entities,
         recipes=recipes,
@@ -318,6 +348,7 @@ def from_raw(
         source=source,
         items=items,
         resources=res,
+        fluids=fluids,
         constants=dict(constants),
     )
 

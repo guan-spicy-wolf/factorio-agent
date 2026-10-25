@@ -189,8 +189,58 @@ def test_fluid_unintended_adjacency(gd: GameData) -> None:
 
 def test_fluid_adjacency_needs_facing_connections(gd: GameData) -> None:
     # pipe-to-ground facing N has its normal connection to the north only
-    lay = Layout([at(gd, "pipe", 0, 0), at(gd, "pipe-to-ground", 1, 0, N)])
-    assert validate(lay, gd, fluids={0: "water", 1: "crude-oil"}) == []
+    lay = Layout(
+        [at(gd, "pipe", 0, 0), at(gd, "pipe-to-ground", 1, 0, N), at(gd, "pipe-to-ground", 1, 3, S)]
+    )
+    assert validate(lay, gd, fluids={0: "water", 1: "crude-oil", 2: "crude-oil"}) == []
+
+
+CP = "chemical-plant"
+
+
+def _plant(gd: GameData, x: int, y: int, d: Direction, recipe: str | None, **extra) -> Placement:
+    ex = {"recipe": recipe, **extra} if recipe else dict(extra)
+    return Placement(CP, footprint.center_for_tile_anchor(gd, CP, Tile(x, y), d), d, ex)
+
+
+def fcodes(vs) -> list[str]:
+    return [c for c in codes(vs) if c.startswith("fluid")]
+
+
+def test_plant_ports_against_pipes(gd: GameData) -> None:
+    """Plastic: gas on both N corners, idle S corners (VERIFY §13)."""
+    plant = _plant(gd, 0, 1, N, "plastic-bar")
+    row = [at(gd, "pipe", x, 0) for x in range(3)]
+    gas = {i + 1: "petroleum-gas" for i in range(3)}
+    assert fcodes(validate(Layout([plant, *row]), gd, fluids=gas)) == []
+    water = {i + 1: "water" for i in range(3)}
+    assert "fluid.unintended_adjacency" in fcodes(validate(Layout([plant, *row]), gd, fluids=water))
+    # a pipe under the idle output corner is a conflict (conservative), even of gas
+    below = [*row, at(gd, "pipe", 0, 4)]
+    vs = validate(Layout([plant, *below]), gd, fluids={**gas, 4: "petroleum-gas"})
+    assert fcodes(vs) == ["fluid.unintended_adjacency"]
+    # the recipe's gas box must face some gas connection
+    vs = validate(Layout([plant]), gd)
+    assert fcodes(vs) == ["fluid.box_unconnected"]
+
+
+def test_pipe_to_ground_pairing(gd: GameData) -> None:
+    pair = [at(gd, "pipe-to-ground", 0, 0, W), at(gd, "pipe-to-ground", 4, 0, E)]
+    assert validate(Layout(pair), gd) == []
+    # a same-facing one in between takes the pair: the outer entrance is left alone
+    three = [*pair, at(gd, "pipe-to-ground", 2, 0, W)]
+    assert codes(validate(Layout(three), gd)) == ["fluid.underground_unpaired"]
+    far = [
+        pair[0],
+        at(
+            gd,
+            "pipe-to-ground",
+            1 + int(gd.entity("pipe-to-ground").max_underground_distance or 0),
+            0,
+            E,
+        ),
+    ]
+    assert len(validate(Layout(far), gd)) == 2
 
 
 # ---- data errors -------------------------------------------------------------

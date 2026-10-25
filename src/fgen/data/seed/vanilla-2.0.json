@@ -7,7 +7,8 @@
     "belt_lanes": 2,
     "inserter_base_hand_size": 1,
     "recipe_default_energy_required": 0.5,
-    "wire_connector_pole_copper": 5
+    "wire_connector_pole_copper": 5,
+    "pipeline_extent": 320
   },
   "transport-belt": {
     "transport-belt": {
@@ -661,6 +662,459 @@
         "placeable-player",
         "player-creation"
       ],
+      "fluid_boxes": [
+        {
+          "production_type": "input",
+          "pipe_picture": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 52,
+              "height": 20,
+              "shift": [
+                0.015625,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-N.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 72,
+              "shift": [
+                -0.71875,
+                0.046875
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-E.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 64,
+              "height": 70,
+              "shift": [
+                0,
+                -0.75
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-S.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 30,
+              "height": 74,
+              "shift": [
+                0.71875,
+                0.015625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-W.png"
+            }
+          },
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 1000,
+          "pipe_connections": [
+            {
+              "flow_direction": "input",
+              "direction": 0,
+              "position": [
+                0,
+                -1
+              ]
+            }
+          ],
+          "secondary_draw_orders": {
+            "north": -1
+          },
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          },
+          "pipe_picture_frozen": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 50,
+              "height": 22,
+              "shift": [
+                0,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-N-frozen.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 62,
+              "shift": [
+                -0.71875,
+                -0.03125
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-E-frozen.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 60,
+              "height": 48,
+              "shift": [
+                -0.03125,
+                -0.921875
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-S-frozen.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 70,
+              "shift": [
+                0.71875,
+                0
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-W-frozen.png"
+            }
+          }
+        },
+        {
+          "production_type": "output",
+          "pipe_picture": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 52,
+              "height": 20,
+              "shift": [
+                0.015625,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-N.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 72,
+              "shift": [
+                -0.71875,
+                0.046875
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-E.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 64,
+              "height": 70,
+              "shift": [
+                0,
+                -0.75
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-S.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 30,
+              "height": 74,
+              "shift": [
+                0.71875,
+                0.015625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-2/assembling-machine-2-pipe-W.png"
+            }
+          },
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 1000,
+          "pipe_connections": [
+            {
+              "flow_direction": "output",
+              "direction": 8,
+              "position": [
+                0,
+                1
+              ]
+            }
+          ],
+          "secondary_draw_orders": {
+            "north": -1
+          },
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          },
+          "pipe_picture_frozen": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 50,
+              "height": 22,
+              "shift": [
+                0,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-N-frozen.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 62,
+              "shift": [
+                -0.71875,
+                -0.03125
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-E-frozen.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 60,
+              "height": 48,
+              "shift": [
+                -0.03125,
+                -0.921875
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-S-frozen.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 70,
+              "shift": [
+                0.71875,
+                0
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-W-frozen.png"
+            }
+          }
+        }
+      ],
+      "fluid_boxes_off_when_no_fluid_recipe": true,
       "collision_box": [
         [
           -1.2,
@@ -694,6 +1148,459 @@
         "placeable-player",
         "player-creation"
       ],
+      "fluid_boxes": [
+        {
+          "production_type": "input",
+          "pipe_picture": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 52,
+              "height": 20,
+              "shift": [
+                0.015625,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-N.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 74,
+              "shift": [
+                -0.71875,
+                0.0625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-E.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 64,
+              "height": 70,
+              "shift": [
+                0,
+                -0.765625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-S.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 72,
+              "shift": [
+                0.734375,
+                0.015625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-W.png"
+            }
+          },
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 1000,
+          "pipe_connections": [
+            {
+              "flow_direction": "input",
+              "direction": 0,
+              "position": [
+                0,
+                -1
+              ]
+            }
+          ],
+          "secondary_draw_orders": {
+            "north": -1
+          },
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          },
+          "pipe_picture_frozen": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 50,
+              "height": 22,
+              "shift": [
+                0,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-N-frozen.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 62,
+              "shift": [
+                -0.71875,
+                -0.03125
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-E-frozen.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 60,
+              "height": 48,
+              "shift": [
+                -0.03125,
+                -0.921875
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-S-frozen.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 70,
+              "shift": [
+                0.71875,
+                0
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-W-frozen.png"
+            }
+          }
+        },
+        {
+          "production_type": "output",
+          "pipe_picture": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 52,
+              "height": 20,
+              "shift": [
+                0.015625,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-N.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 74,
+              "shift": [
+                -0.71875,
+                0.0625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-E.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 64,
+              "height": 70,
+              "shift": [
+                0,
+                -0.765625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-S.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 72,
+              "shift": [
+                0.734375,
+                0.015625
+              ],
+              "line_length": 1,
+              "filename": "__base__/graphics/entity/assembling-machine-3/assembling-machine-3-pipe-W.png"
+            }
+          },
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 1000,
+          "pipe_connections": [
+            {
+              "flow_direction": "output",
+              "direction": 8,
+              "position": [
+                0,
+                1
+              ]
+            }
+          ],
+          "secondary_draw_orders": {
+            "north": -1
+          },
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          },
+          "pipe_picture_frozen": {
+            "north": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 50,
+              "height": 22,
+              "shift": [
+                0,
+                0.34375
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-N-frozen.png"
+            },
+            "east": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 62,
+              "shift": [
+                -0.71875,
+                -0.03125
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-E-frozen.png"
+            },
+            "south": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 60,
+              "height": 48,
+              "shift": [
+                -0.03125,
+                -0.921875
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-S-frozen.png"
+            },
+            "west": {
+              "priority": "extra-high",
+              "scale": 0.5,
+              "width": 32,
+              "height": 70,
+              "shift": [
+                0.71875,
+                0
+              ],
+              "line_length": 1,
+              "filename": "__space-age__/graphics/entity/frozen/assembling-machine/assembling-machine-pipe-W-frozen.png"
+            }
+          }
+        }
+      ],
+      "fluid_boxes_off_when_no_fluid_recipe": true,
       "collision_box": [
         [
           -1.2,
@@ -718,6 +1625,528 @@
         }
       },
       "energy_usage": "375kW"
+    },
+    "chemical-plant": {
+      "type": "assembling-machine",
+      "name": "chemical-plant",
+      "flags": [
+        "placeable-neutral",
+        "placeable-player",
+        "player-creation"
+      ],
+      "collision_box": [
+        [
+          -1.2,
+          -1.2
+        ],
+        [
+          1.2,
+          1.2
+        ]
+      ],
+      "use_mirroring": true,
+      "crafting_speed": 1,
+      "energy_source": {
+        "type": "electric",
+        "usage_priority": "secondary-input",
+        "emissions_per_minute": {
+          "pollution": 4
+        }
+      },
+      "energy_usage": "210kW",
+      "crafting_categories": [
+        "chemistry"
+      ],
+      "fluid_boxes": [
+        {
+          "production_type": "input",
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 1000,
+          "pipe_connections": [
+            {
+              "flow_direction": "input",
+              "direction": 0,
+              "position": [
+                -1,
+                -1
+              ]
+            }
+          ],
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          }
+        },
+        {
+          "production_type": "input",
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 1000,
+          "pipe_connections": [
+            {
+              "flow_direction": "input",
+              "direction": 0,
+              "position": [
+                1,
+                -1
+              ]
+            }
+          ],
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          }
+        },
+        {
+          "production_type": "output",
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 100,
+          "pipe_connections": [
+            {
+              "flow_direction": "output",
+              "direction": 8,
+              "position": [
+                -1,
+                1
+              ]
+            }
+          ],
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          }
+        },
+        {
+          "production_type": "output",
+          "pipe_covers": {
+            "north": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-north-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "east": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-east-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "south": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-south-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            },
+            "west": {
+              "layers": [
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5
+                },
+                {
+                  "filename": "__base__/graphics/entity/pipe-covers/pipe-cover-west-shadow.png",
+                  "priority": "extra-high",
+                  "width": 128,
+                  "height": 128,
+                  "scale": 0.5,
+                  "draw_as_shadow": true
+                }
+              ]
+            }
+          },
+          "volume": 100,
+          "pipe_connections": [
+            {
+              "flow_direction": "output",
+              "direction": 8,
+              "position": [
+                1,
+                1
+              ]
+            }
+          ],
+          "pipe_covers_frozen": {
+            "north": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-north.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "east": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-east.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "south": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-south.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            },
+            "west": {
+              "filename": "__space-age__/graphics/entity/frozen/pipe-covers/pipe-cover-west.png",
+              "priority": "extra-high",
+              "width": 128,
+              "height": 128,
+              "scale": 0.5
+            }
+          }
+        }
+      ]
     }
   },
   "mining-drill": {
@@ -1816,6 +3245,16 @@
       "type": "item",
       "name": "iron-gear-wheel",
       "stack_size": 100
+    },
+    "sulfur": {
+      "type": "item",
+      "name": "sulfur",
+      "stack_size": 50
+    },
+    "plastic-bar": {
+      "type": "item",
+      "name": "plastic-bar",
+      "stack_size": 100
     }
   },
   "recipe": {
@@ -2072,6 +3511,65 @@
         "crafting",
         "metallurgy"
       ]
+    },
+    "plastic-bar": {
+      "name": "plastic-bar",
+      "categories": [
+        "chemistry",
+        "cryogenics"
+      ],
+      "energy_required": 1,
+      "ingredients": [
+        {
+          "type": "fluid",
+          "name": "petroleum-gas",
+          "amount": 20
+        },
+        {
+          "type": "item",
+          "name": "coal",
+          "amount": 1
+        }
+      ],
+      "results": [
+        {
+          "type": "item",
+          "name": "plastic-bar",
+          "amount": 2
+        }
+      ]
+    },
+    "sulfuric-acid": {
+      "name": "sulfuric-acid",
+      "categories": [
+        "chemistry",
+        "cryogenics"
+      ],
+      "energy_required": 1,
+      "ingredients": [
+        {
+          "type": "item",
+          "name": "sulfur",
+          "amount": 5
+        },
+        {
+          "type": "item",
+          "name": "iron-plate",
+          "amount": 1
+        },
+        {
+          "type": "fluid",
+          "name": "water",
+          "amount": 100
+        }
+      ],
+      "results": [
+        {
+          "type": "fluid",
+          "name": "sulfuric-acid",
+          "amount": 50
+        }
+      ]
     }
   },
   "resource": {
@@ -2286,6 +3784,20 @@
           }
         ]
       }
+    }
+  },
+  "fluid": {
+    "petroleum-gas": {
+      "name": "petroleum-gas",
+      "default_temperature": 25
+    },
+    "water": {
+      "name": "water",
+      "default_temperature": 15
+    },
+    "sulfuric-acid": {
+      "name": "sulfuric-acid",
+      "default_temperature": 25
     }
   }
 }

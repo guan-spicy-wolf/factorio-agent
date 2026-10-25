@@ -53,6 +53,7 @@ class PipeConnection:
 @dataclass(frozen=True)
 class FluidBox:
     pipe_connections: tuple[PipeConnection, ...] = ()
+    production_type: str | None = None  # crafting machines: "input" | "output"
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,10 @@ class EntityProto:
     # fluids
     fluid_box: FluidBox | None = None
     output_fluid_box: FluidBox | None = None
+    # crafting machines (2.0+): ``fluid_boxes`` list, each with a ``production_type``
+    fluid_boxes: tuple[FluidBox, ...] = ()
+    fluid_boxes_off_when_no_fluid_recipe: bool = False
+    use_mirroring: bool = False
     max_underground_distance: int | None = None
     # container
     inventory_size: int | None = None
@@ -110,6 +115,14 @@ class ItemProto:
     stack_size: int
     fuel_value: str | None = None
     fuel_category: str | None = None
+
+
+@dataclass(frozen=True)
+class FluidProto:
+    """A ``fluid`` prototype: only the default temperature (contract ``temperature``)."""
+
+    name: str
+    default_temperature: float
 
 
 @dataclass(frozen=True)
@@ -147,6 +160,7 @@ class GameData:
     source: Literal["seed", "dump"]
     items: dict[str, ItemProto] = field(default_factory=dict)
     resources: dict[str, ResourceProto] = field(default_factory=dict)
+    fluids: dict[str, FluidProto] = field(default_factory=dict)
     # Engine constants that are not part of any prototype (ticks per second, items per
     # belt tile). They live in the seed file, never in code.
     constants: dict[str, float] = field(default_factory=dict)
@@ -168,6 +182,9 @@ class GameData:
             return self.resources[name]
         except KeyError:
             raise KeyError(f"unknown resource {name!r} in {self.source} data") from None
+
+    def is_fluid(self, name: str) -> bool:
+        return name in self.fluids
 
     def constant(self, name: str) -> float:
         try:

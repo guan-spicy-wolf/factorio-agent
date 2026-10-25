@@ -265,3 +265,20 @@ def test_load_dump_resource_forms(tmp_path: Path) -> None:
     s, lg = gd.resource("short"), gd.resource("long")
     assert s.results == (("short", 3.0),) and s.category == "basic-solid" and s.mining_time == 2
     assert lg.infinite and lg.results == (("goo", 10.0),) and lg.category == "basic-fluid"
+
+
+def test_phase5a_fluid_prototypes(gd: GameData) -> None:
+    """Chemical plant ``fluid_boxes`` (two inputs, two outputs), fluids with their
+    default temperature, the pipeline extent constant (all from the 2.1.23 dump)."""
+    cp = gd.entity("chemical-plant")
+    kinds = [fb.production_type for fb in cp.fluid_boxes]
+    assert kinds.count("input") == 2 and kinds.count("output") == 2
+    assert cp.use_mirroring and not cp.fluid_boxes_off_when_no_fluid_recipe
+    for fb in cp.fluid_boxes:
+        (c,) = fb.pipe_connections
+        assert c.flow_direction == fb.production_type
+    assert {"petroleum-gas", "water", "sulfuric-acid"} <= set(gd.fluids)
+    assert all(f.default_temperature > 0 for f in gd.fluids.values())
+    assert gd.is_fluid("water") and not gd.is_fluid("coal")
+    assert gd.constant("pipeline_extent") > 0
+    assert {"plastic-bar", "sulfuric-acid"} <= set(gd.recipes)

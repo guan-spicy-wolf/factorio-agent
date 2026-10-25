@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from fgen.data.loader import SEED_FILE, fields_used
 
@@ -24,7 +25,24 @@ ADD: dict[str, list[str]] = {
     "resource": ["iron-ore", "copper-ore", "coal", "stone", "uranium-ore", "crude-oil"],
     "infinity-pipe": ["infinity-pipe"],  # phase 3a: fluid source fixture
     # phase 4b: science packs and their intermediates (direct_chain family)
-    "recipe": ["automation-science-pack", "logistic-science-pack", "inserter", "transport-belt"],
+    "recipe": [
+        "automation-science-pack",
+        "logistic-science-pack",
+        "inserter",
+        "transport-belt",
+        "plastic-bar",  # phase 5a: fluid machines
+        "sulfuric-acid",
+    ],
+    "assembling-machine": ["chemical-plant"],
+    "item": ["sulfur", "plastic-bar"],
+    "fluid": ["petroleum-gas", "water", "sulfuric-acid"],
+}
+
+# Engine constants read from the dump (``_constants`` key -> path in the dump); the
+# other ``_constants`` are kept from the existing seed.
+DUMP_CONSTANTS: dict[str, tuple[str, ...]] = {
+    # longest side of one fluid segment's bounding box before it stops flowing (2.1)
+    "pipeline_extent": ("utility-constants", "default", "default_pipeline_extent"),
 }
 
 SEED_PATH = Path(__file__).resolve().parents[1] / "src" / "fgen" / "data" / "seed" / SEED_FILE
@@ -47,8 +65,13 @@ def main() -> None:
             "bin/headless.sh dump) by scripts/extract_seed.py"
         ),
         "_version": version,
-        "_constants": seed["_constants"],
+        "_constants": dict(seed["_constants"]),
     }
+    for key, path in DUMP_CONSTANTS.items():
+        v: Any = dump
+        for part in path:
+            v = v[part]
+        out["_constants"][key] = v
     missing = []
     wanted_names = {t: dict(v) for t, v in seed.items() if not t.startswith("_")}
     for proto_type, names in ADD.items():

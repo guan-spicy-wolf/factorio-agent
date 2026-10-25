@@ -118,10 +118,10 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 带道数、配方默认耗时 | 常识/原型文档；dump 里种子配方都显式写了 `energy_required` | 无需专门核对 |
 | 拉线距离（异种电杆、恰在边界） | 只测了同种小杆相距 7 格（< 7.5）能连；导出器只在 `wire_reaches` 为真时写 `wires`，游戏若拒绝过长的线会表现为 `power` 检查失败 | 在 verify 里加：小杆–中杆、恰好 7.5 格与 8 格各一例 |
 | 供电区：多格实体部分落入覆盖区 | `fgen verify` #9 只用了 1×1 爪子 | 用 2×2 熔炉、3×3 组装机沿覆盖区边缘逐格平移 |
-| 液体连接格式 / 液体相邻判定 | 阶段 1 没有液体单元；往返测试只证明管道、地下管能放下并保持方向，没有测连通 | 阶段 5 前放管道相邻、错位、地下管配对各一例，读 `fluidbox.get_connections` |
+| ~~液体连接格式 / 液体相邻判定~~ | ~~阶段 1 没有液体单元~~ → 已核对（2.1.23），见 §13 | — |
 | 爪子吞吐估算（带到炉/带到箱） | 冶炼列里爪子从不成为瓶颈；组装机→组装机已在阶段 4a 测过（§11），带→机器仍未单测 | 单爪从满带取到箱子测 60 秒，各爪种、带速各一组 |
-| `mirror` 字段 | 种子集里没有不对称实体 | 阶段 5（化工厂） |
-| 组装机方向（流体配方） | `direction_matters` 对流体配方组装机保留方向，但种子里没有流体配方，未实测 | 阶段 5 |
+| ~~`mirror` 字段~~ | → 已核对（2.1.23，化工厂），见 §13 | — |
+| 组装机方向（流体配方） | 化工厂已核对（§13）；2 型/3 型组装机的流体配方仍未实测（种子里没有它们的流体配方） | 需要时同 §13 的外圈探针 |
 | ~~采矿机（电钻）放置~~ | ~~平地测试场没有资源，蓝图里的电钻建不出来~~ → 已核对（2.1.23），见 §9 | — |
 
 
@@ -201,3 +201,24 @@ bin/headless.sh install && uv run python scripts/extract_seed.py "$(bin/headless
 | 大钻成叠放带 | `drops_full_belt_stacks` 的钻机按 `1 + belt_stack_size_bonus` 一叠放到带上：快带一道（22.5/s 件数上限）实测 29.2/s，不封顶 | `gen/mining_sweep.py` | big-drill-medium 用例 | 已核对（只测了 big-mining-drill + express 带） |
 | 手持 4 的普通/快速/长臂爪 | 直插链、冶炼列在手持 4 下实测与研究前相同（机器封顶）；爪子估计按 `hand × tps × rotation_speed` 线性放大，未在爪子封顶的场景单测 | `gen/throughput.py` | 四份 characterization | 部分核对：没有用"爪子是瓶颈"的单元测手持 4 的实际速率 |
 | 冶炼列测量统计量 | 10 s 样本只能分辨 1 件（5/s 时 2%），对比改用整窗口均值 `throughput_mean` | `sim/measure.py`、`gen/sweep.py` | 冶炼列重测：中位数 ±2%、均值 ≤ 0.7% | 已核对 |
+
+## 13. 流体机器（阶段 5a，2.1.23 实机）
+
+核对方法：阶段 5a 开头的一次性 spike（scratchpad 脚本，`create_entity` 手搭与蓝图导入两条路；过程与原始读数见
+`docs/experiments/5a-fluids.md` 迭代 F0），之后由 `tests/test_geom.py`（口位置表）、`tests/test_validate.py`、
+headless `tests/test_sim_fluid_chain.py` 与 `fgen sweep fluid --measure` 持续覆盖。
+
+| 条目 | 结论 | 所在文件 | 核对方法 | 状态 |
+| --- | --- | --- | --- | --- |
+| 化工厂原型 | 2.1 dump 用 `fluid_boxes` 列表（每个盒有 `production_type`）：输入 (−1,−1)、(1,−1) 朝 N，输出 (−1,1)、(1,1) 朝 S；`use_mirroring: true`；2/3 型组装机另有 `fluid_boxes_off_when_no_fluid_recipe: true`。种子按 `ADD` 表补了化工厂、塑料与硫酸配方、硫与塑料棒物品、三种液体（`default_temperature`）和 `utility-constants` 的 `default_pipeline_extent`（种子常数 `pipeline_extent`） | `data/loader.py`、`scripts/extract_seed.py` | dump | 已核对 |
+| 口位置 × 朝向 × 镜像 | 连接点先镜像（x → −x，E ↔ W）再随朝向顺时针旋转；无配方时 4 个盒各自独立，镜像交换 1↔2、3↔4；8 种姿态的外圈格逐一核对（表在 `tests/test_geom.py` `OBSERVED_NO_RECIPE`） | `geom/fluid.py` `machine_ports` | 外圈每格放管子读 `get_fluid_box_neighbours(1)`（返回 `{entity, index}`），24 种组合 × 脚本建/蓝图导入 | 已核对 |
+| 配方与盒子的对应 | 配方的液体原料按顺序进输入盒、液体产物进输出盒；**同类只有一种液体时该类全部盒子都装它**（塑料：两个输入角都是石油气，`fluids_count = 1`；硫酸：两个输入角都是水、两个输出角都是硫酸）；该类没有液体时盒子闲置、**不连接**（塑料的输出角放管子，`get_fluid_box_neighbours` 为空）。双液体原料（`heavy-oil-cracking`，只作核对）：1 号盒（水）在 (−1,−1)、2 号盒（重油）在 (1,−1)，镜像对调。其他数量组合未见过，`box_fluids` 遇到就报错 | `geom/fluid.py` `box_fluids` | 同上，另读 `get_fluid_filter(i)` | 已核对（塑料、硫酸、裂化三种配方） |
+| `mirror` 字段 | 蓝图实体 `"mirror": true` 导入后 `LuaEntity.mirroring == true`，`create_blueprint` 原样导出（未镜像的不写该键）；`create_entity{mirror=true}` 也认。塑料与硫酸的口几何对镜像不变 | `solve/period.py` `assemble`（写进 `extra`） | 读 `mirroring`、重新导出 | 已核对 |
+| 输入口互通 | 输入连接 `flow_direction = input`：两个输入角**不**互通（一角进气，另一角接的管子是另一段、下游储罐始终空）；机器的盒子不属于任何段（`get_fluid_segment_id` 报错） | — | 段 id + 储罐读数 | 已核对 |
+| 段内流量与管长 | 段是一个整体：infinity-pipe 源瞬间灌满同段的全部管子和储罐；泵（1200/s）往段里打，L = 1、10、100、300 根管后的储罐进量完全相同（20/tick）。**段外包框边长 > 320（`default_pipeline_extent`）时一点都不流**（L = 319/321/400，框宽 321.8/323.8/402.8；L = 300 框宽 302.8 正常）。所以速率不带距离项，只有段长上限；契约的液体口带 `segment_extent`，路由器检查连上之后 < `pipeline_extent` | `route/pipe.py`、`gen/direct_chain.py` | 泵 + 储罐，`get_fluid_segment_fluid`、`get_fluid_segment_extent_bounding_box` | 已核对（阈值只夹在 302.8 与 321.8 之间） |
+| 地下管、储罐与段 | 管–地下管对–管是同一段；储罐属于段（段容量 = 管 100 × n + 25000）；地下管偏移 1（背对背紧挨）也配对；同轴同向的第三个地下管夹在中间时最近的配对、外侧落单；化工厂可以压在地下管跨越段上 | `layout/validate.py` `fluid.underground_unpaired`、`solve/cpsat_fluid.py` | 段 id、`get_fluid_box_neighbours` | 已核对 |
+| 不同液体相邻 | `create_entity` 照放，两段并成一段（2.1 只在 GUI 给混液警告）——不变量 `fluid.unintended_adjacency` 必须由 fgen 自己守 | `layout/validate.py` | 段 id | 已核对 |
+| infinity-pipe 作为汇 | `{name, percentage = 0, mode = 'exactly'}` 单独接在机器输出段上会把段清空、机器一直工作；与源在同一段时源赢。读不到吞了多少，**不作计量汇** | `sim/harness.py` | 状态 + 合成数 | 已核对 |
+| 储罐读量 | `get_fluid(1)` 只给储罐那一份（按容量摊分）；整段用 `get_fluid_segment_fluid(1)`；计量汇每 tick 读整段、累加、`clear_fluid_segment_fluid(1)`：一台硫酸厂 10 次合成累计 499.9；`force.get_fluid_production_statistics(surface).get_input_count('sulfuric-acid')` 同为 500 | `sim/measure.py` | 累计 vs 合成数 vs 统计 | 已核对 |
+| 全科技后的配方产能 | `research_all_technologies()` 后 `force.recipes['plastic-bar'].productivity_bonus = 0.1`（space-age 的塑料产能科技）：一台化工厂实测 2.2 棒/秒。`RuntimeState.recipe_productivity` 记录所有非 0 的配方产能，`direct_chain.predict` 按它算；生成器仍按无研究设计 | `data/runtime.py`、`sim/lua.py` | 实测 vs 预测 | 已核对 |
+| 化工厂的状态名 | 缺液体时 `fluid_ingredient_shortage`（计入 `machine_input_starved`） | `sim/measure.py` | `defines.entity_status` | 部分核对（名字存在；本轮实测里没出现过） |

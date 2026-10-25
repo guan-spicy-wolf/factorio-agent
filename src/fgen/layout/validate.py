@@ -12,7 +12,12 @@ Checked codes:
 ``belt.discontinuous``        belt leads nowhere and is neither an output interface nor
                               a declared terminal
 ``underground.unpaired``      underground belt without a partner within ``max_distance``
-``fluid.unintended_adjacency`` two touching fluid connections carry different fluids
+``fluid.unintended_adjacency`` two touching fluid connections carry different fluids, or
+                              an idle machine port (its box unused by the recipe) touches
+                              a fluid connection
+``fluid.box_unconnected``     a fluid box the machine's recipe uses has no port facing a
+                              connection of its fluid (or a fluid interface tile)
+``fluid.underground_unpaired`` a pipe-to-ground with no partner on its underground side
 ``drill.output_blocked``      a mining drill's output tile holds no belt or container and
                               is no item interface
 ``drill.no_ore``              no minable resource tile in a drill's search area (only
@@ -29,6 +34,9 @@ Contract checks (``validate_unit`` only: they need the unit's port groups; phase
                               add up to ``initial`` / name a lane the port does not use
 ``contract.group``            ``port_group`` names no group of the unit, or one group's
                               ports are not on one tile and direction
+``contract.fluid``            a fluid port names no entity with a connection on its tile
+                              facing its direction, or lacks ``temperature`` /
+                              ``segment_extent``, or its extent reaches ``pipeline_extent``
 """
 
 from __future__ import annotations
@@ -250,29 +258,105 @@ def _check_undergrounds(c: _Ctx) -> None:
             )
 
 
-def _check_fluids(c: _Ctx, fluids: Mapping[int, str]) -> None:
-    ports: dict[tuple[Tile, Direction], int] = {}
+def _check_fluids(c: _Ctx, fluids: Mapping[int, str], fluid_tiles: frozenset[Tile]) -> None:
+    """Touching connections with different fluids, or an idle machine port touching a
+    fluid entity (``fluid.unintended_adjacency``); a machine's recipe fluid box with no
+    connection of its fluid (``fluid.box_unconnected``)."""
+    ports: dict[tuple[Tile, Direction], tuple[int, str | None]] = {}
     for i, p in c.known():
-        e = c.gd.entity(p.name)
-        if (e.fluid_box is None and e.output_fluid_box is None) or not p.direction.is_cardinal:
+        if not fluid.has_fluid_ports(c.gd, p.name) or not p.direction.is_cardinal:
             continue
-        for t, d in fluid.connection_points(c.gd, p.name, p.position, p.direction):
-            ports[(t, d)] = i
+        for t, d, lab in fluid.entity_ports(
+            c.gd, p.name, p.position, p.direction, p.extra, fluids.get(i)
+        ):
+            ports[(t, d)] = (i, lab)
     reported: set[tuple[int, int]] = set()
-    for (t, d), a in ports.items():
+    for (t, d), (a, fa) in ports.items():
         n = t.neighbor(d)
-        b = ports.get((n, d.opposite))
-        if b is None or b == a:
+        hit = ports.get((n, d.opposite))
+        if hit is None or hit[0] == a:
             continue
+        b, fb = hit
         key = (min(a, b), max(a, b))
-        fa, fb = fluids.get(a), fluids.get(b)
-        if fa is not None and fb is not None and fa != fb and key not in reported:
+        if key in reported:
+            continue
+        idle = (fa == fluid.IDLE) != (fb == fluid.IDLE)
+        if idle or (fa is not None and fb is not None and fa != fb):
             reported.add(key)
+            what = "an idle port" if idle else f"{fb}"
             c.violations.append(
                 Violation(
                     "fluid.unintended_adjacency",
-                    f"#{a} ({fa}) connects to #{b} ({fb})",
+                    f"#{a} ({fa}) connects to #{b} ({what})",
                     frozenset({t, n}),
+                )
+            )
+    # every fluid box a machine's recipe uses has some port facing its fluid (an
+    # unknown fluid or a fluid interface tile counts as connected)
+    for i, p in c.known():
+        if not c.gd.entity(p.name).fluid_boxes or not p.direction.is_cardinal:
+            continue
+        rec = p.extra.get("recipe")
+        pts = fluid.machine_ports(
+            c.gd,
+            p.name,
+            p.position,
+            p.direction,
+            str(rec) if rec else None,
+            fluid.mirrored(p.extra),
+        )
+        # one box per (role, fluid): a recipe's single fluid merges the boxes of its kind
+        boxes: dict[tuple[str, str], list[fluid.Port]] = {}
+        for pt in pts:
+            if pt.fluid is not None:
+                boxes.setdefault((pt.role, pt.fluid), []).append(pt)
+        for box, bps in sorted(boxes.items()):
+            ok = False
+            for pt in bps:
+                hit = ports.get((pt.outside, pt.direction.opposite))
+                if pt.outside in fluid_tiles or (
+                    hit is not None and hit[0] != i and hit[1] in (pt.fluid, None)
+                ):
+                    ok = True
+                    break
+            if not ok:
+                c.violations.append(
+                    Violation(
+                        "fluid.box_unconnected",
+                        f"#{i} {p.name}: {box[0]} box ({box[1]}) faces no connection of its fluid",
+                        frozenset(pt.outside for pt in bps),
+                    )
+                )
+
+
+def _check_pipe_undergrounds(c: _Ctx) -> None:
+    """Every pipe-to-ground pairs with the nearest one on its underground side (an
+    opposite-facing one of the same name within ``max_underground_distance``; a
+    same-facing one in between takes the pair, VERIFY §13)."""
+    for i, p in c.known():
+        e = c.gd.entity(p.name)
+        if e.type != "pipe-to-ground" or not p.direction.is_cardinal:
+            continue
+        reach = int(e.max_underground_distance or 0)
+        step = p.direction.opposite  # the underground side
+        (t,) = c.tiles[i]
+        paired = False
+        for k in range(1, reach + 1):
+            hit = [
+                j
+                for j in c.occupants(t.neighbor(step, k))
+                if c.placements[j].name == p.name
+                and c.placements[j].direction in (p.direction, p.direction.opposite)
+            ]
+            if hit:
+                paired = c.placements[hit[0]].direction == p.direction.opposite
+                break
+        if not paired:
+            c.violations.append(
+                Violation(
+                    "fluid.underground_unpaired",
+                    f"#{i} {p.name} at {t}: no partner within {reach} tiles",
+                    frozenset({t}),
                 )
             )
 
@@ -341,7 +425,9 @@ def validate(
     _check_power(c)
     _check_belts(c, out_ifaces, frozenset(belt_terminals))
     _check_undergrounds(c)
-    _check_fluids(c, fluids or {})
+    fluid_ifaces = frozenset(i.tile for i in interfaces if i.kind == "fluid")
+    _check_fluids(c, fluids or {}, fluid_ifaces)
+    _check_pipe_undergrounds(c)
     _check_drills(c, item_ifaces, resources)
     return c.violations
 
@@ -378,8 +464,25 @@ def check_contract(unit: Unit, gd: GameData) -> list[Violation]:
                 at.setdefault(t, []).append(p.name)
     groups = {g.name for g in unit.groups}
     first: dict[str, tuple[Tile, Direction]] = {}
+    fluid_conns: dict[tuple[Tile, Direction], set[str]] = {}
+    for p in unit.layout.placements:
+        if p.name in gd.entities and fluid.has_fluid_ports(gd, p.name):
+            for t, d, _ in fluid.entity_ports(gd, p.name, p.position, p.direction, p.extra):
+                fluid_conns.setdefault((t, d), set()).add(p.name)
     for k, i in enumerate(unit.interfaces):
         where = frozenset({i.tile})
+        if i.kind == "fluid":
+            bad = ""
+            if i.entity is None or i.entity not in fluid_conns.get((i.tile, i.direction), set()):
+                bad = (
+                    f"names {i.entity!r}, no such connection at {i.tile} facing {i.direction.name}"
+                )
+            elif i.temperature is None or i.segment_extent is None:
+                bad = "temperature and segment_extent are required"
+            elif i.segment_extent >= gd.constant("pipeline_extent"):
+                bad = f"segment extent {i.segment_extent} reaches the pipeline extent"
+            if bad:
+                out.append(Violation("contract.fluid", f"interface {k}: {bad}", where))
         types = _PORT_ENTITY_TYPES.get(i.kind)
         if types is not None:
             here = [n for n in at.get(i.tile, []) if gd.entity(n).type in types]

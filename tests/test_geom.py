@@ -336,3 +336,52 @@ def test_drill_rate_and_can_mine(gd):
     assert not mining.can_mine(gd, "electric-mining-drill", "crude-oil")
     assert not mining.can_mine(gd, "electric-mining-drill", "uranium-ore")  # needs acid
     assert not mining.can_mine(gd, "pumpjack", "iron-ore")
+
+
+# chemical-plant connection tiles outside the plant, relative to its centre, per box
+# index (1-based as in the game), observed on 2.1.23 (VERIFY §13: a pipe on every ring
+# tile, ``get_fluid_box_neighbours``); no recipe: four independent boxes
+OBSERVED_NO_RECIPE = {
+    (Direction.N, False): {1: (-1, -2), 2: (1, -2), 3: (-1, 2), 4: (1, 2)},
+    (Direction.N, True): {1: (1, -2), 2: (-1, -2), 3: (1, 2), 4: (-1, 2)},
+    (Direction.E, False): {1: (2, -1), 2: (2, 1), 3: (-2, -1), 4: (-2, 1)},
+    (Direction.E, True): {1: (2, 1), 2: (2, -1), 3: (-2, 1), 4: (-2, -1)},
+    (Direction.S, False): {1: (1, 2), 2: (-1, 2), 3: (1, -2), 4: (-1, -2)},
+    (Direction.S, True): {1: (-1, 2), 2: (1, 2), 3: (-1, -2), 4: (1, -2)},
+    (Direction.W, False): {1: (-2, 1), 2: (-2, -1), 3: (2, 1), 4: (2, -1)},
+    (Direction.W, True): {1: (-2, -1), 2: (-2, 1), 3: (2, -1), 4: (2, 1)},
+}
+
+
+@pytest.mark.parametrize("pose", sorted(OBSERVED_NO_RECIPE))
+def test_chemical_plant_ports_mirror_then_rotate(gd: GameData, pose) -> None:
+    d, mir = pose
+    c = Vec2(0.5, 0.5)
+    pts = fluid.machine_ports(gd, "chemical-plant", c, d, None, mir)
+    got = {pt.box + 1: (pt.outside.x, pt.outside.y) for pt in pts}
+    assert got == OBSERVED_NO_RECIPE[pose]
+    assert all(pt.fluid is None for pt in pts)
+
+
+@pytest.mark.parametrize("d", CARDINALS)
+@pytest.mark.parametrize("mir", [False, True])
+def test_one_fluid_recipe_fills_every_box_of_its_kind(gd: GameData, d: Direction, mir) -> None:
+    c = Vec2(0.5, 0.5)
+    plastic = fluid.machine_ports(gd, "chemical-plant", c, d, "plastic-bar", mir)
+    gas = {pt.outside for pt in plastic if pt.fluid == "petroleum-gas"}
+    idle = {pt.outside for pt in plastic if pt.fluid is None}
+    # observed: the two input-side corners carry gas, the output side is idle; and the
+    # tiles do not depend on mirroring
+    base = OBSERVED_NO_RECIPE[(d, False)]
+    assert gas == {Tile(*base[1]), Tile(*base[2])}
+    assert idle == {Tile(*base[3]), Tile(*base[4])}
+    acid = fluid.machine_ports(gd, "chemical-plant", c, d, "sulfuric-acid", mir)
+    assert {pt.outside for pt in acid if pt.fluid == "water"} == gas
+    assert {pt.outside for pt in acid if pt.fluid == "sulfuric-acid"} == idle
+
+
+def test_assembler_fluid_boxes_off_without_fluid_recipe(gd: GameData) -> None:
+    am2 = gd.entity("assembling-machine-2")
+    assert am2.fluid_boxes and am2.fluid_boxes_off_when_no_fluid_recipe
+    c = Vec2(0.5, 0.5)
+    assert fluid.machine_ports(gd, "assembling-machine-2", c, Direction.N, "iron-gear-wheel") == []

@@ -114,10 +114,10 @@ class RouteGrid:
                 self.item_hazards.add(inserter.drop_tile(gd, p.name, p.position, d))
             elif e.type == "mining-drill" and e.vector_to_place_result is not None:
                 self.item_hazards.add(mining.drop_tile(gd, p.name, p.position, d))
-            if e.fluid_box is not None or e.output_fluid_box is not None:
+            if fluid.has_fluid_ports(gd, p.name):
                 f = fluid_all if fluid_all is not None else (fluids or {}).get(k)
-                for t, pd in fluid.connection_points(gd, p.name, p.position, d):
-                    self.fluid_ports[(t, pd)] = f
+                for t, pd, lab in fluid.entity_ports(gd, p.name, p.position, d, p.extra, f):
+                    self.fluid_ports[(t, pd)] = lab
         self._pair_spans(ps)
 
     def _pair_spans(self, ps: list[Placement]) -> None:
