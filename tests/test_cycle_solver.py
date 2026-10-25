@@ -174,3 +174,16 @@ def test_lane_capacity_for_repeats(gd):
     fast = solve(spec(belt="fast-transport-belt"), gd, repeats=k)
     assert fast.best is not None
     assert tiled_violations(fast.best, k, gd) == []
+
+
+def test_mixed_tiers_beat_the_classic_row(gd):
+    """Allowing long-handed inserters opens two-row periods: smaller than the classic
+    row (which needs every consumer between a raw-material belt and the output belt)."""
+    mixed = spec(extra_inserters=("long-handed-inserter",))
+    res = solve(mixed, gd, time_limit=60)
+    assert res.best is not None and not res.stats.timed_out
+    assert res.best.area < baseline_period(spec(), gd).area
+    names = {p.name for p in res.best.placements if gd.entity(p.name).type == "inserter"}
+    assert names <= set(mixed.inserters)
+    for n in (4, 8):
+        assert tiled_violations(res.best, n, gd) == []

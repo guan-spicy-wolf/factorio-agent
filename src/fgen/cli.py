@@ -159,6 +159,7 @@ def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
         pole=args.pole or d.pole,
         layout=args.layout,
         time_limit=args.time_limit,
+        extra_inserters=tuple(x for x in (args.extra_inserters or "").split(",") if x),
     )
     try:
         unit = generate_chain(params, gd)
@@ -432,6 +433,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--layout", choices=["solver", "baseline"], default="solver", help="direct-chain"
     )
     p.add_argument("--time-limit", type=float, default=60.0, help="direct-chain: solver seconds")
+    p.add_argument(
+        "--extra-inserters", default=None, help="direct-chain: comma list of tiers to mix in"
+    )
     p.add_argument("--pole", default=None, help=f"default {d.pole}")
     p.add_argument("--case", default="rect-2belt", help="mining: painted case name")
     p.add_argument("--resource", default=None, help="mining")

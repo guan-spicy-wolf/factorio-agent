@@ -5,6 +5,8 @@ below the target. Recipes are unlocked by the characterizer (VERIFY §11)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from fgen.gen.direct_chain import DirectChainParams, generate, predict
@@ -37,5 +39,18 @@ def test_chain_meets_target(ch, gd, rate, layout):
 def test_basic_inserter_chain(ch, gd):
     """24 basic inserters per period: the estimate (0.84/s) still carries 2/s."""
     unit = generate(DirectChainParams(target_rate=2.0, inserter="inserter"), gd)
+    m = ch.measure(unit, warmup_s=60, sample_s=SAMPLE_S, samples=6, speed=64)
+    assert m["throughput"] >= 2.0 - 1 / SAMPLE_S, m
+
+
+def test_mixed_tier_chain(ch, gd):
+    """The two-row period with long-handed inserters (over the iron belt onto the
+    output belt) carries its target too."""
+    p = DirectChainParams(target_rate=2.0, extra_inserters=("long-handed-inserter",))
+    unit = generate(p, gd)
+    assert (
+        unit.meta["period"]["area"]
+        < generate(replace(p, layout="baseline"), gd).meta["period"]["area"]
+    )
     m = ch.measure(unit, warmup_s=60, sample_s=SAMPLE_S, samples=6, speed=64)
     assert m["throughput"] >= 2.0 - 1 / SAMPLE_S, m

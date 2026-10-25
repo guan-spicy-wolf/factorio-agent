@@ -116,19 +116,23 @@ input  power -            at (3,3) facing E
 
 | case | machine | inserter | pole | target/s | result | ratio | periods | period WxH | unit area | machines | inserters/period | poles/period | solve s | measured/s |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.52 | 1 |
+| solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.48 | 1 |
 | baseline-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | - | 1 |
-| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.78 | 2 |
+| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.56 | 2 |
 | baseline-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.78 | 4 |
+| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.56 | 4 |
 | baseline-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.79 | 3 |
-| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.89 | 2 |
-| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.20 | 2 |
+| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.54 | 3 |
+| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.58 | 2 |
+| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 1.81 | 2 |
 | baseline-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 6 | - | 3 |
 | baseline-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
 | baseline-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 8 | - | 2 |
-| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 11 (try belt='fast-transport-belt'; target_rate=5) |  |  |  |  |  |  |  |  |  |
+| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 23.16 | 2 |
+| baseline-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
+| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 23.16 | 4 |
+| baseline-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
+| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 8. (try belt='fast-transport-belt'; target_rate=5) |  |  |  |  |  |  |  |  |  |
 | solver-r20 | assembling-machine-1 | fast-inserter | small-electric-pole | 20 | infeasible: 3:2: copper-plate 30/s exceeds one transport-belt (15/s); electronic-circuit 20/ (try target_rate=5) |  |  |  |  |  |  |  |  |  |
 
 ## Solver vs hand-written baseline
@@ -141,6 +145,8 @@ input  power -            at (3,3) facing E
 | am2-r3 | 3 | 133 | 133 | 5/5 | 13/13 | 3/6 | 3/3 |
 | medium-r2 | 2 | 133 | 133 | 5/5 | 11/11 | 3/4 | 2/2 |
 | basic-r2 | 2 | 133 | 133 | 5/5 | 24/24 | 5/8 | 2/2 |
+| fastlong-r2 | 2 | 108 | 133 | 5/5 | 11/11 | 3/4 | 2/2 |
+| fastlong-r4 | 4 | 216 | 266 | 10/10 | 11/11 | 3/4 | 4/4 |
 
 ## Measured
 
@@ -148,16 +154,20 @@ Factorio headless 2.1.23: unit built from its blueprint (recipes unlocked first,
 
 | case | target/s | measured/s | Δ | samples/s | machine states (probes) | note |
 | --- | --- | --- | --- | --- | --- | --- |
-| solver-r1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 72, working 351 | producers idle with full output: the period's ratio makes surplus intermediate |
-| baseline-r1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 69, working 345 | producers idle with full output: the period's ratio makes surplus intermediate |
-| solver-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | item_ingredient_shortage 69, working 626 | brief ingredient waits seen by the probes; no loss at the sample resolution |
+| solver-r1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 76, working 353 | producers idle with full output: the period's ratio makes surplus intermediate |
+| baseline-r1 | 1 | 1 | +0.0% | 1 1 1 1 1 1 | full_output 70, working 350 | producers idle with full output: the period's ratio makes surplus intermediate |
+| solver-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
 | baseline-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 675 |  |
 | solver-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1430 |  |
 | baseline-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
-| solver-am2-r3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 690 |  |
-| solver-medium-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | item_ingredient_shortage 66, working 599 | brief ingredient waits seen by the probes; no loss at the sample resolution |
-| solver-basic-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 670 |  |
-| baseline-am2-r3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | item_ingredient_shortage 35, working 670 | brief ingredient waits seen by the probes; no loss at the sample resolution |
-| baseline-medium-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | item_ingredient_shortage 70, working 630 | brief ingredient waits seen by the probes; no loss at the sample resolution |
-| baseline-basic-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 705 |  |
+| solver-am2-r3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 685 |  |
+| solver-medium-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 680 |  |
+| solver-basic-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 690 |  |
+| baseline-am2-r3 | 3 | 3 | +0.0% | 3 3 3 3 3 3 | working 695 |  |
+| baseline-medium-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 700 |  |
+| baseline-basic-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 700 |  |
+| solver-fastlong-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 665 |  |
+| baseline-fastlong-r2 | 2 | 2 | +0.0% | 2 2 2 2 2 2 | working 715 |  |
+| solver-fastlong-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
+| baseline-fastlong-r4 | 4 | 4 | +0.0% | 4 4 4 4 4 4 | working 1370 |  |
 

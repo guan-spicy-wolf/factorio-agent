@@ -21,6 +21,7 @@ from fgen.layout.render import LEGEND, to_ascii
 from fgen.solve.period import tile
 
 RATES = (1.0, 2.0, 4.0)
+LONG = "long-handed-inserter"
 DEVIATION_NOTE = 0.02  # relative measured/target gap that is called out in the .md
 
 
@@ -45,6 +46,11 @@ def cases() -> list[Case]:
             Case(f"{lay}-medium-r2", replace(d, pole="medium-electric-pole", layout=lay)),  # type: ignore[arg-type]
             Case(f"{lay}-basic-r2", replace(d, inserter="inserter", layout=lay)),  # type: ignore[arg-type]
         ]
+    # the solver may mix in long-handed inserters (the baseline row cannot use them)
+    for r in (2.0, 4.0):
+        long = replace(d, target_rate=r, extra_inserters=(LONG,))
+        out.append(Case(f"solver-fastlong-r{r:g}", long))
+        out.append(Case(f"baseline-fastlong-r{r:g}", replace(long, layout="baseline")))
     out.append(Case("solver-r6", replace(d, target_rate=6.0)))
     out.append(Case("solver-r20", replace(d, target_rate=20.0)))
     return out

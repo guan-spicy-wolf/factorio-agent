@@ -60,6 +60,11 @@ class CycleSpec:
     inserter: str = "fast-inserter"
     pole: str = "small-electric-pole"
     belt: str = "transport-belt"
+    extra_inserters: tuple[str, ...] = ()  # further inserter tiers the solver may mix in
+
+    @property
+    def inserters(self) -> tuple[str, ...]:
+        return (self.inserter, *(i for i in self.extra_inserters if i != self.inserter))
 
     def machines(self) -> int:
         return sum(s.count for s in self.stages)

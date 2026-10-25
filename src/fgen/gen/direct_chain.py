@@ -62,6 +62,7 @@ class DirectChainParams:
     inserter: str = "fast-inserter"
     belt: str = "transport-belt"
     pole: str = "small-electric-pole"
+    extra_inserters: tuple[str, ...] = ()  # solver: further tiers it may mix in
     layout: Literal["solver", "baseline"] = "solver"
     time_limit: float = 60.0  # solver, seconds per period
 
@@ -93,11 +94,13 @@ def _check_names(p: DirectChainParams, gd: GameData) -> None:
     need(p.belt, "transport-belt", "belt")
     need(p.inserter, "inserter", "inserter")
     need(p.pole, "electric-pole", "pole")
+    for n in p.extra_inserters:
+        need(n, "inserter", "extra_inserters")
     if not p.target_rate > 0:
         raise Infeasible("target_rate must be positive")
     if not set(gd.recipe(p.recipe).categories) & set(gd.entity(p.machine).crafting_categories):
         raise Infeasible(f"{p.machine} cannot craft {p.recipe}")
-    if not gd.entity(p.inserter).is_electric:
+    if not all(gd.entity(n).is_electric for n in (p.inserter, *p.extra_inserters)):
         raise Infeasible(
             "inserters between machines would never receive fuel",
             [f"inserter={n!r}" for n in _names_of_type(gd, "inserter") if gd.entity(n).is_electric],
@@ -145,6 +148,7 @@ def plans(p: DirectChainParams, gd: GameData) -> list[ChainPlan]:
             p.inserter,
             p.pole,
             p.belt,
+            tuple(p.extra_inserters),
         )
         options.append(
             (

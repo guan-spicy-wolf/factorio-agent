@@ -43,7 +43,7 @@ import math
 import time
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from fgen.data.schema import GameData
@@ -95,6 +95,11 @@ class _Timeout(Exception):
     pass
 
 
+# a requirement: kind (in / out / link), machine, belt or -1, candidate slots, fewest
+# inserters, rate (items/s) the chosen inserters must carry
+type _Req = tuple[str, int, int, list["_Slot"], int, float]
+
+
 @dataclass(frozen=True)
 class _Belt:
     role: str  # input / output
@@ -109,6 +114,7 @@ class _Slot:
     machine: int  # target (in, link) or source (out) machine index
     other: int  # belt index (in, out) or producer machine index (link)
     lane: str | None = None  # out: lane the drop lands on
+    ins: str = ""  # inserter tier
 
 
 def _maxflow(cap: dict[tuple[str, str], float], s: str, t: str) -> float:
@@ -160,17 +166,21 @@ class _Search:
             stats,
         )
         self.flows: CycleFlows = flows(spec, gd)
-        self.cap = tp.inserter_throughput_estimate(gd, spec.inserter)
+        self.caps = {n: tp.inserter_throughput_estimate(gd, n) for n in spec.inserters}
+        self.cap = max(self.caps.values())  # best tier: lower bounds on inserter counts
+        self.min_cap = min(self.caps.values())
         self.lane_cap = tp.belt_lane_capacity(gd, spec.belt)
         self.lanes = int(gd.constant("belt_lanes"))
-        if footprint.size(gd, spec.inserter) != (1, 1):
-            raise ValueError(f"{spec.inserter}: the solver handles 1x1 inserters")
+        for n in spec.inserters:
+            if footprint.size(gd, n) != (1, 1):
+                raise ValueError(f"{n}: the solver handles 1x1 inserters")
         c0 = Tile(0, 0).center()
         self.reach = {
-            d: (
-                inserter.pickup_tile(gd, spec.inserter, c0, d),
-                inserter.drop_tile(gd, spec.inserter, c0, d),
+            (n, d): (
+                inserter.pickup_tile(gd, n, c0, d),
+                inserter.drop_tile(gd, n, c0, d),
             )
+            for n in spec.inserters
             for d in CARDINALS
         }
         self.r = max(max(abs(v.x), abs(v.y)) for pr in self.reach.values() for v in pr)
@@ -180,6 +190,8 @@ class _Search:
             self.machine_stage += [si] * s.count
         sizes = {footprint.size(gd, s.machine) for s in spec.stages}
         self.msize = {si: footprint.size(gd, s.machine) for si, s in enumerate(spec.stages)}
+        self.max_w = max(w for w, _ in self.msize.values())
+        self.max_h = max(h for _, h in self.msize.values())
         self.order = sorted(
             range(len(self.machine_stage)),
             key=lambda m: (not self.flows.stages[self.machine_stage[m]].final, m),
@@ -378,7 +390,7 @@ class _Search:
                 if (x <= tx < x + mw and y <= ty < y + mh) or ty in self.belt_rows:
                     continue
                 idx = ty * w + tx
-                for d, (pu, dr) in self.reach.items():
+                for (ins, d), (pu, dr) in self.reach.items():
                     px, py = tx + pu.x, ty + pu.y
                     dx, dy = tx + dr.x, ty + dr.y
                     if not (self.tile_ok(px, py) and self.tile_ok(dx, dy)):
@@ -386,13 +398,13 @@ class _Search:
                     if x <= dx < x + mw and y <= dy < y + mh and py in self.belt_rows:
                         b = self.belt_rows[py]
                         if b in need_in:
-                            slots.append(_Slot(idx, d, "in", -1, b))
+                            slots.append(_Slot(idx, d, "in", -1, b, None, ins))
                     if x <= px < x + mw and y <= py < y + mh and dy in self.belt_rows:
                         b = self.belt_rows[dy]
                         if b in need_out and dx == tx:
                             approach = Direction.S if dy > ty else Direction.N
                             lane = beltgeom.drop_lane(FLOW, approach)
-                            slots.append(_Slot(idx, d, "out", -1, b, lane))
+                            slots.append(_Slot(idx, d, "out", -1, b, lane, ins))
         self.slot_cache[key] = slots
         return slots
 
@@ -437,32 +449,32 @@ class _Search:
 
     def links(
         self, ap: tuple[int, int, int], ac: tuple[int, int, int]
-    ) -> list[tuple[int, Direction]]:
-        """Inserter slots (tile, direction) taking from machine footprint ``ap`` and
-        dropping into ``ac`` (anchors as (x, y, mask)); ignores other machines."""
+    ) -> list[tuple[int, Direction, str]]:
+        """Inserter slots (tile, direction, tier) taking from machine footprint ``ap``
+        and dropping into ``ac`` (anchors as (x, y, mask)); ignores other machines."""
         key = (ap[2], ac[2])
         hit = self.link_cache.get(key)
         if hit is not None:
             return hit
         w = self.w
-        out: list[tuple[int, Direction]] = []
+        out: list[tuple[int, Direction, str]] = []
         mp, mc = ap[2], ac[2]
         lo_x = min(ap[0], ac[0]) - self.r
-        hi_x = max(ap[0], ac[0]) + 8 + self.r
+        hi_x = max(ap[0], ac[0]) + self.max_w + self.r
         lo_y = min(ap[1], ac[1]) - self.r
-        hi_y = max(ap[1], ac[1]) + 8 + self.r
+        hi_y = max(ap[1], ac[1]) + self.max_h + self.r
         for tx in range(max(0, lo_x), min(w, hi_x)):
             for ty in range(max(0, lo_y), min(self.h, hi_y)):
                 idx = ty * w + tx
                 bit = 1 << idx
                 if bit & (mp | mc) or ty in self.belt_rows:
                     continue
-                for d, (pu, dr) in self.reach.items():
+                for (ins, d), (pu, dr) in self.reach.items():
                     px, py, dx, dy = tx + pu.x, ty + pu.y, tx + dr.x, ty + dr.y
                     if not (self.tile_ok(px, py) and self.tile_ok(dx, dy)):
                         continue
                     if (mp >> (py * w + px)) & 1 and (mc >> (dy * w + dx)) & 1:
-                        out.append((idx, d))
+                        out.append((idx, d, ins))
         self.link_cache[key] = out
         return out
 
@@ -493,7 +505,7 @@ class _Search:
                 ok = False
                 for pm, px, py, pmask, _, _ in placed:  # type: ignore[misc]
                     if sf.product in self.flows.stages[self.machine_stage[pm]].internal_in:
-                        for idx, _ in self.links((x, y, mask), (px, py, pmask)):
+                        for idx, _, _ in self.links((x, y, mask), (px, py, pmask)):
                             if not ((occ | mask) >> idx) & 1:
                                 ok = True
                                 break
@@ -511,7 +523,7 @@ class _Search:
     def full_placement(self, placed: list[Any], occ: int) -> Iterator[Period]:
         self.stats.nodes["machine_leaf"] += 1
         occ_all = occ | self.belt_mask
-        reqs: list[tuple[str, int, int, list[_Slot], int]] = []  # kind, machine, other, slots, k
+        reqs: list[_Req] = []
         for m, x, y, _mask, _, _ in placed:
             si = self.machine_stage[m]
             sf = self.flows.stages[si]
@@ -521,22 +533,14 @@ class _Search:
                 b = self.belt_of[("input", item)]  # type: ignore[index]
                 per_belt[b] = per_belt.get(b, 0.0) + rate
             for b, rate in sorted(per_belt.items()):
-                ss = [
-                    _Slot(s.tile, s.direction, "in", m, b)
-                    for s in free
-                    if s.kind == "in" and s.other == b
-                ]
-                reqs.append(("in", m, b, ss, ceil_div(rate, self.cap)))
+                ss = [replace(s, machine=m) for s in free if s.kind == "in" and s.other == b]
+                reqs.append(("in", m, b, ss, ceil_div(rate, self.cap), rate))
             if sf.final:
                 b = self.belt_of[("output", sf.product)]  # type: ignore[index]
-                ss = [
-                    _Slot(s.tile, s.direction, "out", m, b, s.lane)
-                    for s in free
-                    if s.kind == "out" and s.other == b
-                ]
-                reqs.append(("out", m, b, ss, ceil_div(sf.rate, self.cap)))
+                ss = [replace(s, machine=m) for s in free if s.kind == "out" and s.other == b]
+                reqs.append(("out", m, b, ss, ceil_div(sf.rate, self.cap), sf.rate))
         # links per consumer
-        link_reqs: list[tuple[str, int, int, list[_Slot], int]] = []
+        link_reqs: list[_Req] = []
         caps: dict[str, dict[tuple[str, str], float]] = {}
         for c, cx, cy, cmask, _, _ in placed:
             csf = self.flows.stages[self.machine_stage[c]]
@@ -546,8 +550,8 @@ class _Search:
                     if self.flows.stages[self.machine_stage[p]].product != item:
                         continue
                     pl = [
-                        _Slot(idx, d, "link", c, p)
-                        for idx, d in self.links((px, py, pmask), (cx, cy, cmask))
+                        _Slot(idx, d, "link", c, p, None, ins)
+                        for idx, d, ins in self.links((px, py, pmask), (cx, cy, cmask))
                         if not (occ_all >> idx) & 1
                     ]
                     ss += pl
@@ -558,8 +562,13 @@ class _Search:
                         g[(f"p{p}", f"c{c}")] = n_tiles * self.cap
                 g = caps.setdefault(item, {})
                 g[(f"c{c}", "t")] = rate
-                link_reqs.append(("link", c, -1, ss, ceil_div(rate, self.cap)))
-        for kind, _m, _o, ss, k in reqs + link_reqs:
+                link_reqs.append(("link", c, -1, ss, ceil_div(rate, self.cap), rate))
+        if len(self.caps) > 1:
+            for r in reqs + link_reqs:
+                kept = self.undominated(r[3])
+                self.stats.pruned["dominated_tier"] += len(r[3]) - len(kept)
+                r[3][:] = kept
+        for kind, _m, _o, ss, k, _rate in reqs + link_reqs:
             if len({s.tile for s in ss}) < k:
                 self.stats.pruned[f"slots_{kind}"] += 1
                 return
@@ -590,14 +599,41 @@ class _Search:
 
         for r in reqs + link_reqs:
             r[3].sort(key=dist)
+        # the links alone (any tiles, no power yet) must have an assignment, else no
+        # pole set can help: checked once here instead of under every pole set
+        if not self.links_feasible(link_reqs):
+            self.stats.pruned["links_infeasible"] += 1
+            return
         per = self.poles_first(placed, occ_all, reqs, link_reqs)
         if per is not None:
             yield per
 
+    def links_feasible(self, link_reqs: list[_Req]) -> bool:
+        budget = [self.inserter_budget]
+        try:
+            for _ in self.choose_inserters(link_reqs, 0, [], 0, budget):
+                return True
+        except _InserterBudget:
+            self.stats.pruned["inserter_budget"] += 1
+            return True  # unknown: let the full search decide
+        return False
+
+    def undominated(self, slots: list[_Slot]) -> list[_Slot]:
+        """On one tile, between the same two things and onto the same lane, only the
+        fastest tier can matter: one inserter per tile, the same power needs."""
+        best: dict[tuple[Any, ...], _Slot] = {}
+        for sl in slots:
+            key = (sl.tile, sl.kind, sl.machine, sl.other, sl.lane)
+            cur = best.get(key)
+            if cur is None or self.caps[sl.ins] > self.caps[cur.ins]:
+                best[key] = sl
+        keep = set(map(id, best.values()))
+        return [sl for sl in slots if id(sl) in keep]
+
     # ---- inserters ---------------------------------------------------------------------
     def choose_inserters(
         self,
-        reqs: list[tuple[str, int, int, list[_Slot], int]],
+        reqs: list[_Req],
         k: int,
         chosen: list[_Slot],
         used: int,
@@ -609,14 +645,17 @@ class _Search:
         if k == len(reqs):
             yield chosen, used
             return
-        kind, _m, _o, slots, need = reqs[k]
+        kind, _m, _o, slots, need, rate = reqs[k]
         avail = [s for s in slots if not (used >> s.tile) & 1]
-        sizes = [need] if kind != "link" else [need, need + 1, need + 2]
+        most = ceil_div(rate, self.min_cap)  # with the slowest tier (= need for one tier)
+        sizes = list(range(need, most + 1)) if kind != "link" else list(range(need, most + 3))
         any_ok = False
         for n in sizes:
             for combo in itertools.combinations(avail, n):
                 tiles = {s.tile for s in combo}
                 if len(tiles) < n:
+                    continue
+                if kind != "link" and sum(self.caps[s.ins] for s in combo) < rate - _EPS:
                     continue
                 self.stats.nodes["inserter"] += 1
                 if budget is not None:
@@ -651,7 +690,7 @@ class _Search:
             psf = self.flows.stages[self.machine_stage[s.other]]
             g = by_item[psf.product]
             e = (f"p{s.other}", f"c{s.machine}")
-            g[e] = g.get(e, 0.0) + self.cap
+            g[e] = g.get(e, 0.0) + self.caps[s.ins]
         for g in by_item.values():
             demand = sum(v for (a, b), v in g.items() if b == "t")
             if _maxflow(g, "s", "t") < demand - _EPS:
@@ -673,8 +712,8 @@ class _Search:
         self,
         placed: list[Any],
         occ: int,
-        reqs: list[tuple[str, int, int, list[_Slot], int]],
-        link_reqs: list[tuple[str, int, int, list[_Slot], int]],
+        reqs: list[_Req],
+        link_reqs: list[_Req],
     ) -> Period | None:
         """Fewest poles first (iterative deepening from a wire lower bound): a pole set
         must supply every machine and be one network that reaches the next period; then
@@ -754,18 +793,37 @@ class _Search:
 
         budget = [self.pole_budget]
 
+        link_tiles = 0
+        for r in link_reqs:
+            for sl in r[3]:
+                link_tiles |= 1 << sl.tile
+        link_fail: set[int] = set()  # supplied link tiles for which the links fail
+
         def inserters_for(sel: list[int], pmask: int) -> Period | None:
             sup = 0
             for a in sel:
                 sup |= supply[a]
             ok_tiles = sup & ~pmask
+            key = ok_tiles & link_tiles
+            if key in link_fail:
+                self.stats.pruned["links_unpowered_memo"] += 1
+                return None
+            if not self.links_feasible(
+                [
+                    (kd, m, o, [sl for sl in ss if ok_tiles >> sl.tile & 1], k, rate)
+                    for kd, m, o, ss, k, rate in link_reqs
+                ]
+            ):
+                link_fail.add(key)
+                self.stats.pruned["links_unpowered"] += 1
+                return None
             rr = []
-            for kind, m, o, slots, k in link_reqs + reqs:
+            for kind, m, o, slots, k, rate in link_reqs + reqs:
                 ss = [sl for sl in slots if ok_tiles >> sl.tile & 1]
                 if len({sl.tile for sl in ss}) < k:
                     self.stats.pruned[f"power_slots_{kind}"] += 1
                     return None
-                rr.append((kind, m, o, ss, k))
+                rr.append((kind, m, o, ss, k, rate))
             ins_budget = [self.inserter_budget]
             try:
                 for chosen, _used in self.choose_inserters(rr, 0, [], 0, ins_budget):
@@ -859,7 +917,7 @@ class _Search:
             stage_of.append(self.machine_stage[m])
         for s in sorted(chosen, key=lambda s: s.tile):
             tx, ty = s.tile % w, s.tile // w
-            ps.append(Placement(spec.inserter, center(gd, spec.inserter, tx, ty), s.direction))
+            ps.append(Placement(s.ins, center(gd, s.ins, tx, ty), s.direction))
             stage_of.append(None)
         for x, y, _mask, _cx, _cy in sorted(poles, key=lambda q: (q[0], q[1])):
             ps.append(Placement(spec.pole, center(gd, spec.pole, x, y)))
