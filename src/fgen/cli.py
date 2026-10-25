@@ -63,11 +63,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def _smelting_params(args: argparse.Namespace) -> SmeltingRowParams:
     d = SmeltingRowParams()
     return SmeltingRowParams(
-        recipe=args.recipe,
+        recipe=args.recipe or d.recipe,
         furnace=args.furnace,
-        target_rate=args.rate,
+        target_rate=args.rate if args.rate is not None else d.target_rate,
         belt=args.belt or d.belt,
-        inserter=args.inserter,
+        inserter=args.inserter or d.inserter,
         pole=args.pole or d.pole,
         sides=args.sides,
         fuel_lane=not args.no_fuel_lane,
@@ -142,9 +142,62 @@ def cmd_gen_mining(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gen_direct_chain(args: argparse.Namespace) -> int:
+    from fgen.gen.direct_chain import DirectChainParams
+    from fgen.gen.direct_chain import generate as generate_chain
+    from fgen.gen.direct_chain import predict as predict_chain
+    from fgen.gen.sweep import format_interface
+
+    gd = _gd(args)
+    d = DirectChainParams()
+    params = DirectChainParams(
+        recipe=args.recipe or d.recipe,
+        target_rate=args.rate if args.rate is not None else d.target_rate,
+        machine=args.machine,
+        inserter=args.inserter or d.inserter,
+        belt=args.belt or d.belt,
+        pole=args.pole or d.pole,
+        layout=args.layout,
+        time_limit=args.time_limit,
+    )
+    try:
+        unit = generate_chain(params, gd)
+    except Infeasible as exc:
+        print(f"infeasible: {exc.reason}", file=sys.stderr)
+        for s in exc.suggestions:
+            print(f"  try: {s}", file=sys.stderr)
+        return 2
+    pred = predict_chain(unit, gd)
+    per = unit.meta["period"]
+    if args.json:
+        print(json.dumps({"predict": pred, "period": per}, default=str, indent=2))
+    else:
+        print(to_ascii(unit.layout, gd, rulers=True))
+        print()
+        print("interfaces:")
+        for i in unit.interfaces:
+            print("  " + format_interface(i).replace("\n", "\n  "))
+        a, b = unit.meta["ratio"]
+        print(
+            f"period {per['width']}x{per['height']} ({per['layout']}, {a}:{b} "
+            f"{unit.meta['intermediate']} : {params.recipe}) x {unit.meta['periods']}; "
+            f"{pred['machines']} machines, {pred['width']}x{pred['height']} = {pred['area']} "
+            f"tiles, {pred['throughput']:g}/s (target {params.target_rate:g})"
+        )
+        if per["layout"] == "solver":
+            print(f"solver: {per['seconds']:.2f} s, nodes {per['nodes']}, pruned {per['pruned']}")
+        print(LEGEND)
+        print()
+    label = f"direct-chain {params.recipe} {params.target_rate:g}/s"
+    print(codec.encode(unit_to_blueprint(unit, gd, label=label)))
+    return 0
+
+
 def cmd_gen(args: argparse.Namespace) -> int:
     if args.family == "mining":
         return cmd_gen_mining(args)
+    if args.family == "direct-chain":
+        return cmd_gen_direct_chain(args)
     gd = _gd(args)
     params = _smelting_params(args)
     try:
@@ -242,9 +295,48 @@ def _site_note() -> str:
     return FLAT_NOTE
 
 
+def cmd_sweep_direct_chain(args: argparse.Namespace) -> int:
+    from fgen.gen import direct_chain_sweep as dcs
+
+    gd = _gd(args)
+    out = Path(args.out_dir)
+    if not args.measure:
+        jsonl, md = dcs.write(gd, out)
+        print(f"wrote {jsonl} and {md}")
+        return 0
+    from fgen.sim.measure import RconCharacterizer
+
+    with _server(args) as srv:
+        ch = RconCharacterizer(srv, gd)
+
+        def measure(unit):
+            m = ch.measure(
+                unit,
+                warmup_s=args.warmup,
+                sample_s=args.sample_s,
+                samples=args.samples,
+                speed=args.speed,
+            )
+            print(
+                f"measured {unit.meta['params']['layout']} target "
+                f"{unit.meta['target_rate']:g}/s: {m['throughput']:g}/s",
+                file=sys.stderr,
+            )
+            return m
+
+        try:
+            jsonl, md = dcs.write(gd, out, measure)
+        finally:
+            ch.clear_all()
+    print(f"wrote {jsonl} and {md}")
+    return 0
+
+
 def cmd_sweep(args: argparse.Namespace) -> int:
     if args.family == "mining":
         return cmd_sweep_mining(args)
+    if args.family == "direct-chain":
+        return cmd_sweep_direct_chain(args)
     if args.family == "site":
         return cmd_sweep_site(args)
     gd = _gd(args)
@@ -329,12 +421,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = SmeltingRowParams()
     p = sub.add_parser("gen", help="run a generator (mining: on a painted case, see --case)")
-    p.add_argument("family", choices=["smelting", "mining"])
-    p.add_argument("--rate", type=float, default=d.target_rate)
-    p.add_argument("--recipe", default=d.recipe)
+    p.add_argument("family", choices=["smelting", "mining", "direct-chain"])
+    p.add_argument("--rate", type=float, default=None, help=f"default {d.target_rate:g}")
+    p.add_argument("--recipe", default=None, help=f"default {d.recipe} (direct-chain: circuit)")
     p.add_argument("--furnace", default=d.furnace)
     p.add_argument("--belt", default=None, help=f"default {d.belt}")
-    p.add_argument("--inserter", default=d.inserter)
+    p.add_argument("--inserter", default=None, help=f"default {d.inserter}")
+    p.add_argument("--machine", default="assembling-machine-1", help="direct-chain")
+    p.add_argument(
+        "--layout", choices=["solver", "baseline"], default="solver", help="direct-chain"
+    )
+    p.add_argument("--time-limit", type=float, default=60.0, help="direct-chain: solver seconds")
     p.add_argument("--pole", default=None, help=f"default {d.pole}")
     p.add_argument("--case", default="rect-2belt", help="mining: painted case name")
     p.add_argument("--resource", default=None, help="mining")
@@ -350,7 +447,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_gen)
 
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
-    p.add_argument("family", choices=["smelting", "mining", "site"])
+    p.add_argument("family", choices=["smelting", "mining", "site", "direct-chain"])
     p.add_argument(
         "--real-map", action="store_true", help="mining/site: end-to-end run on the ore map"
     )

@@ -224,3 +224,15 @@ def create_entities(specs: list[dict[str, Any]]) -> str:
         + "end\n"
         + emit("out")
     )
+
+
+def enable_recipes(names: list[str]) -> str:
+    """Unlock recipes for the player force: on 2.1.23 with the target mod set, recipes
+    such as copper cable and electronic circuit start locked, and an assembler set to a
+    locked recipe reports ``recipe_not_researched`` and never crafts (VERIFY §11)."""
+    return (
+        PRELUDE
+        + f"local out = {{}}\nfor _, r in ipairs({lit(sorted(set(names)))}) do\n"
+        + "  out[r] = F.recipes[r].enabled\n  F.recipes[r].enabled = true\nend\n"
+        + emit("out")
+    )

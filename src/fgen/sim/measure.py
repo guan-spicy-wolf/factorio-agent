@@ -148,6 +148,11 @@ class RconCharacterizer:
         srv.set_speed(1)
         try:
             h = hs.plan(unit, gd, self.origin)
+            recipes = [
+                str(q.extra["recipe"]) for q in unit.layout.placements if q.extra.get("recipe")
+            ]
+            if recipes:
+                srv.rcon.lua_json(lua.enable_recipes(recipes))
             self.deployer.place(unit, self.origin)
             hs.build(srv.rcon, h)
             self.last_harness = h

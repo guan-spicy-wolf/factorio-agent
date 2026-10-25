@@ -15,8 +15,8 @@ Producers (W) and consumers (C) alternate, so it needs ``producers = consumers +
 its right one; inserters per link, per input and per output are ``ceil(rate /
 inserter estimate)``, stacked from the top of the gap column. A pole stands in every
 gap column (the free tile nearest the middle row); poles in the inserter rows are added
-only if some consumer is still unsupplied. Row offsets come from the inserter reach and
-the machine footprint, as in the smelting row. The result is a
+(left to right) only while some consumer is still unsupplied. Row offsets come from the
+inserter reach and the machine footprint, as in the smelting row. The result is a
 :class:`~fgen.solve.period.Period`, checked like a solved one.
 """
 
@@ -143,23 +143,25 @@ def baseline_period(spec: CycleSpec, gd: GameData) -> Period:
             sup |= pole.supply_tiles(gd, spec.pole, center(gd, spec.pole, t.x, t.y))
         return [p for p in consumers if not (p.tiles(gd) & sup)]
 
-    for row in (y_ins_in, y_ins_out):
-        while True:
-            left = [p for p in unsupplied() if p.position.floor().y == row]
-            if not left:
-                break
-            target = left[0].position.floor()
-            x = target.x
-            spots = [
-                Tile(sx, row)
-                for sx in range(width)
-                if Tile(sx, row) not in used
-                and Tile(sx, row) not in poles
-                and target in pole.supply_tiles(gd, spec.pole, center(gd, spec.pole, sx, row))
-            ]
-            if not spots:
-                raise Infeasible("no free tile for a pole next to an unsupplied inserter")
-            poles.append(min(spots, key=lambda t: abs(t.x - x)))
+    while True:
+        left = unsupplied()
+        if not left:
+            break
+        target = min(left, key=lambda q: (q.position.x, q.position.y))
+        x = target.position.floor().x
+        # a free tile of an inserter row whose supply area reaches the consumer
+        spots = [
+            Tile(sx, row)
+            for row in (y_ins_in, y_ins_out)
+            for sx in range(width)
+            if Tile(sx, row) not in used
+            and Tile(sx, row) not in poles
+            and pole.supply_tiles(gd, spec.pole, center(gd, spec.pole, sx, row)) & target.tiles(gd)
+        ]
+        if not spots:
+            raise Infeasible("no free tile for a pole next to an unsupplied consumer")
+        # rightmost spot that still reaches it (covers the most of what follows)
+        poles.append(max(spots, key=lambda t: (t.x, -abs(t.x - x))))
     for t in sorted(poles):
         put(spec.pole, t.x, t.y)
     out_lane = beltgeom.drop_lane(FLOW, FACING.opposite)
