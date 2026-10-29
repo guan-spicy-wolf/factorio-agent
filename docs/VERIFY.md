@@ -220,7 +220,7 @@ headless `tests/test_sim_fluid_chain.py` 与 `fgen sweep fluid --measure` 持续
 | 不同液体相邻 | `create_entity` 照放，两段并成一段（2.1 只在 GUI 给混液警告）——不变量 `fluid.unintended_adjacency` 必须由 fgen 自己守 | `layout/validate.py` | 段 id | 已核对 |
 | infinity-pipe 作为汇 | `{name, percentage = 0, mode = 'exactly'}` 单独接在机器输出段上会把段清空、机器一直工作；与源在同一段时源赢。读不到吞了多少，**不作计量汇** | `sim/harness.py` | 状态 + 合成数 | 已核对 |
 | 储罐读量 | `get_fluid(1)` 只给储罐那一份（按容量摊分）；整段用 `get_fluid_segment_fluid(1)`；计量汇每 tick 读整段、累加、`clear_fluid_segment_fluid(1)`：一台硫酸厂 10 次合成累计 499.9；`force.get_fluid_production_statistics(surface).get_input_count('sulfuric-acid')` 同为 500 | `sim/measure.py` | 累计 vs 合成数 vs 统计 | 已核对 |
-| 全科技后的配方产能 | `research_all_technologies()` 后 `force.recipes['plastic-bar'].productivity_bonus = 0.1`（space-age 的塑料产能科技）：一台化工厂实测 2.2 棒/秒。`RuntimeState.recipe_productivity` 记录所有非 0 的配方产能，`direct_chain.predict` 按它算；生成器仍按无研究设计 | `data/runtime.py`、`sim/lua.py` | 实测 vs 预测 | 已核对 |
+| 全科技后的配方产能 | `research_all_technologies()` 后 `force.recipes['plastic-bar'].productivity_bonus = 0.1`（space-age 的塑料产能科技）：一台化工厂实测 2.2 棒/秒。`RuntimeState.recipe_productivity` 记录所有非 0 的配方产能，`direct_chain.predict` 与 `throughput.predict`（冶炼列）都经 `throughput.machine_rate` / `productivity_factor` 按它算（产物按系数加，每次合成的原料与燃料不变）；生成器仍按无研究设计 | `data/runtime.py`、`sim/lua.py` | 实测 vs 预测 | 已核对 |
 | 化工厂的状态名 | 缺液体时 `fluid_ingredient_shortage`（计入 `machine_input_starved`） | `sim/measure.py` | `defines.entity_status` | 部分核对（名字存在；本轮实测里没出现过） |
 
 ## 14. 组件调色板与成本（阶段 4c，2.1.23 实机）

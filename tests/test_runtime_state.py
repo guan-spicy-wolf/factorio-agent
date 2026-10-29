@@ -55,6 +55,39 @@ def test_mining_prediction_productivity_and_stacks(gd):
     assert predicted(stacked, STATE) == [pytest.approx(2 * rate * 1.3 + n * rate * 1.3)]
 
 
+def test_smelting_prediction_reads_recipe_productivity(gd):
+    """The smelting row's prediction takes the force's recipe productivity through the
+    path the direct chain uses (``tp.machine_rate`` / ``tp.productivity_factor``):
+    more products per craft, the same ore and fuel per craft, the belts unchanged."""
+    from fgen.gen.smelting_row import SmeltingRowParams, generate
+
+    bonus = 0.1
+    rs = RuntimeState(recipe_productivity=(("iron-plate", bonus),), source="force")
+    f, r = "stone-furnace", gd.recipe("iron-plate")
+    base = gd.entity(f).crafting_speed * r.results[0][1] / r.energy_required
+    assert tp.productivity_factor("iron-plate", rs) == 1 + bonus
+    assert tp.productivity_factor("copper-plate", rs) == 1
+    assert tp.machine_rate(gd, "iron-plate", f) == pytest.approx(base)
+    assert tp.machine_rate(gd, "iron-plate", f, rs) == pytest.approx(base * (1 + bonus))
+    unit = generate(SmeltingRowParams(furnace=f, target_rate=7.5), gd)
+    p0, p1 = tp.predict(unit, gd), tp.predict(unit, gd, rs)
+    assert p0["runtime"] == NO_RESEARCH.to_json() and p1["runtime"] == rs.to_json()
+    assert p0["machine_rate"] == pytest.approx(base)
+    assert p1["machine_rate"] == pytest.approx(base * (1 + bonus))
+    assert p1["limits"]["machines"] == pytest.approx(p0["machines"] * base * (1 + bonus))
+    # a product takes 1 / (1 + bonus) of the ore and of the fuel: the same belts feed
+    # that many more products; the output belt is the same belt
+    for k in ("input:iron-ore", "fuel:coal"):
+        assert p1["limits"][k] == pytest.approx(p0["limits"][k] * (1 + bonus))
+    assert p1["limits"]["output_belt"] == p0["limits"]["output_belt"]
+    # feeding inserters serve more products per item, taking inserters are unchanged
+    assert p0["limits"]["inserters"] <= p1["limits"]["inserters"]
+    assert p1["limits"]["inserters"] <= p0["limits"]["inserters"] * (1 + bonus) + 1e-9
+    # a recipe without a bonus is unchanged by the state
+    copper = generate(SmeltingRowParams(recipe="copper-plate", furnace=f, target_rate=7.5), gd)
+    assert tp.predict(copper, gd, rs)["limits"] == tp.predict(copper, gd)["limits"]
+
+
 def test_recipe_productivity_round_trip():
     rs = RuntimeState.from_json({"recipe_productivity": {"plastic-bar": 0.1}, "source": "force"})
     assert rs.productivity("plastic-bar") == 0.1 and rs.productivity("x") == 0.0

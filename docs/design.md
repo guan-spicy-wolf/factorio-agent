@@ -120,7 +120,7 @@ Oct 26, 2026 · @holo · 第一版（Oct 24）见 `design-v1-2026-10-24.md`
 - 选址 agent 与多单元站点（容器是否需要在此决定）。
 - 多执行者 / 更弱模型下重复 6a、4a，检验 agent 结论的外推性。
 - 已知待办：塑料无地下管变体的不可行证明。
-- 已做（4c 之后）：`compact` 预设平手按成本裁决——键的末项是调色板成本（`solve/preset.py`），面积、杆、爪不变，只在三者平手时取便宜的等级；随时可用驱动的模型与末段打磨都用该键，`prove=True` 的证明驱动保持 4b 目标（特征化表据此求解）、只按该键排候选，穷尽搜索后端单等级无平手可裁。
+- 已做（4c 之后）：`compact` 预设平手按成本裁决——键的末项是调色板成本（`solve/preset.py`），面积、杆、爪不变，只在三者平手时取便宜的等级；随时可用驱动的模型与末段打磨都用该键，`prove=True` 的证明驱动保持 4b 目标（特征化表据此求解）、只按该键排候选，穷尽搜索后端单等级无平手可裁。冶炼列预测读配方产能——`throughput.predict` 与 `direct_chain.predict` 同走 `throughput.machine_rate` / `productivity_factor`（`RuntimeState.recipe_productivity`：产物按系数加，每次合成的原料与燃料不变）；`smelting_row.jsonl` 存的实测状态里没有非 0 的配方产能，残差不变。
 
 ## 风险与开放问题
 

@@ -36,9 +36,20 @@ def crafts_per_second(gd: GameData, recipe: str, machine: str) -> float:
     return gd.entity(machine).crafting_speed / gd.recipe(recipe).energy_required
 
 
-def machine_rate(gd: GameData, recipe: str, machine: str) -> float:
-    """Main product per second for one machine."""
-    return crafts_per_second(gd, recipe, machine) * main_product(gd, recipe)[1]
+def productivity_factor(recipe: str, rs: RuntimeState = NO_RESEARCH) -> float:
+    """Products per craft of ``recipe`` relative to its prototype under the force's
+    recipe productivity research (``RuntimeState.recipe_productivity``: ``0.1`` = +10%).
+    Productivity adds products only: the ingredients per craft and the crafting time do
+    not change, so ingredients and fuel per product fall by the same factor."""
+    return 1.0 + rs.productivity(recipe)
+
+
+def machine_rate(gd: GameData, recipe: str, machine: str, rs: RuntimeState = NO_RESEARCH) -> float:
+    """Main product per second for one machine, with the force's recipe productivity
+    (:func:`productivity_factor`; the default is no research, what generators design
+    for)."""
+    cps = crafts_per_second(gd, recipe, machine)
+    return cps * main_product(gd, recipe)[1] * productivity_factor(recipe, rs)
 
 
 def ingredient_rates(gd: GameData, recipe: str, machine: str) -> dict[str, float]:
@@ -103,7 +114,10 @@ def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[st
 
     Reads ``meta['recipe']``, ``meta['machine']`` and ``meta.get('fuel')``; everything
     else is measured on the layout itself (machines and inserters counted, belt tiers
-    looked up at the interface tiles).
+    looked up at the interface tiles). The force state ``rs`` enters as the direct
+    chain's does (:func:`fgen.gen.direct_chain.predict`): the recipe productivity
+    through :func:`machine_rate` (more products per craft, so fewer ingredients and
+    less fuel per product), the hand size through :func:`inserter_throughput_estimate`.
     """
     meta = unit.meta
     recipe, machine, fuel = meta["recipe"], meta["machine"], meta.get("fuel")
@@ -111,8 +125,9 @@ def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[st
     w, h = layout.size(gd)
     machines = [p for p in layout.placements if p.name == machine]
     product, per_craft = main_product(gd, recipe)
-    rate = machine_rate(gd, recipe, machine)
-    ingr = {n: a / per_craft for n, a in gd.recipe(recipe).ingredients}  # per product
+    rate = machine_rate(gd, recipe, machine, rs)
+    made = per_craft * productivity_factor(recipe, rs)  # products per craft
+    ingr = {n: a / made for n, a in gd.recipe(recipe).ingredients}  # per product
     fuel_pp = fuel_rate(gd, machine, fuel) / rate if fuel else 0.0
 
     at = layout.tile_index(gd)

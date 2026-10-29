@@ -690,14 +690,15 @@ def predict(unit: Unit, gd: GameData, rs: RuntimeState = NO_RESEARCH) -> dict[st
     force state ``rs`` (hand size bonus)."""
     m = unit.meta
     w, h = unit.layout.size(gd)
-    # the force's recipe productivity adds products per craft (plastic +10% at full research)
-    prod = 1 + rs.productivity(m["recipe"])
+    # the force's recipe productivity adds products per craft (plastic +10% at full
+    # research): the same path as the smelting row (``fgen.gen.throughput``)
+    prod = tp.productivity_factor(m["recipe"], rs)
     rate = m["period"]["rate"] * m["periods"] * prod
     limits = {"machines": rate}
     finals = [q for q in unit.layout.placements if q.extra.get("recipe") == m["recipe"]]
     machine_tiles = [q.tiles(gd) for q in unit.layout.placements if q.extra.get("recipe")]
     every = set().union(*machine_tiles) if machine_tiles else set()
-    per_machine = tp.machine_rate(gd, m["recipe"], m["machine"]) * prod
+    per_machine = tp.machine_rate(gd, m["recipe"], m["machine"], rs)
     out_cap = 0.0
     for q in finals:
         ts = q.tiles(gd)
