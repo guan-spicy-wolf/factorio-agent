@@ -8,7 +8,7 @@ legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furna
 
 ### plastic-r1: plastic-bar, target 1/s
 
-Period 3x7 x 1, 2 inserters, 1 poles, 3 pipe entities per period; plants facing S; solved in 4.0 s (proved smallest).
+Period 3x7 x 1, 2 inserters, 1 poles, 3 pipe entities per period; plants facing S; solved in 3.4 s (proved smallest).
 
 ```
   012
@@ -34,7 +34,7 @@ input  power -            at (0,2) facing E
 
 ### plastic-r4: plastic-bar, target 4/s
 
-Period 3x13 x 1, 5 inserters, 2 poles, 6 pipe entities per period; plants facing S, S; solved in 11.8 s (proved smallest).
+Period 3x13 x 1, 5 inserters, 2 poles, 6 pipe entities per period; plants facing S, S; solved in 11.1 s (proved smallest).
 
 ```
    012
@@ -66,7 +66,7 @@ input  power -            at (1,3) facing E
 
 ### plastic-fastonly-r2: plastic-bar, target 2/s
 
-Period 3x9 x 1, 2 inserters, 2 poles, 5 pipe entities per period; plants facing N; solved in 6.9 s (proved smallest).
+Period 3x9 x 1, 2 inserters, 2 poles, 5 pipe entities per period; plants facing N; solved in 6.2 s (proved smallest).
 
 ```
   012
@@ -94,7 +94,7 @@ input  power -            at (1,3) facing E
 
 ### acid-r1: sulfuric-acid, target 1/s
 
-Period 5x8 x 1, 3 inserters, 2 poles, 12 pipe entities per period; plants facing W; solved in 35.7 s (proved smallest).
+Period 5x8 x 1, 3 inserters, 2 poles, 12 pipe entities per period; plants facing W; solved in 20.1 s (proved smallest).
 
 ```
   01234
@@ -124,12 +124,12 @@ input  power -            at (0,5) facing E
 
 ### acid-r100: sulfuric-acid, target 100/s
 
-Period 11x7 x 1, 8 inserters, 3 poles, 16 pipe entities per period; plants facing E, W; solved in 60.5 s (time limit: not proved).
+Period 11x7 x 1, 8 inserters, 3 poles, 16 pipe entities per period; plants facing E, W; solved in 40.8 s (proved smallest).
 
 ```
   01234567890
 0 >>>>>>>>>>>
-1 =u.iu=u.iu=
+1 =ui.u=u.iu=
 2 ..AAA=AAA..
 3 .PAAA.AAAP.
 4 ==AAAPAAA==
@@ -155,17 +155,17 @@ input  power -            at (1,3) facing E
 
 | case | recipe | inserters | pole | mirror | target/s | result | periods | period WxH | unit area | machines | ins/poles/pipes per period | solve s (proved) | measured/s |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| plastic-r1 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | False | 1 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 4.0 (yes) | 2.2 |
-| plastic-r2 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | False | 2 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 4.0 (yes) | 2.2 |
-| plastic-r4 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | False | 4 | ok | 1 | 3x13 | 39 | 2 | 5/2/6 | 11.8 (yes) | 4.4 |
-| plastic-mirror-r2 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | True | 2 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 3.9 (yes) | 2.2 |
-| plastic-medium-r2 | plastic-bar | fast-inserter+long-handed-inserter | medium-electric-pole | False | 2 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 4.2 (yes) | 2.2 |
-| plastic-fastonly-r2 | plastic-bar | fast-inserter | small-electric-pole | False | 2 | ok | 1 | 3x9 | 27 | 1 | 2/2/5 | 6.9 (yes) | 2.2 |
-| plastic-basic-r2 | plastic-bar | inserter+long-handed-inserter | small-electric-pole | False | 2 | ok | 1 | 3x8 | 24 | 1 | 3/1/3 | 8.4 (yes) | 2.2 |
-| plastic-noptg-r2 | plastic-bar | fast-inserter | small-electric-pole | False | 2 | infeasible: 1 x1: solver found no 1-machine period (timed out; 55.43 s (unproven); nodes: cp |  |  |  |  |  |  |  |
-| acid-r1 | sulfuric-acid | fast-inserter | small-electric-pole | False | 1 | ok | 1 | 5x8 | 40 | 1 | 3/2/12 | 35.7 (yes) | - |
-| acid-r2 | sulfuric-acid | fast-inserter | small-electric-pole | False | 2 | ok | 1 | 5x8 | 40 | 1 | 3/2/12 | 35.7 (yes) | - |
-| acid-r100 | sulfuric-acid | fast-inserter | small-electric-pole | False | 100 | ok | 1 | 11x7 | 77 | 2 | 8/3/16 | 60.5 (no) | - |
+| plastic-r1 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | False | 1 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 3.4 (yes) | 2.2 |
+| plastic-r2 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | False | 2 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 3.4 (yes) | 2.2 |
+| plastic-r4 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | False | 4 | ok | 1 | 3x13 | 39 | 2 | 5/2/6 | 11.1 (yes) | 4.4 |
+| plastic-mirror-r2 | plastic-bar | fast-inserter+long-handed-inserter | small-electric-pole | True | 2 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 3.7 (yes) | 2.2 |
+| plastic-medium-r2 | plastic-bar | fast-inserter+long-handed-inserter | medium-electric-pole | False | 2 | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 4.3 (yes) | 2.2 |
+| plastic-fastonly-r2 | plastic-bar | fast-inserter | small-electric-pole | False | 2 | ok | 1 | 3x9 | 27 | 1 | 2/2/5 | 6.2 (yes) | 2.2 |
+| plastic-basic-r2 | plastic-bar | inserter+long-handed-inserter | small-electric-pole | False | 2 | ok | 1 | 3x8 | 24 | 1 | 3/1/3 | 6.5 (yes) | 2.2 |
+| plastic-noptg-r2 | plastic-bar | fast-inserter | small-electric-pole | False | 2 | infeasible: 1 x1: solver found no 1-machine period (timed out; 60.14 s (unproven); nodes: cp |  |  |  |  |  |  |  |
+| acid-r1 | sulfuric-acid | fast-inserter | small-electric-pole | False | 1 | ok | 1 | 5x8 | 40 | 1 | 3/2/12 | 20.1 (yes) | 50 |
+| acid-r2 | sulfuric-acid | fast-inserter | small-electric-pole | False | 2 | ok | 1 | 5x8 | 40 | 1 | 3/2/12 | 20.1 (yes) | 50 |
+| acid-r100 | sulfuric-acid | fast-inserter | small-electric-pole | False | 100 | ok | 1 | 11x7 | 77 | 2 | 8/3/16 | 40.8 (yes) | 100 |
 
 ## Measured
 
@@ -173,13 +173,16 @@ Factorio headless 2.1.23: unit built from its blueprint (recipes unlocked, full 
 
 | case | target/s | contract output/s | predicted/s | measured/s | Δ vs predicted | samples/s | machine states (probes) | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| plastic-r1 | 1 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 123 |  |
-| plastic-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 131 |  |
-| plastic-r4 | 4 | 4 | 4.4 | 4.4 | +0.0% | 4.4 4.4 4.4 4.4 4.4 4.4 | working 278 |  |
-| plastic-mirror-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 141 |  |
-| plastic-medium-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 123 |  |
-| plastic-fastonly-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 142 |  |
-| plastic-basic-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 142 |  |
+| plastic-r1 | 1 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 124 |  |
+| plastic-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 129 |  |
+| plastic-r4 | 4 | 4 | 4.4 | 4.4 | +0.0% | 4.4 4.4 4.4 4.4 4.4 4.4 | working 252 |  |
+| plastic-mirror-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 140 |  |
+| plastic-medium-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 125 |  |
+| plastic-fastonly-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 137 |  |
+| plastic-basic-r2 | 2 | 2 | 2.2 | 2.2 | +0.0% | 2.2 2.2 2.2 2.2 2.2 2.2 | working 132 |  |
+| acid-r1 | 1 | 50 | 50 | 50 | +0.0% | 50 50 50 50 50 50 | working 124 |  |
+| acid-r2 | 2 | 50 | 50 | 50 | +0.0% | 50 50 50 50 50 50 | working 127 |  |
+| acid-r100 | 100 | 100 | 100 | 100 | +0.0% | 100 100 100 100 100 100 | working 264 |  |
 
 ## Force state of the measurements
 
