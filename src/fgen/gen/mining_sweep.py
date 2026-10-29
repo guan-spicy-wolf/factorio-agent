@@ -221,6 +221,40 @@ def _real_map_section(r: dict[str, Any]) -> list[str]:
     return out
 
 
+def _before_after(rows: list[dict[str, Any]], before: dict[str, Any]) -> list[str]:
+    """Drills and ``pole_slot`` losses of the one-pole-per-drill-slot layout (frozen in
+    ``mining_patch_before.json``) next to the current generator, per case."""
+    out = [
+        "## Before vs after (pole placement)",
+        "",
+        "Before: a pole replaced a whole drill slot (`mining_patch_before.json`, frozen). "
+        "After: poles take single columns between drills, packing and pole chain solved "
+        "together per belt row; `pole_slot` counts drills lost against the pole-free "
+        "packing of the same patch.",
+        "",
+        "| case | drills before | drills after | pole_slot before | pole_slot after |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    tot = [0, 0, 0, 0]
+    for r in rows:
+        b = before.get(r["case"])
+        if b is None:
+            continue
+        c = r["contract"]
+        vals = (
+            b["drills"],
+            c["drills"],
+            b["dropped_by_reason"].get("pole_slot", 0),
+            c["dropped_by_reason"].get("pole_slot", 0),
+        )
+        tot = [t + v for t, v in zip(tot, vals, strict=True)]
+        out.append(f"| {r['case']} | {vals[0]} | {vals[1]} | {vals[2]} | {vals[3]} |")
+    out.append(f"| total | {tot[0]} | {tot[1]} | {tot[2]} | {tot[3]} |")
+    if tot[2]:
+        out += ["", f"pole_slot after / before = {tot[3]}/{tot[2]} = {tot[3] / tot[2]:.0%}."]
+    return out
+
+
 def write(
     gd: GameData,
     out_dir: Path,
@@ -234,6 +268,8 @@ def write(
     real = real_map_row or previous.get(REAL_MAP)
     all_rows = rows + ([real] if real else [])
     jsonl.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in all_rows))
+    before_path = out_dir / "mining_patch_before.json"
+    before = json.loads(before_path.read_text()) if before_path.exists() else {}
 
     md = [
         "# Mining patch: characterization",
@@ -254,6 +290,7 @@ def write(
         "",
         *_table(rows),
         "",
+        *([*_before_after(all_rows, before), ""] if before else []),
     ]
     for case in CASES:
         r = next(x for x in rows if x["case"] == case.name)

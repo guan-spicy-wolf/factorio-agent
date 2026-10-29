@@ -125,22 +125,35 @@ def test_swap_entities_by_params_only(gd, change):
     assert names == {p.drill, p.belt, p.pole}
 
 
-def test_pole_rows_derived_from_supply_area(gd):
-    """One pole row per belt when the pole's supply reaches both drill rows (small and
-    medium poles with the electric drill); poles never where a drill is."""
+def test_poles_cost_columns_not_slots(gd):
+    """A pole takes the columns of its own footprint from one drill row, not a whole
+    drill slot: the loss against the pole-free packing stays below one drill per pole,
+    and the wider-reaching medium pole never loses more than the small one."""
     patch, terrain = _patch(paint.rectangle(0, 0, 30, 30, AMOUNT))
+    lost = {}
     for pole_name in ("small-electric-pole", "medium-electric-pole"):
-        unit = generate(MiningPatchParams(pole=pole_name), gd, patch, terrain)
+        p = MiningPatchParams(pole=pole_name)
+        unit = generate(p, gd, patch, terrain)
+        _check_unit(unit, gd, p, patch, terrain)
         poles = [q for q in unit.layout.placements if q.name == pole_name]
-        belt_rows = {i.tile.y for i in unit.interfaces if i.kind == "item"}
-        pole_rows = {q.position.floor().y for q in poles}
-        assert len(pole_rows) <= len(belt_rows) + 1
-    small = generate(MiningPatchParams(), gd, patch, terrain)
-    medium = generate(MiningPatchParams(pole="medium-electric-pole"), gd, patch, terrain)
-    # the medium pole's wider supply/longer wire costs fewer drill slots
-    assert (
-        medium.meta["dropped_by_reason"]["pole_slot"] < small.meta["dropped_by_reason"]["pole_slot"]
+        lost[pole_name] = unit.meta["dropped_by_reason"].get("pole_slot", 0)
+        assert lost[pole_name] <= len(poles)
+    assert lost["medium-electric-pole"] <= lost["small-electric-pole"]
+
+
+def test_big_drill_with_medium_pole(gd):
+    """The 5x5 drill's slot period (11) exceeds the medium pole's wire reach (9): poles
+    must alternate between the drill rows of a belt. Generates, validates, and loses at
+    most one drill per belt row and side to poles."""
+    patch, terrain = _patch(paint.rectangle(0, 0, 40, 30, AMOUNT))
+    p = MiningPatchParams(
+        drill="big-mining-drill", pole="medium-electric-pole", belt="express-transport-belt"
     )
+    unit = generate(p, gd, patch, terrain)
+    _check_unit(unit, gd, p, patch, terrain)
+    rows = len(unit.meta["belts"])
+    assert unit.meta["dropped_by_reason"].get("pole_slot", 0) <= 2 * rows
+    assert unit.meta["anchor"]["drills"] >= 2 * rows
 
 
 def test_lane_capacity_truncation(gd):

@@ -90,11 +90,11 @@ uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：
 
 `fgen.gen.mining_patch.generate(params, gd, patch, terrain)`：输入是 `Terrain` 快照与其中一个 `Patch`（生成器不碰 RCON；单元测试用 `Terrain.from_resources` 手写地形），输出的 `Unit` 用**世界坐标**（部署原点 (0,0)），`meta["anchor"]` 记录矿种、矿区边界、总矿量、钻机数、总产率与粗略枯竭时间。
 
-- 排法：沿 `axis` 铺带子行，两侧各一排钻机面向带子（出料格由 `vector_to_place_result` 推出，实测落在钻机一侧的近道），带子周期 = 两排钻机 + 1；网格相位（周期 × 钻机宽）逐个试，取钻机最多的。带子统一流向 `flow` 一端，每条带末端是一个输出接口（`lane` 两侧都有钻机时为 `both`，`rate` = 钻机数 × `mining_speed / mining_time`）；不合流。
-- 电杆放在钻机行里，占一个钻位：先找槽内能同时覆盖两侧钻机行、且隔一个周期仍在拉线距离内的位置（只放一侧），否则两侧都放；沿带子的槽位由供电区与拉线距离的贪心扫描决定，各带子行用同一组槽位以便纵向连线。
+- 排法：沿 `axis` 铺带子行，两侧各一排钻机面向带子（出料格由 `vector_to_place_result` 推出，实测落在钻机一侧的近道），带子周期 = 两排钻机 + 1；带子行的相位（周期）逐个试，取钻机最多的。带子统一流向 `flow` 一端，每条带末端是一个输出接口（`lane` 两侧都有钻机时为 `both`，`rate` = 钻机数 × `mining_speed / mining_time`）；不合流。
+- 电杆放在钻机行里，只占自己的列，不占整个钻位：钻机不再卡在固定网格上，每条带子行的钻机排布与电杆链一起用动态规划求解（状态 = 当前杆 + 两侧最后一台钻机的末端，相邻杆在拉线距离内，两杆之间每侧贪心装下碰到任一供电区的钻机）。杆放在哪一侧的哪一格由供电区能碰到哪几排钻机推出，同一条带的杆可以左右两侧交替（大钻 + 中杆周期 11 > 拉线 9 就靠这个）；相邻带子行的杆链必须互相连通（空行补桥杆）。`dropped_drills` 的 `pole_slot` 是“无杆最优排法比带杆排法多出的钻机数”。
 - 每条道只装一侧钻机：超过道容量时从上游端截断，记进 `meta["dropped_drills"]`（原因 `lane_capacity`），`meta["suggestions"]` 给出能保住它们的带等级或换轴向。其他原因：`pole_slot`、`belt_blocked`（带子要穿过不可建格）、`max_belts`、`low_ore`（`min_ore_amount_per_drill`）、`mixed_resource`（搜索区里有别的矿，`allow_mixed=False`）。
 - 不变量：`layout.validate` 加 `drill.output_blocked`、`drill.no_ore`（给了 `resources` 时），生成器另查 `terrain.unbuildable`。渲染时 `:` 是矿、`,` 别的矿、`~` 水、`x` 不可建。
-- 实测：画矿的 7 个形状每条带实测产率与契约完全一致（0% 偏差）；真实地图 seed 20261024 最近铁矿（352 格）32 台钻、5 条带，契约 16/s，实测 16/s。见 `characterization/mining_patch.md`。
+- 实测：画矿的 7 个形状每条带实测产率与契约完全一致（0% 偏差）；真实地图 seed 20261024 最近铁矿（352 格）42 台钻、5 条带（改进前 32 台，pole_slot 10 → 0），实测与契约一致。见 `characterization/mining_patch.md`。
 
 ## 连接路由（阶段 3a）
 
