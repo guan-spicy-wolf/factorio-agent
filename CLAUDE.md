@@ -17,6 +17,7 @@ Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不�
 - `characterization/mining_patch.{jsonl,md}` 由 `uv run fgen sweep mining [--measure] [--real-map]` 生成，同样不要手改；`--real-map` 起正常地图服务器（`config/ore-map-gen-settings.json`），其余保留旧行。
 - `characterization/site.{jsonl,md}` 由 `uv run --extra solver fgen sweep site [--measure] [--real-map] [--only flat,real-map,red-science] [--keep-save LABEL]` 生成，不要手改；按场景（`flat`、`real-map`、`red-science-0.5`、`red-science-1`）合并，没测的场景保留旧行（规划渲染未变时保留旧实测）。站点里的单元由 `fgen.site.build` 从链路放置（场景函数里不写坐标、不写锚点）。
 - `characterization/direct_chain.{jsonl,md}` 由 `uv run fgen sweep direct-chain [--measure]` 生成，不要手改；不带 `--measure` 时保留蓝图未变的旧实测。
+- `characterization/solver_time.{jsonl,md}` 由 `uv run --extra solver fgen sweep solver-time [--only CASE,...] [--procs 1,4]` 生成（无服务器），不要手改；没选的用例保留旧行。
 - `characterization/fluid_chain.{jsonl,md}` 由 `uv run --extra solver fgen sweep fluid [--measure]` 生成（塑料、硫酸，CP-SAT），不要手改；不带 `--measure` 时保留蓝图未变的旧实测。与 `direct_chain` 分开，重新生成时不会重解绿瓶。
 - OR-Tools 是可选依赖：`uv run` 会按锁文件精确同步、把它卸掉，用到 CP-SAT 的命令与测试一律 `uv run --extra solver ...`。
 - 流体：口几何（先镜像后旋转、配方按类合并盒子、闲置口）只在 `geom/fluid.py`；求解器的管网词汇在 `solve/cpsat_fluid.py`；穷尽搜索后端拒绝流体配方。

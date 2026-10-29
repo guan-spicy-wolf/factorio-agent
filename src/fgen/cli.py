@@ -414,6 +414,14 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         return cmd_sweep_direct_chain(args, kind="palette")
     if args.family == "site":
         return cmd_sweep_site(args)
+    if args.family == "solver-time":
+        from fgen.gen import solver_time_sweep
+
+        only = tuple(x for x in (args.only or "").split(",") if x)
+        procs = tuple(int(x) for x in args.procs.split(","))
+        jsonl, md = solver_time_sweep.write(_gd(args), Path(args.out_dir), only, procs, sys.stderr)
+        print(f"wrote {jsonl} and {md}")
+        return 0
     gd = _gd(args)
     if not args.measure:
         jsonl, md = write_characterization(gd, Path(args.out_dir))
@@ -566,8 +574,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("sweep", help="parameter sweep -> characterization/")
     p.add_argument(
-        "family", choices=["smelting", "mining", "site", "direct-chain", "fluid", "palette"]
+        "family",
+        choices=["smelting", "mining", "site", "direct-chain", "fluid", "palette", "solver-time"],
     )
+    p.add_argument("--only", help="solver-time: comma separated case names (others keep rows)")
+    p.add_argument("--procs", default="1,4", help="solver-time: process counts to run")
     p.add_argument(
         "--real-map", action="store_true", help="mining/site: end-to-end run on the ore map"
     )

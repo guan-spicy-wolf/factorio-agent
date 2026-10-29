@@ -110,3 +110,25 @@ def test_cpsat_is_deterministic(gd):
     a = cpsat.solve(spec(2, 1), gd, time_limit=60).best
     b = cpsat.solve(spec(2, 1), gd, time_limit=60).best
     assert a is not None and b is not None and a.placements == b.placements
+
+
+@needs_ortools
+def test_proof_driver_is_the_same_in_parallel(gd):
+    """Phase 7: the proof driver solves independent models in forked processes; the
+    process count changes the clock only (same statuses, same period, same stats)."""
+    sp = spec(2, 1)
+    old = cpsat.PROCS
+    try:
+        cpsat.PROCS = 1
+        a = cpsat.solve(sp, gd, time_limit=120, prove=True)
+        cpsat.PROCS = 4
+        b = cpsat.solve(sp, gd, time_limit=120, prove=True)
+    finally:
+        cpsat.PROCS = old
+    assert a.best is not None and b.best is not None
+    assert a.stats.proven and b.stats.proven
+    assert sorted(b.best.layout().placements, key=repr) == sorted(
+        a.best.layout().placements, key=repr
+    )
+    assert a.stats.pruned["cp_screen_infeasible"] == b.stats.pruned["cp_screen_infeasible"]
+    assert a.stats.pruned["cp_first_infeasible"] == b.stats.pruned["cp_first_infeasible"]
