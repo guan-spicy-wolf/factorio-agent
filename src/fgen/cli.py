@@ -577,7 +577,6 @@ def build_parser() -> argparse.ArgumentParser:
         "family",
         choices=["smelting", "mining", "site", "direct-chain", "fluid", "palette", "solver-time"],
     )
-    p.add_argument("--only", help="solver-time: comma separated case names (others keep rows)")
     p.add_argument("--procs", default="1,4", help="solver-time: process counts to run")
     p.add_argument(
         "--real-map", action="store_true", help="mining/site: end-to-end run on the ore map"
@@ -591,7 +590,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--attach", metavar="PORT", help="use a running server's RCON port")
     p.add_argument("--password", default="fgen", help="RCON password with --attach")
     p.add_argument(
-        "--only", default=None, help="site: comma list of cases (flat, real-map, red-science)"
+        "--only",
+        default=None,
+        help="site / solver-time: comma list of cases to run (site: flat, real-map, "
+        "red-science; solver-time: case names); the others keep their old rows",
     )
     p.add_argument(
         "--keep-save",
