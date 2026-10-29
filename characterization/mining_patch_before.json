@@ -1,0 +1,63 @@
+{
+ "rect-1belt": {
+  "drills": 15,
+  "poles": 5,
+  "dropped_by_reason": {
+   "max_belts": 20,
+   "pole_slot": 5
+  }
+ },
+ "rect-2belt": {
+  "drills": 30,
+  "poles": 10,
+  "dropped_by_reason": {
+   "max_belts": 10,
+   "pole_slot": 10
+  }
+ },
+ "l-shape": {
+  "drills": 40,
+  "poles": 14,
+  "dropped_by_reason": {
+   "pole_slot": 12
+  }
+ },
+ "rect-hole": {
+  "drills": 54,
+  "poles": 20,
+  "dropped_by_reason": {
+   "pole_slot": 14
+  }
+ },
+ "blob": {
+  "drills": 41,
+  "poles": 15,
+  "dropped_by_reason": {
+   "pole_slot": 11
+  }
+ },
+ "rect-axis-y": {
+  "drills": 61,
+  "poles": 16,
+  "dropped_by_reason": {
+   "pole_slot": 9
+  }
+ },
+ "lane-capacity": {
+  "drills": 30,
+  "poles": 8,
+  "dropped_by_reason": {
+   "lane_capacity": 8,
+   "pole_slot": 8
+  }
+ },
+ "real-map": {
+  "drills": 32,
+  "poles": 17,
+  "dropped_by_reason": {
+   "low_ore": 12,
+   "mixed_resource": 9,
+   "pole_slot": 10
+  }
+ }
+}
