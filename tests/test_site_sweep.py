@@ -59,8 +59,8 @@ def test_flat_site_routes_cleanly_and_writes(gd, tmp_path):
     row, conn = ss.plan_row(ss.FLAT, site, gd)
     assert conn.violations == [] and conn.ok
     modes = {r["link"]: (r["mode"], r["lane"]) for r in row["connection"]["routes"]}
-    assert modes["ore"] == ("side", "left") and modes["coal"] == ("side", "right")
-    assert modes["plates"] == ("direct", None)
+    assert modes["row.iron-ore"] == ("side", "left") and modes["row.coal"] == ("side", "right")
+    assert modes["row.iron-plate"] == ("direct", None)
     assert {p["port"] for p in row["ports"]} == {"row#0", "row#1", "row#2"}
     jsonl, md = ss.write(tmp_path, [row], gd)
     measured = {**row, "measured": {"x": 1}, "judged": {"ports": []}}

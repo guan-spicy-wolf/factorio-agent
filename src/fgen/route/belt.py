@@ -320,8 +320,13 @@ def consumer_report(
     reqs: list[tuple[str, Predicate, Interface | None]] = []
     if consumer.group is not None:
         reqs += [(consumer.label, r, None) for r in consumer.group.requires]
+    # lanes some port of the consumer draws from; a lane the group reserves for an item
+    # made inside the unit (no port draws from it) is rightly left empty by the links
+    drawn: set[str] = set()
     for ep, i in consumer.ifaces:
         reqs += [(str(ep), r, i) for r in i.requires]
+        if i.material is not None:
+            drawn.update(_lanes_of(i))
     checks: list[dict[str, Any]] = []
     for who, r, i in reqs:
         if isinstance(r, LaneMaterial):
@@ -339,7 +344,7 @@ def consumer_report(
                 problems.append(
                     f"{who}: {r.lane} lane must carry only {r.material}, links bring {got}"
                 )
-            elif not got:
+            elif not got and r.lane in drawn:
                 warnings.append(f"{who}: nothing arrives on the {r.lane} lane")
         elif isinstance(r, MinRate):
             got_rate = supplied(_lanes_of(i) if i is not None else ("left", "right"))

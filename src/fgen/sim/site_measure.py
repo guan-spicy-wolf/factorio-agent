@@ -1,6 +1,7 @@
-"""Whole-site simulation (plan-phase3a §3.6).
+"""Whole-site simulation (plan-phase3a §3.6; plan-phase7 task A scenarios).
 
-Order: clear obstacles -> snapshot -> generate units -> place -> route -> deploy all ->
+Order: clear obstacles -> snapshot -> generate units -> place (from the links,
+:mod:`fgen.site.build`) -> route -> deploy all ->
 fixtures -> run -> measure every port. Units and routed entities go in as **one
 blueprint** (so the exporter writes the copper wires of the whole site); fixtures are
 created with ``create_entity`` afterwards (their poles auto-connect to poles in reach)
@@ -23,6 +24,7 @@ import statistics
 from typing import Any
 
 from fgen.data.schema import GameData
+from fgen.gen import site_sweep as ss
 from fgen.layout.model import Layout
 from fgen.route.connect import Connection
 from fgen.sim import harness as hs
@@ -253,15 +255,11 @@ def flat_row(srv: HeadlessServer, gd: GameData, **opts: Any) -> dict[str, Any]:
     rt.generate(ss.FLAT_AREA)
     clear_site(srv, ss.FLAT_AREA)
     snap = rt.snapshot(ss.FLAT_AREA, generate=False)
-    site = ss.flat_site(gd, snap)
-    row, conn = ss.plan_row(ss.FLAT, site, gd, note=FLAT_NOTE)
-    try:
-        m = measure(srv, gd, site, conn, **{**FLAT_MEASURE, **opts})
-    finally:
-        clear_site(srv, ss.FLAT_AREA)
-    row["measured"] = m
-    row["judged"] = ss.judge(row, m, site, gd)
-    m["explanation"] = FUEL_EXPLANATION
+    row = _measure_plan(
+        srv, gd, ss.FLAT, ss.flat_plan(gd, snap), {**FLAT_MEASURE, **opts}, note=FLAT_NOTE
+    )
+    clear_site(srv, ss.FLAT_AREA)
+    row["measured"]["explanation"] = FUEL_EXPLANATION
     return row
 
 
@@ -276,10 +274,11 @@ FUEL_EXPLANATION = (
 
 
 FLAT_NOTE = (
-    "Flat test field. A 7.5 plates/s stone-furnace row; iron ore and coal from two "
-    "infinity-chest sources placed apart from the row (nearest free spot to fixed "
-    "anchors), side-loaded by the router onto the row's left (ore) and right (coal) "
-    "lanes; plates into a counting sink; power from an energy-interface fixture."
+    "Flat test field. A 7.5 plates/s stone-furnace row at the site origin; iron ore and "
+    "coal from two infinity-chest sources placed from their links (`site.build`: the "
+    "cheapest estimated belt to the port they serve), side-loaded by the router onto the "
+    "row's left (ore) and right (coal) lanes; plates into a counting sink; power from an "
+    "energy-interface fixture."
 )
 
 
@@ -288,11 +287,81 @@ REAL_NOTE = (
     "Normal map (`config/ore-map-gen-settings.json`). Clear obstacles around the nearest "
     "iron patch -> snapshot -> one-belt mining unit (`site_sweep.choose_mining`: highest "
     "belt rate not above the smelting row's ore lane, each variant capped there with "
-    "`max_belt_rate`, no drill dry within the window) -> "
-    "smelting row placed by `find_spot` next to the belt end, target = the belt's initial "
-    "rate -> router: ore belt side-loaded onto the row's left lane, coal fixture onto the "
-    "right lane, plates to a sink, one power fixture chained to both units."
+    "`max_belt_rate`, no drill dry within the window) -> smelting row sized to the belt's "
+    "initial rate, placed from its links (`site.build`: cheapest estimated belt from the "
+    "ore belt's end, off the ore), fixtures likewise -> router: ore belt side-loaded onto "
+    "the row's left lane, coal fixture onto the right lane, plates to a sink, one power "
+    "fixture chained to both units."
 )
+# the red-science chain's gear lane and three belts of buffers fill before the packs
+# flow steadily; the science assembler is slow (5 s crafts), so samples are long
+RED_MEASURE = {"warmup_s": 240.0, "sample_s": 60.0, "samples": 6, "speed": 32.0}
+RED_NOTE = (
+    "Normal map, nearest iron and copper patches (`red_science_rows`): clear obstacles "
+    "over both patches and the land between -> snapshot -> red-science direct chain at "
+    "the target rate (`direct_chain`, CP-SAT) -> a smelting row per plate input sized to "
+    "the chain's `MinRate` -> a one-belt mining unit per row sized to the row's `MinRate` "
+    "(`choose_mining`, `max_belt_rate`) -> every free unit placed from its links "
+    "(`site.build`: flow order, cheapest estimated belt, off the ore) -> router: ore "
+    "side-loaded onto each row's left lane, coal fixtures onto the right lanes, plates "
+    "into the chain's input belts as its contract asks (side-load onto a lane or straight "
+    "in), packs to a sink, one power fixture for all. Nothing here is a coordinate."
+)
+
+
+def real_map_prepare(
+    srv: HeadlessServer,
+    gd: GameData,
+    resources: list[str],
+    *,
+    radius: int = 150,
+    margin: int = 45,
+    min_tiles: int = 50,
+) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+    """Nearest patch of each resource to the spawn, obstacles cleared over all of them
+    and the land between (one rectangle), snapshot after clearing. Returns the snapshot,
+    the patches by resource and the run info."""
+    from fgen.geom.vec import Tile
+    from fgen.sim import clear
+    from fgen.sim.terrain import RconTerrain
+    from fgen.terrain.model import nearest_patch
+
+    rt = RconTerrain(srv.rcon)
+    whole: Area = (Tile(-radius, -radius), Tile(radius - 1, radius - 1))
+    snap = rt.snapshot(whole)
+    found = {}
+    for res in resources:
+        patch = nearest_patch(snap, res, (0.0, 0.0), min_tiles=min_tiles)
+        if patch is None:
+            raise RuntimeError(f"no {res} patch near the spawn")
+        found[res] = patch
+    los = [p.bounds[0] for p in found.values()]
+    his = [p.bounds[1] for p in found.values()]
+    work: Area = (
+        Tile(min(t.x for t in los) - margin, min(t.y for t in los) - margin),
+        Tile(max(t.x for t in his) + margin, max(t.y for t in his) + margin),
+    )
+    before = clear.count_entities(srv.rcon, work)
+    cleared = clear.clear_obstacles(srv.rcon, work)  # clear -> snapshot, in this order
+    snap = rt.snapshot(work, generate=False)
+    patches = {}
+    for res in resources:
+        patch = nearest_patch(snap, res, (0.0, 0.0), min_tiles=min_tiles)
+        assert patch is not None
+        patches[res] = patch
+    info = {
+        "patches": {res: p.describe() for res, p in patches.items()},
+        "work_area": [[work[0].x, work[0].y], [work[1].x, work[1].y]],
+        "entities_before_clearing": before,
+        "cleared": cleared,
+        "cliffs": before.get("cliff", 0),
+        "snapshot": {
+            "occupied_tiles": len(snap.occupied),
+            "water_tiles": len(snap.water),
+            "resource_tiles": len(snap.resources),
+        },
+    }
+    return snap, patches, info
 
 
 def real_map_row(
@@ -306,80 +375,154 @@ def real_map_row(
 ) -> dict[str, Any]:
     """M5: nearest iron patch -> mining unit -> belt -> smelting row, measured."""
     from fgen.gen import site_sweep as ss
-    from fgen.geom.vec import Tile
-    from fgen.sim import clear
-    from fgen.sim.terrain import RconTerrain
-    from fgen.terrain.model import nearest_patch
-
-    mo = {**REAL_MEASURE, **opts}
-    rt = RconTerrain(srv.rcon)
-    whole: Area = (Tile(-radius, -radius), Tile(radius - 1, radius - 1))
-    snap = rt.snapshot(whole)
-    patch = nearest_patch(snap, "iron-ore", (0.0, 0.0), min_tiles=50)
-    if patch is None:
-        raise RuntimeError("no iron patch near the spawn")
-    lo, hi = patch.bounds
-    work: Area = (lo.translate(-margin, -margin), hi.translate(margin, margin))
-    before = clear.count_entities(srv.rcon, work)
-    cleared = clear.clear_obstacles(srv.rcon, work)  # clear -> snapshot, in this order
-    snap = rt.snapshot(work, generate=False)
-    patch = nearest_patch(snap, "iron-ore", (0.0, 0.0), min_tiles=50)
-    assert patch is not None
-    window = mo["warmup_s"] + mo["samples"] * mo["sample_s"]
     from fgen.gen.smelting_row import SmeltingRowParams
     from fgen.geom import belt as beltgeom
 
+    mo = {**REAL_MEASURE, **opts}
+    snap, patches, info = real_map_prepare(srv, gd, ["iron-ore"], radius=radius, margin=margin)
+    patch = patches["iron-ore"]
+    info = {"seed": seed, "patch": patch.describe(), **info}
+    window = mo["warmup_s"] + mo["samples"] * mo["sample_s"]
     cap = beltgeom.lane_items_per_second(gd, SmeltingRowParams().belt)
     mp = ss.choose_mining(gd, snap, patch, max_rate=cap, window_s=window)
-    site = ss.real_map_site(gd, snap, patch, mining=mp, max_rate=cap)
-    info = {
-        "seed": seed,
-        "patch": patch.describe(),
-        "work_area": [[work[0].x, work[0].y], [work[1].x, work[1].y]],
-        "entities_before_clearing": before,
-        "cleared": cleared,
-        "cliffs": before.get("cliff", 0),
-        "snapshot": {
-            "occupied_tiles": len(snap.occupied),
-            "water_tiles": len(snap.water),
-            "resource_tiles": len(snap.resources),
-        },
-    }
-    row, conn = ss.plan_row(ss.REAL_MAP, site, gd, note=REAL_NOTE, real_map=info)
+    plan = ss.real_map_plan(gd, snap, patch, mining=mp, max_rate=cap)
+    return _measure_plan(srv, gd, ss.REAL_MAP, plan, mo, note=REAL_NOTE, real_map=info)
+
+
+def red_science_rows(
+    srv: HeadlessServer,
+    gd: GameData,
+    rates: tuple[float, ...] | None = None,
+    *,
+    radius: int = 150,
+    margin: int = 45,
+    seed: int | None = None,
+    keep_last: bool = False,
+    **opts: Any,
+) -> list[dict[str, Any]]:
+    """Plan-phase7 task A: two patches -> two rows -> red-science chain, one row per
+    target rate. With ``keep_last`` the last site stays in the map (for a kept save)."""
+    from fgen.gen import site_sweep as ss
+
+    mo = {**RED_MEASURE, **opts}
+    rates = rates or ss.RED_SCIENCE_RATES
+    snap, patches, info = real_map_prepare(
+        srv, gd, ["iron-ore", "copper-ore"], radius=radius, margin=margin
+    )
+    info = {"seed": seed, **info}
+    base_window = mo["warmup_s"] + mo["samples"] * mo["sample_s"]
+    rows = []
+    for k, rate in enumerate(rates):
+        by_plate = {"iron-plate": patches["iron-ore"], "copper-plate": patches["copper-ore"]}
+        # the buffers between the stages fill before the flow is steady (fill_time); the
+        # mines must not run dry within that longer window either, so plan again with it
+        window, chain_unit, plan = base_window, None, None
+        for _ in range(3):
+            plan = ss.red_science_plan(
+                gd, snap, by_plate, rate, window_s=window, chain_unit=chain_unit
+            )
+            chain_unit = dict(plan.free)["science"]
+            opts_k, _ = warmup_for(srv, gd, plan, mo)
+            need = opts_k["warmup_s"] + mo["samples"] * mo["sample_s"]
+            if need <= window + 1e-9:
+                break
+            window = need
+        assert plan is not None
+        keep = keep_last and k == len(rates) - 1
+        rows.append(
+            _measure_plan(
+                srv, gd, ss.red_case(rate), plan, mo, keep=keep, note=RED_NOTE, real_map=info
+            )
+        )
+    return rows
+
+
+FILL_FACTOR = ss.FILL_FACTOR
+WARMUP_CAP_S = 3600.0  # game seconds; longer fills are measured as they are and flagged
+
+
+def warmup_for(
+    srv: HeadlessServer, gd: GameData, plan: Any, mo: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Measurement options with the warm-up stretched to the site's estimated buffer
+    fill time under the force state (research is done first so the state is the one
+    measured). Returns ``(options, fill estimate)``."""
+    rs = runtime.prepare(srv)
+    site, conn, _ = ss.plan_and_connect(plan, gd)
+    fill = ss.fill_time(site, conn, gd, rs)
+    want = mo["warmup_s"] + FILL_FACTOR * fill["seconds"]
+    warm = min(max(mo["warmup_s"], want), WARMUP_CAP_S)
+    fill["warmup_s"] = warm
+    fill["capped"] = want > WARMUP_CAP_S
+    return {**mo, "warmup_s": warm}, fill
+
+
+def _measure_plan(
+    srv: HeadlessServer,
+    gd: GameData,
+    case: str,
+    plan: Any,
+    mo: dict[str, Any],
+    *,
+    keep: bool = False,
+    **extra: Any,
+) -> dict[str, Any]:
+    from fgen.gen import site_sweep as ss
+
+    site, _, log = ss.plan_and_connect(plan, gd)
+    row, conn = ss.plan_row(case, site, gd, placement=log, **extra)
     area = site_area(site, conn, gd)
+    mo, fill = warmup_for(srv, gd, plan, mo)
     try:
         m = measure(srv, gd, site, conn, **mo)
+        m["fill_time"] = fill
     finally:
-        clear_site(srv, area)
+        if not keep:
+            clear_site(srv, area)
     row["measured"] = m
     row["judged"] = ss.judge(row, m, site, gd)
-    m["explanation"] = explain_real(row)
+    m["explanation"] = explain(row)
     return row
 
 
-def explain_real(row: dict[str, Any]) -> str:
-    ports = {p["port"]: p for p in row["judged"]["ports"]}
-    ore_out = next((p for k, p in ports.items() if k.startswith("mine#")), None)
-    plates = next((p for k, p in ports.items() if p["material"] == "iron-plate"), None)
-    if ore_out is None or plates is None:
-        return ""
-    target = min(ore_out["contract"], 7.5)
-    ratio = (plates["measured"] or 0) / target if target else 0
-    parts = [
-        f"plates {plates['measured']:.3f}/s = {ratio:.1%} of min(ore belt initial "
-        f"{ore_out['contract']:g}, 7.5)/s;",
-        f"the drills produced {ore_out['measured']:.3f}/s ({ore_out['deviation']:+.1%} vs "
-        "their contract).",
-    ]
-    gap = (ore_out["measured"] or 0) - (plates["measured"] or 0)
-    if ratio < 1 - 1e-3 and gap > 0:
+def explain(row: dict[str, Any]) -> str:
+    """One sentence per stage: the final product against its prediction, then the
+    anchored supplies (mining ports) against theirs, then any input that lags."""
+    judged = row["judged"]["ports"]
+    by_port = {p["port"]: p for p in judged}
+    sinks = {p["port"] for p in row["ports"] if p.get("sink")}
+    finals = [by_port[p] for p in sinks if p in by_port]
+    mines = [p for p in judged if p["port"] in _mining_ports(row)]
+    parts = []
+    for p in finals:
+        parts.append(
+            f"{p['material']} {p['measured']:.3f}/s = {_pct(p['measured'], p['predicted'])} of "
+            f"the predicted {p['predicted']:.4g}/s ({_pct(p['measured'], p['contract'])} of the "
+            f"contract {p['contract']:.4g}/s)."
+        )
+    for p in mines:
+        parts.append(
+            f"{p['port']} produced {p['measured']:.3f}/s ({p['deviation']:+.1%} vs predicted "
+            f"{p['predicted']:.4g}, contract {p['contract']:.4g})."
+        )
+    lag = [p for p in judged if p["deviation"] is not None and p["deviation"] < -0.01]
+    if lag:
         m = row["measured"]
         span = (m["window_ticks"][1] - m["window_ticks"][0]) / m["ticks_per_second"]
+        worst = min(lag, key=lambda p: p["deviation"])
         parts.append(
-            f"Drills minus furnaces = {gap:.3f}/s, i.e. {gap * span:.0f} ore over the "
-            f"{span:g} s window still going into the route belt and the furnaces' input "
-            "slots: with supply equal to demand the row's buffers fill only slowly (the "
-            "upstream furnaces take first), so the plates lag the ore by that much; it is "
-            "not lost ore and not a lane problem (the left lane carries only ore)."
+            f"{len(lag)} port(s) lag their prediction by more than 1% (worst {worst['port']} "
+            f"{worst['deviation']:+.1%}): items still filling route belts and machine input "
+            f"slots over the {span:g} s window (supply equals demand, so buffers fill only "
+            "slowly), fuel counted in whole items, or quantisation of a slow flow."
         )
     return " ".join(parts)
+
+
+def _mining_ports(row: dict[str, Any]) -> set[str]:
+    mines = {u["name"] for u in row["site"]["units"] if u["family"] == "anchor/mining-patch"}
+    return {p["port"] for p in row["ports"] if p["port"].split("#")[0] in mines}
+
+
+def _pct(a: float | None, b: float | None) -> str:
+    return "?" if not a or not b else f"{a / b:.1%}"

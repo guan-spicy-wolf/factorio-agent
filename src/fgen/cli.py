@@ -316,17 +316,22 @@ def cmd_sweep_site(args: argparse.Namespace) -> int:
     from fgen.terrain.model import Terrain, area_tiles
 
     gd = _gd(args)
-    rows = []
-    if args.measure:
-        from fgen.sim import site_measure
+    only = set(args.only.split(",")) if args.only else None
 
-        with _server(args) as srv:
-            row = site_measure.flat_row(srv, gd)
-        rows.append(row)
-        print(f"flat: {row['judged']}", file=sys.stderr)
-    else:
-        site = ss.flat_site(gd, Terrain(buildable=area_tiles(ss.FLAT_AREA)))
-        row, _ = ss.plan_row(ss.FLAT, site, gd, note=_site_note())
+    def wanted(case: str) -> bool:
+        return only is None or case in only or case.split("-")[0] in only
+
+    rows = []
+    if wanted(ss.FLAT):
+        if args.measure:
+            from fgen.sim import site_measure
+
+            with _server(args) as srv:
+                row = site_measure.flat_row(srv, gd)
+            print(f"flat: {row['judged']}", file=sys.stderr)
+        else:
+            plan = ss.flat_plan(gd, Terrain(buildable=area_tiles(ss.FLAT_AREA)))
+            row, _ = ss.plan_row(ss.FLAT, plan, gd, note=_site_note())
         rows.append(row)
     if args.real_map:
         import json as _json
@@ -335,10 +340,18 @@ def cmd_sweep_site(args: argparse.Namespace) -> int:
         from fgen.sim.server import REPO_CONFIG, HeadlessServer
 
         seed = _json.loads((REPO_CONFIG / mining.ORE_MAP).read_text()).get("seed")
-        with HeadlessServer(map_gen_settings=mining.ORE_MAP) as srv:
-            row = site_measure.real_map_row(srv, gd, seed=seed)
-        rows.append(row)
-        print(f"real map: {row['judged']}", file=sys.stderr)
+        keep = getattr(args, "keep_save", None)
+        with HeadlessServer(map_gen_settings=mining.ORE_MAP, save_label=keep) as srv:
+            if wanted(ss.REAL_MAP):
+                row = site_measure.real_map_row(srv, gd, seed=seed)
+                rows.append(row)
+                print(f"real map: {row['judged']}", file=sys.stderr)
+            if wanted(ss.RED_SCIENCE):
+                for row in site_measure.red_science_rows(srv, gd, seed=seed, keep_last=bool(keep)):
+                    rows.append(row)
+                    print(f"{row['case']}: {row['judged']}", file=sys.stderr)
+        if srv.kept_save:
+            print(f"save kept: {srv.kept_save}", file=sys.stderr)
     jsonl, md = ss.write(Path(args.out_dir), rows, gd)
     print(f"wrote {jsonl} and {md}")
     return 0
@@ -566,6 +579,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--speed", type=float, default=64.0, help="game.speed while measuring")
     p.add_argument("--attach", metavar="PORT", help="use a running server's RCON port")
     p.add_argument("--password", default="fgen", help="RCON password with --attach")
+    p.add_argument(
+        "--only", default=None, help="site: comma list of cases (flat, real-map, red-science)"
+    )
+    p.add_argument(
+        "--keep-save",
+        metavar="LABEL",
+        help="site --real-map: leave the last red-science site in the map and keep the save "
+        "as saves/LABEL.zip (or $FGEN_SAVE_DIR/LABEL.zip); publish it with bin/publish-save.sh",
+    )
     p.set_defaults(fn=cmd_sweep)
 
     p = sub.add_parser("verify", help="run the in-game VERIFY.md checks (needs headless)")

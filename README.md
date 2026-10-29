@@ -20,6 +20,7 @@ uv run fgen sweep smelting                                # 写 characterization
 uv run fgen gen mining --case l-shape [--pole medium-electric-pole --axis y ...]   # 画好的矿区上铺钻机
 uv run fgen sweep mining                                  # 写 characterization/mining_patch.{jsonl,md}
 uv run fgen sweep site                                    # 平地整站（规划+路由）写 characterization/site.{jsonl,md}
+uv run --extra solver fgen sweep site --measure --real-map [--only red-science] [--keep-save red-1ps]   # 真实地图整站 + 红瓶站（阶段 7）
 uv run fgen gen direct-chain --recipe electronic-circuit --rate 2   # 直插链：求解器周期 × k
 uv run fgen gen direct-chain --rate 2 --layout baseline             # 手写经典 3:2 排法
 uv run fgen gen direct-chain --rate 2 --extra-inserters long-handed-inserter   # 允许混长臂爪
@@ -54,7 +55,7 @@ uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characteriz
 uv run fgen sweep mining --measure     # 7 个画矿形状实测，约 30 秒
 uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-settings.json）端到端，约 15 秒
 uv run fgen sweep site --measure       # 平地整站仿真（M4），约 12 秒
-uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列），约 30 秒
+uv run --extra solver fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列）与红瓶站两档（阶段 7：两矿→两列→红瓶链，含两次 CP-SAT 求解与长预热），约 7 分钟
 uv run --extra solver fgen sweep fluid --measure   # 11 行流体（塑料 7 + 硫酸 3 + 1 行不可行），约 7 分钟
 uv run --extra solver fgen sweep palette --measure   # 17 行全调色板 × 预设（含两行证明驱动，约 20 分钟），实测约 40 分钟
 uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解器 vs 手写基线、红瓶、绿瓶；需 --extra solver），绿瓶周期求解约 30 分钟
@@ -105,7 +106,7 @@ bin/publish-save.sh saves/gc-2ps.zip "绿板 2/s 直插链"                     
 | `fgen.solve` | `period`：周期（`Period`）、边界条件 `check_period`、平铺 `tile`、配比与速率 `flows`/`ratio`；`cycle`：周期内穷尽搜索 `solve(spec, gd)`（阶段 4a）；`cpsat`：CP-SAT 后端（阶段 4b，可选依赖）；`cpsat_fluid`：周期内管网的约束（阶段 5a） |
 | `fgen.terrain` | `model`：`Terrain` 快照（可建/资源/水/已占）、4 邻接矿区分块 `patches`、`nearest_patch`、渲染背景；`paint`：矩形/L 形/挖洞/随机 blob 形状 |
 | `fgen.sim` | 服务器相关：协议与 `NotAvailable` 默认值、RCON、部署、实测（见上节） |
-| `fgen.site` | `model`：`Site` = `Terrain` + `PlacedUnit` 列表 + `Link`（按 (单元名, 接口序号) 连接），占格合并、世界坐标接口；`place`：螺旋找空位 `find_spot`、按接口落点放置 `place_port` |
+| `fgen.site` | `model`：`Site` = `Terrain` + `PlacedUnit` 列表 + `Link`（按 (单元名, 接口序号) 连接），占格合并、世界坐标接口；`place`：链路驱动放置 `candidates` / `place_linked`（候选按估算带长 + 转弯 + 绕回 + 占资源格排序，取第一个放得下的）、螺旋找空位 `find_spot`、按接口落点放置 `place_port`；`build`：`SitePlan`（锚定单元 + 自由单元 + 链路）→ 顺流顺序逐个放置 → 路由，路由失败就把单元移到下一个候选 |
 | `fgen.route` | 纯函数路由：`grid`（可走格、端口保留带、喂入/爪子可达格、液体口、地下段）、`astar`（转向代价 + 跳跃边）、`belt`（直连、侧向汇入桩、地下带、道材料/速率检查）、`pipe`（管 + 地下管、邻接隔离）、`power`（MST + 杆链）、`connect(site) -> Connection`（先带后管再电，失败换序重试，整站 validate + 契约校验） |
 
 ## 约定（摘要，全文见任务书 §3）
@@ -129,6 +130,12 @@ bin/publish-save.sh saves/gc-2ps.zip "绿板 2/s 直插链"                     
 - 每条道只装一侧钻机：超过道容量时从上游端截断，记进 `meta["dropped_drills"]`（原因 `lane_capacity`），`meta["suggestions"]` 给出能保住它们的带等级或换轴向。其他原因：`pole_slot`、`belt_blocked`（带子要穿过不可建格）、`max_belts`、`low_ore`（`min_ore_amount_per_drill`）、`mixed_resource`（搜索区里有别的矿，`allow_mixed=False`）。
 - 不变量：`layout.validate` 加 `drill.output_blocked`、`drill.no_ore`（给了 `resources` 时），生成器另查 `terrain.unbuildable`。渲染时 `:` 是矿、`,` 别的矿、`~` 水、`x` 不可建。
 - 实测：画矿的 8 个用例（7 个形状 + 大钻配中杆）每条带实测产率与契约完全一致（0% 偏差）；真实地图 seed 20261024 最近铁矿（352 格）42 台钻（阶段 2 为 32）、5 条带，契约 21/s，实测 21/s。改进前后对比见 `characterization/mining_patch.md` 的 "Before vs after"，实验记录见 `docs/experiments/6a-task1.md`。
+
+## 多单元站点与放置（阶段 7 任务 A）
+
+`fgen.site.build.plan_and_connect(SitePlan)`：锚定单元（采矿）带世界坐标进来，自由单元（冶炼列、直插链、夹具）按**顺流顺序**（一个单元的非夹具生产者都放好了才轮到它；再按非夹具优先、已放邻居多、链路速率大）逐个放到"到已放邻居口的估算带长最便宜"的位置（`site.place.candidates`：曼哈顿长 + 每个强制转弯 + 绕回 + 每个占资源格的惩罚，只在放得下的候选里取最便宜；没有锚定单元时最大的单元放在站点原点）。路由失败时把失败链路里后放的单元移到下一个候选再试（有界）。场景（`gen/site_sweep.py`）只描述单元与链路，不含坐标与锚点；每一级的规模由下一级的契约定：冶炼列按直插链输入口的 `MinRate`，矿区按冶炼列矿口的 `MinRate`（`max_belt_rate`）。
+
+红瓶站（`red-science-0.5` / `red-science-1`）：真实地图最近铁矿与铜矿 → 两条一带矿区 → 两条冶炼列 → 红瓶直插链（铜板侧向汇入链的铜带右道，铁板直连铁带；时间盒不同时求解器也可能给"两种板共一条带两道"的周期，路由器两种都接）→ 汇；煤与电由夹具给。`site_sweep.predict` 按链路拓扑两遍算稳态流量（正向产能、反向按下游取量），`fill_time` 估计各级缓冲（链路带 + 消费单元自己的带）灌满的时间，实测预热 = 240 s + 1.25 × 它；同一物料被几个单元消耗时按同一个力统计计数器合并判定。实验记录：`docs/experiments/7-red-science-site.md`。
 
 ## 连接路由（阶段 3a）
 
