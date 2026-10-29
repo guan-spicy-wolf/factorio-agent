@@ -11,3 +11,4 @@ build/
 factorio-server/
 saves/
 *.log
+.claude/worktrees/

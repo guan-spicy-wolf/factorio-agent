@@ -220,12 +220,16 @@ def _simulate(args: argparse.Namespace, gd: GameData, unit: Any, pred: dict, war
     from fgen.data.runtime import RuntimeState
     from fgen.sim.measure import RconCharacterizer
 
-    with _server(args) as srv:
+    keep = getattr(args, "keep_save", None)
+    with _server(args, save_label=keep) as srv:
         ch = RconCharacterizer(srv, gd)
         try:
             m = ch.measure(unit, warmup_s=warmup(unit), sample_s=10.0, samples=6, speed=64.0)
         finally:
-            ch.clear_all()
+            if not keep:
+                ch.clear_all()
+    if srv.kept_save:
+        print(f"save kept: {srv.kept_save}", file=sys.stderr)
     rs = RuntimeState.from_json(m.get("runtime"))
     family = unit.meta.get("family")
     if family == "direct-chain":
@@ -430,14 +434,15 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
-def _server(args: argparse.Namespace):  # -> contextmanager yielding a HeadlessServer
+def _server(args: argparse.Namespace, save_label: str | None = None):
+    """Context manager yielding a HeadlessServer (an attached one is never stopped)."""
     from contextlib import nullcontext
 
     from fgen.sim.server import HeadlessServer
 
     if getattr(args, "attach", None):
         return nullcontext(HeadlessServer.attach(int(args.attach), args.password))
-    return HeadlessServer()
+    return HeadlessServer(save_label=save_label)
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -525,6 +530,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="smelting/direct-chain: also measure the unit in headless (off by default)",
     )
     p.add_argument("--warmup", type=float, default=60.0, help="--simulate: warm-up, game seconds")
+    p.add_argument(
+        "--keep-save",
+        metavar="LABEL",
+        help="--simulate: leave the unit in the map and keep the save as saves/LABEL.zip "
+        "(or $FGEN_SAVE_DIR/LABEL.zip); publish it with bin/publish-save.sh",
+    )
     p.add_argument("--attach", metavar="PORT", help="--simulate: use a running server's RCON port")
     p.add_argument("--password", default="fgen", help="RCON password with --attach")
     p.add_argument("--case", default="rect-2belt", help="mining: painted case name")

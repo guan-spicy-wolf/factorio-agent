@@ -22,5 +22,6 @@ Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不�
 - 流体：口几何（先镜像后旋转、配方按类合并盒子、闲置口）只在 `geom/fluid.py`；求解器的管网词汇在 `solve/cpsat_fluid.py`；穷尽搜索后端拒绝流体配方。
 - 周期求解器（`src/fgen/solve`）核心零第三方依赖；周期的边界条件写在 `solve/period.py` docstring，`validate` 是最终裁判。直插链用到的配方实测前要解锁（`RconCharacterizer` 自动做）。
 - 路由（`src/fgen/route`）是纯函数：输入 `Site`（`Terrain` 快照 + `PlacedUnit` + `Link`），只读接口契约与端口下的实体；单元测试用手写 `Terrain`。真实地图流程固定为清障 → 快照 → 生成/路由 → 部署。
+- 存档不进主分支：`FGEN_SAVE_DIR` / `--keep-save` 保留的 zip 用 `bin/publish-save.sh` 推到孤儿分支 `saves`。
 - 同一测试模块里只能用一个服务器 fixture（`server` 或 `ore_server`），两个都要用就拆模块。
 - 种子要加原型时改 `scripts/extract_seed.py` 的 `ADD` 表（及 `loader.py` 字段表）后重新生成。

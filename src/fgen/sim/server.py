@@ -20,7 +20,9 @@ Facts established against 2.0.76 and re-checked on 2.1.23 (headless, Linux):
   nothing visible (the "commands disable achievements" confirmation); it has to be
   repeated. :meth:`HeadlessServer.start` primes this.
 - ``/quit`` over RCON saves the map into the save file and exits cleanly (~0.3 s), so
-  each start copies a pristine template save to a run save first.
+  each start copies a pristine template save to a run save first. With ``FGEN_SAVE_DIR``
+  set (or ``save_label`` given) that run save is kept there after :meth:`HeadlessServer.stop`,
+  so a cloud session can hand a deployed map to a desktop client (``bin/publish-save.sh``).
 """
 
 from __future__ import annotations
@@ -97,6 +99,7 @@ class HeadlessServer:
         mods: tuple[str, ...] = DEFAULT_MODS,
         startup_timeout: float = 60.0,
         map_gen_settings: str = "test-map-gen-settings.json",
+        save_label: str | None = None,
     ) -> None:
         self.factorio_dir = Path(factorio_dir_ or factorio_dir())
         self.binary = factorio_binary(self.factorio_dir)
@@ -115,6 +118,9 @@ class HeadlessServer:
         name = "flat" if stem == "test" else stem
         self.template_save = self.workdir / f"{name}-template.zip"
         self.run_save = self.workdir / "run.zip"
+        self.map_name = name
+        self.save_label = save_label
+        self.kept_save: Path | None = None
 
     # -- files ---------------------------------------------------------------
     def _prepare_workdir(self) -> None:
@@ -249,8 +255,21 @@ class HeadlessServer:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+        self._keep_save()
         if self._own_workdir:
             shutil.rmtree(self.workdir, ignore_errors=True)
+
+    def _keep_save(self) -> None:
+        """Copy the run save (written by ``/quit``) out of the work directory."""
+        save_dir = os.environ.get("FGEN_SAVE_DIR")
+        if (save_dir is None and self.save_label is None) or not self.run_save.exists():
+            return
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        label = self.save_label or f"{self.map_name}-{stamp}"
+        dest = Path(save_dir or "saves").expanduser().resolve() / f"{label}.zip"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(self.run_save, dest)
+        self.kept_save = dest
 
     @classmethod
     def attach(cls, port: int, password: str, host: str = "127.0.0.1") -> HeadlessServer:

@@ -60,6 +60,18 @@ uv run --extra solver fgen sweep palette --measure   # 17 行全调色板 × 预
 uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解器 vs 手写基线、红瓶、绿瓶；需 --extra solver），绿瓶周期求解约 30 分钟
 ```
 
+### 把云端会话里的存档带回本地
+
+容器是一次性的，`saves/` 又被 gitignore，所以存档默认不保留。两步带回：
+
+```sh
+uv run --extra solver fgen gen direct-chain --rate 2 --simulate --keep-save gc-2ps   # 单元留在地图里，存档保留为 saves/gc-2ps.zip
+bin/publish-save.sh saves/gc-2ps.zip "绿板 2/s 直插链"                               # 提交到孤儿分支 saves 并推送
+```
+
+任何 `HeadlessServer` 在设了 `FGEN_SAVE_DIR` 时都会把 `/quit` 写出的 run save 复制到那个目录（文件名 `<地图>-<UTC 时间>.zip`），sweep、测试同样适用。本地客户端要有同一组 mod（Space Age DLC）和同一版本才能打开。
+
+
 - 服务器：`HeadlessServer`（`fgen.sim.server`）在临时目录里建平地存档（`config/test-*.json`，mod 组合取 `DEFAULT_MODS`），`--start-server` 并等 RCON 就绪；退出时 `/quit`，超时再 terminate/kill，并用 `PR_SET_PDEATHSIG` 保证 Python 进程死掉时服务器也被杀。一次只起一个实例：pytest 每个测试模块一个服务器（`tests/conftest.py` 的 `server` fixture），按模块顺序运行。
 - 时间一律按游戏 tick：测量时把 `game.speed` 调到 20–64 倍，用游戏内 `script.on_nth_tick` 计数与快照，Python 只轮询 `game.tick`。
 - `fgen verify --attach PORT --password PW`、`fgen sweep smelting --measure --attach PORT` 可以复用一个已在运行的服务器。
