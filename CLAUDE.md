@@ -1,6 +1,6 @@
 # factorio-agent (fgen 分支)
 
-Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不是坐标。总体方案见 `docs/design.md`（第二版，按六轮实验结论修订；第一版存为 `docs/design-v1-2026-10-24.md`），任务书见 `docs/plan-phase0.md`、`docs/plan-phase1.md`、`docs/plan-phase2.md`、`docs/plan-phase3a.md`、`docs/plan-phase4a.md`、`docs/plan-phase4b.md`、`docs/plan-phase5a.md`（实验，记录在 `docs/experiments/`），待实机核对清单见 `docs/VERIFY.md`，用法见 `README.md`。
+Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不是坐标。总体方案见 `docs/design.md`（第二版，按六轮实验结论修订；第一版存为 `docs/design-v1-2026-10-24.md`），任务书见 `docs/plan-phase0.md`、`docs/plan-phase1.md`、`docs/plan-phase2.md`、`docs/plan-phase3a.md`、`docs/plan-phase4a.md`、`docs/plan-phase4b.md`、`docs/plan-phase5a.md`、`docs/plan-phase7.md`（实验，记录在 `docs/experiments/`），待实机核对清单见 `docs/VERIFY.md`，用法见 `README.md`。
 
 本分支是孤儿分支；`master` 上的旧 agent（Lua 脚本 + RCON 循环）与本分支无关，不要引用。
 
