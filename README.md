@@ -91,8 +91,8 @@ uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：
 `fgen.gen.mining_patch.generate(params, gd, patch, terrain)`：输入是 `Terrain` 快照与其中一个 `Patch`（生成器不碰 RCON；单元测试用 `Terrain.from_resources` 手写地形），输出的 `Unit` 用**世界坐标**（部署原点 (0,0)），`meta["anchor"]` 记录矿种、矿区边界、总矿量、钻机数、总产率与粗略枯竭时间。
 
 - 排法：沿 `axis` 铺带子行，两侧各一排钻机面向带子（出料格由 `vector_to_place_result` 推出，实测落在钻机一侧的近道），带子周期 = 两排钻机 + 1；网格相位（周期 × 钻机宽）逐个试，取钻机最多的。带子统一流向 `flow` 一端，每条带末端是一个输出接口（`lane` 两侧都有钻机时为 `both`，`rate` = 钻机数 × `mining_speed / mining_time`）；不合流。
-- 电杆放在钻机行里，占一个钻位：先找槽内能同时覆盖两侧钻机行、且隔一个周期仍在拉线距离内的位置（只放一侧），否则两侧都放；沿带子的槽位由供电区与拉线距离的贪心扫描决定，各带子行用同一组槽位以便纵向连线。
-- 每条道只装一侧钻机：超过道容量时从上游端截断，记进 `meta["dropped_drills"]`（原因 `lane_capacity`），`meta["suggestions"]` 给出能保住它们的带等级或换轴向。其他原因：`pole_slot`、`belt_blocked`（带子要穿过不可建格）、`max_belts`、`low_ore`（`min_ore_amount_per_drill`）、`mixed_resource`（搜索区里有别的矿，`allow_mixed=False`）。
+- 电杆放在钻机行里的一个间隙中（占杆的占地宽度，不占钻位）：先找能同时覆盖两侧钻机行、且隔一个周期仍在拉线距离内的位置（只放一侧），否则两侧都放；间距取拉线距离内每列钻机数最多的整数，各带子行用同一组间隙以便纵向连线。钻机占地若不在任何杆的供电区内则丢弃（`pole_slot`，实测为 0）。
+- 每条道只装一侧钻机：超过道容量时从上游端截断，记进 `meta["dropped_drills"]`（原因 `lane_capacity`），`meta["suggestions"]` 给出能保住它们的带等级或换轴向。其他原因：`belt_blocked`（带子要穿过不可建格）、`max_belts`、`low_ore`（`min_ore_amount_per_drill`）、`mixed_resource`（搜索区里有别的矿，`allow_mixed=False`）。
 - 不变量：`layout.validate` 加 `drill.output_blocked`、`drill.no_ore`（给了 `resources` 时），生成器另查 `terrain.unbuildable`。渲染时 `:` 是矿、`,` 别的矿、`~` 水、`x` 不可建。
 - 实测：画矿的 7 个形状每条带实测产率与契约完全一致（0% 偏差）；真实地图 seed 20261024 最近铁矿（352 格）32 台钻、5 条带，契约 16/s，实测 16/s。见 `characterization/mining_patch.md`。
 
@@ -103,7 +103,7 @@ uv run fgen sweep site --measure --real-map   # 另加真实地图整站（M5：
 - 带：从生产者口前一格出发；消费者口 `lane` 为 `both` 时直连（最后一节从正后方进入），为 `left`/`right` 时在消费者上游补 2 格直带“桩”，从该道一侧垂直汇入（东向带填左道从北侧汇入）。地下带跳跃 2..`max_distance`，不在别人的地下段里落脚，不在爪子/钻机可达格和别人喂入的格上铺带。
 - 管：管 + 地下管（偏移 ≤ `max_underground_distance`），管旁不能有异种液体口。
 - 电：所有电接口按欧氏 MST 连，每条边 A* 找杆链（每跳 ≤ 两端较小的拉线距离）。
-- 实测（`characterization/site.md`）：平地 7.5/s 冶炼列由两个源夹具侧向汇入矿（左）和煤（右），板 7.5/s；真实地图最近铁矿 15 台钻 7.5/s → 带 → 冶炼列，板 7.456/s（99.4%）。
+- 实测（`characterization/site.md`）：平地 7.5/s 冶炼列由两个源夹具侧向汇入矿（左）和煤（右），板 7.5/s；真实地图最近铁矿 13 台钻 6.5/s → 带 → 冶炼列，板 6.48/s（契约 6.56，-1.3%）。注：阶段 6a 任务 1 之后，`choose_mining` 的“不超过 7.5/s 的最高速率”在新布局下落到 13 台（此前 15 台 7.5/s），属于选带规则的粒度问题，未改规则（见 `docs/experiments/6a-task1.md`）。
 
 ## 测试样本
 

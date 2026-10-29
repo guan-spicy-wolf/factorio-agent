@@ -4,32 +4,33 @@ Canonical frame (``axis="x"``, ``flow="+"``): belts run east along rows; each be
 has a row of drills on each side facing it (north side faces S, south side faces N), so
 every drill drops onto the belt (the drop tile comes from ``vector_to_place_result``,
 the lane from where the drop point lies inside the belt tile: the drill's own side).
-With the electric drill::
+With the electric drill (pole ``P`` in a one-tile gap between the drills of its row)::
 
-    DDDDDDPDDDDDD      north drill row (3 tall), P = pole that replaced one drill slot
-    DDDDDD.DDDDDD
-    DDDDDDDDDDDDD
-    >>>>>>>>>>>>>      belt row: flows east; its east end is an output interface
-    DDDDDDDDDDDDD
-    DDDDDDDDDDDDD      south drill row
-    DDDDDDDDDDDDD
+    DDDDDD.DDDDDDP.    north drill row (3 tall); a pole gap every ``s`` columns
+    DDDDDD.DDDDDD..
+    DDDDDD.DDDDDD..
+    >>>>>>>>>>>>>>>    belt row: flows east; its east end is an output interface
+    DDDDDDDDDDDDDDD
+    DDDDDDDDDDDDDDD    south drill row (no gaps when only the north row has poles)
+    DDDDDDDDDDDDDDD
 
 Belt rows repeat every ``period`` = drill rows + belt + drill rows (7 for the 3x3
 drill). Other axes/flows are the canonical frame rotated (``layout.transform``).
 
 Derived from ``GameData`` (no entity names in the logic):
 
-- drill positions: drop tile and footprint from the prototype; a slot gets a drill when
+- drill positions: drop tile and footprint from the prototype; a drill gets a place when
   its search area (``fgen.geom.mining.search_tiles``) holds at least
   ``min_ore_tiles_per_drill`` patch tiles and ``min_ore_amount_per_drill`` ore, no other
   resource the drill would mine too (unless ``allow_mixed``; reasons ``low_ore`` /
   ``mixed_resource``), and its footprint and belt tile are buildable;
-- the x/y phase of the grid is searched (``period`` x drill width options) for the most
-  drills;
-- poles: the in-slot offset whose supply area reaches the drill rows of both sides
-  (else one pole row per side); pole slots along the belt by a greedy sweep under
-  ``maximum_wire_distance``, the same slots in every belt row so rows connect;
-  a pole replaces the drill in its slot (``meta["dropped_drills"]`` reason ``pole_slot``);
+- the x/y phase of the grid is searched (``period`` x ``s`` options) for the most drills;
+- poles: the in-row offset whose supply area reaches the drill rows of both sides
+  (else one pole row per side). A pole needs only its own footprint, so it takes a gap of
+  its width between drills instead of a drill slot: the gap spacing ``s`` is the one within
+  ``maximum_wire_distance`` that fits the most drills per column; the same gap in every belt
+  row so rows connect. A drill whose footprint no pole's supply area covers is dropped
+  (reason ``pole_slot``, which should stay rare);
 - lane capacity: each lane carries the drills of one side; drills beyond
   ``lane capacity / drill rate`` are cut from the upstream end (reason
   ``lane_capacity``) and ``meta["suggestions"]`` names a belt tier or axis that keeps them.
@@ -102,13 +103,15 @@ class _Cand:
 class _Geo:
     """Per-parameter geometry in the canonical frame (independent of the patch)."""
 
-    w: int  # drill width along the belt (slot step)
+    w: int  # drill width along the belt
     period: int
     rows: dict[str, tuple[int, int]]  # side -> drill top-row offset from belt row, height
     anchor_dx: dict[str, int]  # side -> drill anchor x - drop column
     lanes: dict[str, Lane]
-    pole_offsets: dict[str, list[tuple[int, int]]]  # side -> in-slot pole anchors to try
-    pole_sides: tuple[str, ...]  # sides that get poles
+    pole_offsets: dict[str, list[tuple[int, int]]]  # side -> pole anchors to try (ox = 0)
+    pole_sides: tuple[str, ...]  # sides that get poles; their drill rows have pole gaps
+    pw: int  # pole width along the belt (the gap width)
+    s: int  # pole spacing along the belt = gap period (in wire reach)
 
 
 @dataclass
@@ -232,18 +235,26 @@ def _geometry(p: MiningPatchParams, gd: GameData) -> _Geo:
         return footprint.center_for_tile_anchor(gd, p.pole, a).y
 
     wire = pole.wire_distance(gd, p.pole, p.pole)
-    both = {s: [o for o in offsets(s) if set(SIDES) <= o[2]] for s in SIDES}
+    # pole spacing: the gap every ``s`` columns; ``s - pw`` columns hold ``(s - pw) // w``
+    # drills, so take the spacing with the most drills per column (ties: the longer one)
+    if pw + w > math.floor(wire + _EPS):
+        raise Infeasible(f"{p.pole} wire reach {wire:g} is shorter than a drill plus the pole")
+    s = max(
+        range(pw + w, math.floor(wire + _EPS) + 1),
+        key=lambda n: (((n - pw) // w) / n, n),
+    )
+    both = {s_: [o for o in offsets(s_) if set(SIDES) <= o[2]] for s_ in SIDES}
     # one pole row per belt when one in-slot spot supplies both drill rows and the same
     # spot one belt period further is still in wire reach
-    one = [s for s in SIDES if both[s] and period <= wire + _EPS]
+    one = [s_ for s_ in SIDES if both[s_] and period <= wire + _EPS]
     if one:
         side = one[0]
-        pole_offsets = {side: [(ox, oy) for ox, oy, _ in both[side]]}
+        pole_offsets = {side: [(ox, oy) for ox, oy, _ in both[side] if ox == 0]}
         sides: tuple[str, ...] = (side,)
     else:
-        own = {s: [o for o in offsets(s) if s in o[2]] for s in SIDES}
+        own = {s_: [o for o in offsets(s_) if s_ in o[2] and o[0] == 0] for s_ in SIDES}
         if not all(own.values()):
-            raise Infeasible(f"{p.pole} in a drill slot cannot reach the drills next to it")
+            raise Infeasible(f"{p.pole} in a drill row cannot reach the drills next to it")
         # a pole row on each side; pick the rows that keep the longest vertical hop short
         best = None
         for on in own["north"]:
@@ -260,11 +271,37 @@ def _geometry(p: MiningPatchParams, gd: GameData) -> _Geo:
             "south": [(os_[0], os_[1])] + [(o[0], o[1]) for o in own["south"] if o != os_],
         }
         sides = SIDES
-    return _Geo(w, period, rows, anchor_dx, lanes, pole_offsets, sides)
+    return _Geo(w, period, rows, anchor_dx, lanes, pole_offsets, sides, pw, s)
 
 
 def _drill_anchor(g: _Geo, side: str, x: int, yb: int) -> Tile:
     return Tile(x + g.anchor_dx[side], yb + g.rows[side][0])
+
+
+def _pole_col(g: _Geo, phase_x: int, m: int) -> int:
+    """Left column of the pole gap ``m`` (absolute tile x)."""
+    return phase_x + g.s * m
+
+
+def _drill_columns(g: _Geo, side: str, phase: tuple[int, int], x0: int, x1: int) -> list[int]:
+    """Drop columns of the drills on ``side`` within ``[x0, x1]``.
+
+    A side with poles is cut by pole gaps: between two gaps (``s`` apart, ``pw`` wide)
+    drills sit back to back from the gap's right edge. Other sides are a plain grid.
+    """
+    px = phase[0]
+    if side not in g.pole_sides:
+        return [x for x in range(x0, x1 + 1) if (x - px) % g.w == 0]
+    out: list[int] = []
+    for m in range(math.floor((x0 - px) / g.s) - 1, math.ceil((x1 - px) / g.s) + 2):
+        gap = _pole_col(g, px, m)
+        left = gap + g.pw  # footprint left edge of the first drill after the gap
+        while left + g.w - 1 <= gap + g.s - 1:
+            x = left - g.anchor_dx[side]
+            if x0 <= x <= x1:
+                out.append(x)
+            left += g.w
+    return out
 
 
 def _candidates(
@@ -279,10 +316,9 @@ def _candidates(
     lo, hi = bounds_of(ore)
     ox0, oy0, ox1, oy1 = lo.x, lo.y, hi.x, hi.y
     r = gd.entity(p.drill).resource_searching_radius or 0
-    margin = math.ceil(r) + g.w + g.period
-    px, py = phase
+    margin = math.ceil(r) + g.w + g.period + g.s
+    py = phase[1]
     ys = [y for y in range(oy0 - margin, oy1 + margin + 1) if (y - py) % g.period == 0]
-    xs = [x for x in range(ox0 - margin, ox1 + margin + 1) if (x - px) % g.w == 0]
     rows = dict(enumerate(ys))
     count = _counter({t: 1 for t in ore})
     amount = _counter({t: terr.resources[t][1] for t in ore if t in terr.resources})
@@ -302,7 +338,7 @@ def _candidates(
     for i, yb in rows.items():
         for side in SIDES:
             d = FACING[side]
-            for x in xs:
+            for x in _drill_columns(g, side, phase, ox0 - margin, ox1 + margin):
                 a = _drill_anchor(g, side, x, yb)
                 pos = footprint.center_for_tile_anchor(gd, p.drill, a, d)
                 box = mining.search_range(gd, p.drill, pos)
@@ -312,8 +348,7 @@ def _candidates(
                 ts = footprint.tiles_of(gd, p.drill, pos, d)
                 if not terr.can_build_all(ts) or not terr.can_build(Tile(x, yb)):
                     continue
-                k = (x - px) // g.w
-                c = _Cand(i, side, k, x, pos, n, g.lanes[side])
+                c = _Cand(i, side, 0, x, pos, n, g.lanes[side])
                 if amount(*box) < p.min_ore_amount_per_drill:
                     dropped.append(_drop(c, "low_ore", f"{amount(*box)} ore in its area"))
                 elif mixed is not None and not p.allow_mixed and mixed(*box):
@@ -369,50 +404,13 @@ def _drop(c: _Cand, reason: str, detail: str = "") -> dict[str, Any]:
     return out
 
 
-def _pole_slots(
-    p: MiningPatchParams, gd: GameData, g: _Geo, cands: list[_Cand], phase_x: int
-) -> list[int] | None:
-    """Global pole slot indices: a greedy sweep so every candidate's columns meet some
-    pole's supply columns and consecutive poles are in wire reach (same row)."""
+def _pole_slots(g: _Geo, cands: list[_Cand], phase_x: int) -> list[int]:
+    """Pole gap indices ``m`` (see ``_pole_col``) whose supply can reach some candidate."""
     if not cands:
         return []
-    side = g.pole_sides[0]
-    ox, _ = g.pole_offsets[side][0]
-    pw, _ = footprint.size(gd, p.pole)
-
-    def pole_cx(j: int) -> float:
-        return phase_x + g.w * j + g.anchor_dx[side] + ox + pw / 2
-
-    def cover(j: int) -> tuple[int, int]:
-        x0, _, x1, _ = pole.supply_range(gd, p.pole, Vec2(pole_cx(j), 0.5))
-        return x0, x1
-
-    wire = pole.wire_distance(gd, p.pole, p.pole)
-    spans = sorted(
-        {(c.x + g.anchor_dx[c.side], c.x + g.anchor_dx[c.side] + g.w - 1) for c in cands},
-        key=lambda s: s[1],
-    )
-    kmin = min(c.k for c in cands) - 3
-    kmax = max(c.k for c in cands) + 3
-    placed: list[int] = []
-    covered = [False] * len(spans)
-    while not all(covered):
-        u = covered.index(False)
-        a, b = spans[u]
-        js = [j for j in range(kmin, kmax + 1) if cover(j)[0] <= b and cover(j)[1] >= a]
-        if placed:
-            js = [
-                j for j in js if j > placed[-1] and pole_cx(j) - pole_cx(placed[-1]) <= wire + _EPS
-            ]
-        if not js:
-            return None
-        j = max(js)
-        placed.append(j)
-        x0, x1 = cover(j)
-        for n, (sa, sb) in enumerate(spans):
-            if sa <= x1 and sb >= x0:
-                covered[n] = True
-    return placed
+    lo = min(c.x + g.anchor_dx[c.side] for c in cands)
+    hi = max(c.x + g.anchor_dx[c.side] + g.w - 1 for c in cands)
+    return list(range(math.floor((lo - phase_x) / g.s) - 1, math.ceil((hi - phase_x) / g.s) + 2))
 
 
 def _place_poles(
@@ -424,21 +422,18 @@ def _place_poles(
     cands: list[_Cand],
     slots: list[int],
     phase_x: int,
-) -> tuple[list[Placement], set[tuple[int, str, int]]]:
-    """Poles per belt row (only over the row's drills, extended so neighbouring rows
-    share a slot); returns poles and the (row, side, k) slots they took."""
+) -> list[Placement]:
+    """Poles in the pole gaps, per belt row: only over the row's drills, extended so that
+    neighbouring rows share a gap (same column in every row, so the rows connect)."""
     if not slots:
-        return [], set()
+        return []
     by_row: dict[int, list[_Cand]] = {}
     for c in cands:
         by_row.setdefault(c.row, []).append(c)
     used = sorted(by_row)
-    pw, _ = footprint.size(gd, p.pole)
-    side0 = g.pole_sides[0]
-    ox0, _ = g.pole_offsets[side0][0]
 
     def window(j: int) -> tuple[int, int]:
-        cx = phase_x + g.w * j + g.anchor_dx[side0] + ox0 + pw / 2
+        cx = _pole_col(g, phase_x, j) + g.pw / 2
         x0, _, x1, _ = pole.supply_range(gd, p.pole, Vec2(cx, 0.5))
         return x0, x1
 
@@ -473,28 +468,24 @@ def _place_poles(
             final[r] = (prev[1], prev[1])
             prev = final[r]
     poles: list[Placement] = []
-    taken: set[tuple[int, str, int]] = set()
+    _, ph = footprint.size(gd, p.pole)
     for r, (a, b) in final.items():
         yb = rows[r]
         for j in slots:
             if not a <= j <= b:
                 continue
             for side in g.pole_sides:
-                top = yb + g.rows[side][0]
-                ax = phase_x + g.w * j + g.anchor_dx[side]
-                for ox, oy in g.pole_offsets[side] + [
-                    (x, y)
-                    for y in range(g.rows[side][1])
-                    for x in range(g.w - pw + 1)
-                    if (x, y) not in g.pole_offsets[side]
-                ]:
-                    anchor = Tile(ax + ox, top + oy)
+                top, h = g.rows[side]
+                ax = _pole_col(g, phase_x, j)
+                oys = list(dict.fromkeys([oy for _, oy in g.pole_offsets[side]]))
+                oys += [oy for oy in range(h - ph + 1) if oy not in oys]
+                for oy in oys:
+                    anchor = Tile(ax, yb + top + oy)
                     cen = footprint.center_for_tile_anchor(gd, p.pole, anchor)
                     if terr.can_build_all(footprint.tiles_of(gd, p.pole, cen, Direction.N)):
                         poles.append(Placement(p.pole, cen))
-                        taken.add((r, side, j))
                         break
-    return poles, taken
+    return poles
 
 
 def _build(
@@ -519,16 +510,19 @@ def _build(
         cands = [c for c in cands if c.row in keep_rows]
     if not cands:
         return _Result([], [], dropped, 0, [], phase, (0,))
-    slots = _pole_slots(p, gd, g, cands, phase[0])
-    if slots is None:
-        return None
-    poles, taken = _place_poles(p, gd, g, terr, rows, cands, slots, phase[0])
+    slots = _pole_slots(g, cands, phase[0])
+    poles = _place_poles(p, gd, g, terr, rows, cands, slots, phase[0])
+    # a drill stays only if some pole's supply area covers its footprint
+    supply: set[Tile] = set()
+    for q in poles:
+        supply |= pole.supply_tiles(gd, p.pole, q.position)
     kept: list[_Cand] = []
     for c in cands:
-        if (c.row, c.side, c.k) in taken:
-            dropped.append(_drop(c, "pole_slot"))
-        else:
+        fp = footprint.tiles_of(gd, p.drill, c.pos, FACING[c.side])
+        if fp & supply:
             kept.append(c)
+        else:
+            dropped.append(_drop(c, "pole_slot", "no pole supplies its footprint"))
     # lane capacity: one lane per side, cut from the upstream end
     rate = mining.drill_rate(gd, p.drill, p.resource)
     cap = tp.belt_lane_capacity(gd, p.belt)
@@ -625,7 +619,7 @@ class MiningPatch:
         best: _Result | None = None
         power_failed = False
         for py in range(g.period):
-            for px in range(g.w):
+            for px in range(g.s):
                 res = _build(p, gd, g, terr, ore, (px, py))
                 if res is None:
                     power_failed = True

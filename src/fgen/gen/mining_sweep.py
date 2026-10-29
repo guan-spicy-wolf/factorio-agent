@@ -221,6 +221,42 @@ def _real_map_section(r: dict[str, Any]) -> list[str]:
     return out
 
 
+BEFORE_FILE = "mining_patch_before.jsonl"  # snapshot of the rows before pole gaps (task 1)
+
+
+def _before_after(rows: list[dict[str, Any]], before: dict[str, dict[str, Any]]) -> list[str]:
+    """Drills, poles and ``pole_slot`` losses per case, before (snapshot) vs now."""
+    if not before:
+        return []
+
+    def slots(c: dict[str, Any]) -> int:
+        return int(c["dropped_by_reason"].get("pole_slot", 0))
+
+    out = [
+        "## Before vs after (pole placement)",
+        "",
+        "Before: the pole took a whole drill slot (`pole_slot`). After: the pole sits in a "
+        "1-tile gap between two drills; `pole_slot` now counts only drills whose footprint "
+        "no pole's supply area covers. Before rows: `characterization/mining_patch_before.jsonl`.",
+        "",
+        "| case | drills before → after | poles before → after | pole_slot before → after |",
+        "| --- | --- | --- | --- |",
+    ]
+    tot = [0, 0, 0, 0]
+    for r in rows:
+        b = before.get(r["case"])
+        if not b:
+            continue
+        bc, c = b["contract"], r["contract"]
+        out.append(
+            f"| {r['case']} | {bc['drills']} → {c['drills']} | {bc['poles']} → {c['poles']} | "
+            f"{slots(bc)} → {slots(c)} |"
+        )
+        tot = [tot[0] + bc["drills"], tot[1] + c["drills"], tot[2] + slots(bc), tot[3] + slots(c)]
+    out.append(f"| total | {tot[0]} → {tot[1]} | - | {tot[2]} → {tot[3]} |")
+    return [*out, ""]
+
+
 def write(
     gd: GameData,
     out_dir: Path,
@@ -254,6 +290,7 @@ def write(
         "",
         *_table(rows),
         "",
+        *_before_after(all_rows, _load_previous(out_dir / BEFORE_FILE)),
     ]
     for case in CASES:
         r = next(x for x in rows if x["case"] == case.name)

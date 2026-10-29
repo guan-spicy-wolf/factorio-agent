@@ -137,10 +137,19 @@ def test_pole_rows_derived_from_supply_area(gd):
         assert len(pole_rows) <= len(belt_rows) + 1
     small = generate(MiningPatchParams(), gd, patch, terrain)
     medium = generate(MiningPatchParams(pole="medium-electric-pole"), gd, patch, terrain)
-    # the medium pole's wider supply/longer wire costs fewer drill slots
-    assert (
-        medium.meta["dropped_by_reason"]["pole_slot"] < small.meta["dropped_by_reason"]["pole_slot"]
-    )
+    # poles sit in gaps between drills, so they cost no drill slot at all
+    assert "pole_slot" not in small.meta["dropped_by_reason"]
+    assert "pole_slot" not in medium.meta["dropped_by_reason"]
+    assert medium.meta["anchor"]["drills"] >= small.meta["anchor"]["drills"]
+
+
+def test_big_drill_with_medium_pole(gd):
+    """Period 11 > medium wire 9: the big drill still gets poles on both sides."""
+    patch, terrain = _patch(paint.rectangle(0, 0, 30, 30, AMOUNT))
+    p = MiningPatchParams(drill="big-mining-drill", pole="medium-electric-pole")
+    unit = generate(p, gd, patch, terrain)
+    _check_unit(unit, gd, p, patch, terrain)
+    assert unit.meta["anchor"]["drills"] > 0
 
 
 def test_lane_capacity_truncation(gd):
