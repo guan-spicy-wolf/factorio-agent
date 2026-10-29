@@ -504,6 +504,7 @@ def _solve_height(
     name, period, objective: the preset key of the period when ``preset`` is given)."""
     cp_model = _cp()
     spec, f = ctx.spec, ctx.flows
+    t_build = time.monotonic()
     m = cp_model.CpModel()
     tiles = [(x, y) for y in range(h) for x in range(w)]
     occ: dict[tuple[int, int], list[Any]] = defaultdict(list)
@@ -858,6 +859,7 @@ def _solve_height(
     # the poles must be one wire network: solved without it, then for every pole set
     # that splits, a cut "some pole on the boundary of this component" is added
     t_solve = time.monotonic()
+    stats.nodes["cp_build_ms"] += round((t_solve - t_build) * 1000)
     t_end = t_solve + seconds
     det_used = 0.0
     while True:
@@ -884,10 +886,13 @@ def _solve_height(
             stats.pruned["cp_wire_cuts"] += 1
     name = solver.status_name(status)
     stats.nodes["cp_models"] += 1
+    stats.nodes["cp_solve_ms"] += round((time.monotonic() - t_solve) * 1000)
     if DEBUG:
         print(
-            f"  h={h} w<={w} {[b.materials for b in belts]} {name} "
-            f"{time.monotonic() - t_solve:.2f}s branches {solver.num_branches}"
+            f"  h={h} w={w_min}..{w} {'' if power else 'screen '}{[b.materials for b in belts]} "
+            f"{name} build {t_solve - t_build:.2f}s solve {time.monotonic() - t_solve:.2f}s "
+            f"det {det_used:.2f} vars {len(m.proto.variables)} branches {solver.num_branches}",
+            flush=True,
         )
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return name, None, math.inf
@@ -1300,64 +1305,104 @@ def _proved(
     max_height: int,
 ) -> list[Period]:
     """The phase-4b driver (``compact``, proven): heights up, the pole-free screen, then
-    fixed widths up, the first feasible one optimal for its height."""
+    fixed widths up, the first feasible one optimal for its height. Independent models
+    (the screens of one height, the fixed widths in chunks of ``PROCS``) run in forked
+    processes (plan-phase7 B): every model is the same deterministic CP-SAT solve, only
+    the wall clock changes."""
     deadline = t0 + time_limit
     mh = max(h for _, h in ctx.msize)
     found: list[tuple[float, Period]] = []
     best_area: int | None = None
-    for h in range(mh + 1, max_height + 1):
-        ts = time.monotonic()
-        n_found = 0
-        w_hi = max_width if best_area is None else min(max_width, best_area // h)
-        for belts in skeletons:
-            w_lo = _bounds(ctx, h, belts, w_hi)
-            if w_lo > w_hi:
-                stats.pruned["area_bound"] += 1
-                continue
+    pool = _Pool(ctx, workers, stats)
+    try:
+        for h in range(mh + 1, max_height + 1):
+            ts = time.monotonic()
+            n_found = 0
+            w_hi = max_width if best_area is None else min(max_width, best_area // h)
+            todo = []
+            for belts in skeletons:
+                w_lo = _bounds(ctx, h, belts, w_hi)
+                if w_lo > w_hi:
+                    stats.pruned["area_bound"] += 1
+                    continue
+                todo.append((belts, w_lo))
             left = deadline - time.monotonic()
-            if left <= 0:
+            if left <= 0 and todo:
                 stats.timed_out = True
                 break
             # screen every width of this height at once, without the poles (a relaxation:
-            # infeasible there = infeasible), then the fixed widths smallest first
-            status, _, _ = _solve_height(
-                ctx, h, w_lo, w_hi, belts, min(left, screen_seconds), workers, stats, False, False
+            # infeasible there = infeasible), every skeleton side by side
+            screens = pool.run(
+                [
+                    dict(h=h, w_min=w_lo, w=w_hi, belts=belts, seconds=min(left, screen_seconds))
+                    for belts, w_lo in todo
+                ],
+                optimize=False,
+                power=False,
             )
-            stats.pruned[f"cp_screen_{status.lower()}"] += 1
-            if status == "INFEASIBLE":
-                continue
-            per2 = None
-            for wf in range(w_lo, w_hi + 1):
-                left = deadline - time.monotonic()
-                status, per2, obj = _solve_height(
-                    ctx, h, wf, wf, belts, left, workers, stats, optimize=True
-                )
-                stats.pruned[f"cp_{status.lower()}"] += 1
-                if status == "UNKNOWN" or (per2 is not None and not per2.meta["proved_optimal"]):
-                    stats.timed_out = True
-                if per2 is not None or stats.timed_out:
+            for (belts, w_lo), (status, _, _) in zip(todo, screens, strict=True):
+                stats.pruned[f"cp_screen_{status.lower()}"] += 1
+                if status == "INFEASIBLE":
+                    continue
+                w_lo = _bounds(ctx, h, belts, w_hi)  # w_hi may have shrunk
+                if w_lo > w_hi:
+                    stats.pruned["area_bound"] += 1
+                    continue
+                # the fixed widths smallest first, in chunks solved side by side for a
+                # first period each (a feasible width is cheap to show, its optimum is
+                # not): the smallest feasible one is the height's width, as in the
+                # sequential scan; then that width's phase-4b model with the objective
+                per, obj, w_min = None, math.inf, None
+                for w0 in range(w_lo, w_hi + 1, pool.procs):
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        stats.timed_out = True
+                        break
+                    ws = list(range(w0, min(w0 + pool.procs, w_hi + 1)))
+                    outs = pool.run(
+                        [dict(h=h, w_min=wf, w=wf, belts=belts, seconds=left) for wf in ws],
+                        optimize=False,
+                    )
+                    for wf, (status, per2, _) in zip(ws, outs, strict=True):
+                        stats.pruned[f"cp_first_{status.lower()}"] += 1
+                        if per2 is not None:
+                            w_min = wf
+                            break
+                        if status != "INFEASIBLE":
+                            stats.timed_out = True
+                            break
+                    if w_min is not None or stats.timed_out:
+                        break
+                if w_min is not None and not stats.timed_out:
+                    left = deadline - time.monotonic()
+                    status, per, obj = _solve_height(
+                        ctx, h, w_min, w_min, belts, left, workers, stats, optimize=True
+                    )
+                    stats.pruned[f"cp_{status.lower()}"] += 1
+                    if status == "UNKNOWN" or (per is not None and not per.meta["proved_optimal"]):
+                        stats.timed_out = True
+                if per is not None:
+                    per.meta["seconds_to_find"] = round(time.monotonic() - t0, 3)
+                    found.append((obj, per))
+                    n_found += 1
+                    best_area = per.area if best_area is None else min(best_area, per.area)
+                    w_hi = min(w_hi, best_area // h)
+                if stats.timed_out:
                     break
-            per = per2
-            if per is not None:
-                per.meta["seconds_to_find"] = round(time.monotonic() - t0, 3)
-                found.append((obj, per))
-                n_found += 1
-                best_area = per.area if best_area is None else min(best_area, per.area)
-                w_hi = min(w_hi, best_area // h)
+            stats.sizes.append(
+                {
+                    "width": w_hi,
+                    "height": h,
+                    "seconds": round(time.monotonic() - ts, 3),
+                    "nodes": 0,
+                    "found": n_found,
+                    "budget_cuts": 0,
+                }
+            )
             if stats.timed_out:
                 break
-        stats.sizes.append(
-            {
-                "width": w_hi,
-                "height": h,
-                "seconds": round(time.monotonic() - ts, 3),
-                "nodes": 0,
-                "found": n_found,
-                "budget_cuts": 0,
-            }
-        )
-        if stats.timed_out:
-            break
+    finally:
+        pool.close()
     stats.seconds = time.monotonic() - t0
     # the candidates in the key's order (area, poles, inserters, then cost); the models
     # above minimise the phase-4b objective, which leaves a tier tie to the solver
@@ -1367,6 +1412,63 @@ def _proved(
         per.meta.setdefault("metrics", presets.metrics(per, ctx.gd, sc))
     found.sort(key=lambda op: sc.key("compact", op[1].meta["metrics"]))
     return [p for _, p in found]
+
+
+PROCS = 4  # proof driver: independent models solved in this many forked processes
+_WORKER: dict[str, Any] = {}  # the forked workers' context (set before the fork)
+
+
+def _work(task: dict[str, Any]) -> tuple[str, Period | None, float, SolveStats]:
+    st = SolveStats()
+    out = _solve_height(_WORKER["ctx"], stats=st, workers=_WORKER["workers"], **task)
+    return (*out, st)
+
+
+class _Pool:
+    """Independent CP-SAT models side by side in forked processes (``PROCS``; one: in
+    this process). Each model is built and solved exactly as alone, so the statuses and
+    periods do not depend on the process count; the stats are merged in task order."""
+
+    def __init__(self, ctx: _Ctx, workers: int, stats: SolveStats) -> None:
+        self.stats, self.pool = stats, None
+        self.procs = max(1, PROCS)
+        if self.procs > 1:
+            import multiprocessing as mp
+
+            _WORKER.update(ctx=ctx, workers=workers)
+            self.pool = mp.get_context("fork").Pool(self.procs)
+        self.ctx, self.workers = ctx, workers
+
+    def run(self, tasks: list[dict[str, Any]], **kw: Any) -> list[tuple[str, Period | None, float]]:
+        if not tasks:
+            return []
+        tasks = [{**t, **kw} for t in tasks]
+        if self.pool is None:
+            outs = [
+                (*_solve_height(self.ctx, stats=self.stats, workers=self.workers, **t), None)
+                for t in tasks
+            ]
+        else:
+            outs = self.pool.map(_work, tasks, chunksize=1)
+        res = []
+        for status, per, obj, st in outs:
+            if st is not None:
+                _merge(self.stats, st)
+            res.append((status, per, obj))
+        return res
+
+    def close(self) -> None:
+        if self.pool is not None:
+            self.pool.terminate()
+            self.pool.join()
+            self.pool = None
+
+
+def _merge(into: SolveStats, st: SolveStats) -> None:
+    into.nodes.update(st.nodes)
+    into.pruned.update(st.pruned)
+    for k, v in st.variables.items():
+        into.variables[k] = max(into.variables.get(k, 0), v) if k.endswith("_max") else v
 
 
 # deterministic boxes: budget units (CP-SAT deterministic seconds plus the model charge

@@ -36,6 +36,7 @@ uv run --extra solver fgen gen direct-chain --rate 2 --palette given      # 只�
 uv run --extra solver fgen gen direct-chain --rate 2 --exclude substation,big-electric-pole   # 收窄调色板
 uv run --extra solver fgen gen direct-chain --rate 2 --simulate           # 生成后在 headless 里实测（默认不起仿真）
 uv run --extra solver fgen sweep palette                  # 写 characterization/palette.{jsonl,md}
+uv run --extra solver fgen sweep solver-time [--only CASE,...] [--procs 1,4]   # 求解器耗时表 characterization/solver_time.{jsonl,md}（不起服务器）
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
 uv run fgen render <蓝图字符串或文件> [--rulers]
