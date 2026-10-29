@@ -51,8 +51,10 @@ variable ``bt[b, t]`` (lane capacities become constraints on it), and a belt row
 hold underground pairs of its tier (``ugi``/``ugo``/``gap`` per column; inserters pick
 up and drop only on plain belt tiles). With one tier of each and no undergrounds the
 model is exactly the phase-4b one. The objective is a preset of
-:mod:`fgen.solve.preset` (one integer key; ``compact`` with ``prove=True`` keeps the
-phase-4b objective and driver).
+:mod:`fgen.solve.preset` (one integer key; ``compact`` ends in the palette cost, so a
+tie in area, poles and inserters takes the cheapest tiers; ``compact`` with
+``prove=True`` keeps the phase-4b objective and driver, whose models do not break that
+tie, and only ranks its candidates by the key).
 
 **Drivers.** ``prove=True`` (characterization): the phase-4b driver above for
 ``compact``; for the other presets every (height, skeleton, width) is solved to
@@ -1357,7 +1359,13 @@ def _proved(
         if stats.timed_out:
             break
     stats.seconds = time.monotonic() - t0
-    found.sort(key=lambda op: (op[1].area, op[1].meta["poles"], op[1].meta["inserters"]))
+    # the candidates in the key's order (area, poles, inserters, then cost); the models
+    # above minimise the phase-4b objective, which leaves a tier tie to the solver
+    sc = ctx.scale
+    assert sc is not None
+    for _, per in found:
+        per.meta.setdefault("metrics", presets.metrics(per, ctx.gd, sc))
+    found.sort(key=lambda op: sc.key("compact", op[1].meta["metrics"]))
     return [p for _, p in found]
 
 

@@ -3,10 +3,22 @@
 The hard constraints (rates, ratios, lane capacities) never change; a preset only says
 how feasible periods are ranked. Each preset is a **lexicographic list of terms**:
 
-- ``compact``: area, then poles, then inserters (the phase-4a/4b objective);
+- ``compact``: area, then poles, then inserters (the phase-4a/4b objective), then the
+  total entity cost as the tie-break (the 4c record: with the objective alone, a period
+  whose area, poles and inserters are already fixed took the dearest belt and pole
+  tiers of the palette; the cost term only ranks those ties, it never trades a tile,
+  a pole or an inserter for a cheaper entity);
 - ``cheap``: total entity cost (:mod:`fgen.data.cost`, raw units through the recipes),
   then the compact terms;
 - ``simple``: fewest distinct entity kinds, then the compact terms.
+
+The tie-break is part of the key, so it is applied wherever the key is: the anytime
+driver's models and its final polish (:mod:`fgen.solve.cpsat`), and the ranking of
+every driver's candidates. Two places keep ties unbroken by the model itself: the
+proof driver (``prove=True``, the phase-4b objective the characterization rows were
+solved under; its candidates are still ranked by the key) and the exhaustive backend
+(:mod:`fgen.solve.cycle`), which takes one tier of each type, so its cost is a function
+of the entity count it already ranks by.
 
 Terms (all over the period's non-machine entities; the machines are fixed by the spec):
 ``area`` = width x height; ``poles``; ``inserters`` = inserters + pipes (the 4b/5a
@@ -27,7 +39,7 @@ from fgen.data import cost as costmod
 from fgen.data.schema import GameData
 
 PRESETS: dict[str, tuple[str, ...]] = {
-    "compact": ("area", "poles", "inserters"),
+    "compact": ("area", "poles", "inserters", "cost"),
     "cheap": ("cost", "area", "poles", "inserters"),
     "simple": ("kinds", "area", "poles", "inserters"),
 }

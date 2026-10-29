@@ -12,6 +12,7 @@ from fgen.data import cost
 from fgen.gen import direct_chain as dc
 from fgen.gen import direct_chain_sweep as dcs
 from fgen.gen import fluid_sweep as fs
+from fgen.gen import throughput as tp
 from fgen.geom import footprint
 from fgen.solve import cpsat
 from fgen.solve.period import (
@@ -196,3 +197,46 @@ def test_gen_does_not_simulate_by_default(monkeypatch, capsys):
     args = cli.build_parser().parse_args(["gen", "direct-chain"])
     assert args.simulate is False and args.preset == "compact" and not args.prove
     assert args.palette == "full"
+
+
+def test_compact_key_ends_in_the_cost(gd):
+    """``compact`` ranks area, poles, inserters, and only then the palette cost: two
+    periods alike in the first three rank by cost; a cheaper period never outranks one
+    with a tile, a pole or an inserter less."""
+    sc = scale_for(gd, ["fast-inserter", "small-electric-pole", "transport-belt"], 32, 16)
+    a = {"area": 100, "poles": 9, "inserters": 30, "cost": 10, "kinds": 3}
+    assert PRESETS["compact"] == ("area", "poles", "inserters", "cost")
+    assert sc.key("compact", {**a, "cost": 9}) < sc.key("compact", a)
+    assert sc.key("compact", a) < sc.key("compact", {**a, "area": 101, "cost": 0})
+    assert sc.key("compact", a) < sc.key("compact", {**a, "poles": 10, "cost": 0})
+    assert sc.key("compact", a) < sc.key("compact", {**a, "inserters": 31, "cost": 0})
+
+
+@needs_ortools
+def test_compact_tie_takes_the_cheaper_tier(gd):
+    """A one-machine period whose primary belt is the express tier, the yellow belt as
+    an extra: every lane fits the slowest tier, so the belt tier changes neither the
+    area, the poles nor the inserters, and ``compact`` must take the cheaper one (the
+    4c record: with no cost term, the solver took the dearest tier of such ties)."""
+    spec = CycleSpec(
+        (Stage("electronic-circuit", AM1, 1),),
+        belt="express-transport-belt",
+        extra_belts=("transport-belt",),
+    )
+    f = flows(spec, gd)
+    yellow = tp.belt_lane_capacity(gd, "transport-belt")
+    assert max(f.input_rate.values()) <= yellow and max(f.output_rate.values()) <= yellow
+    assert cost.entity_cost(gd, "transport-belt") < cost.entity_cost(gd, "express-transport-belt")
+    res = cpsat.solve(spec, gd, time_limit=30)
+    per = res.best
+    assert per is not None and check_period(per, gd) == []
+    assert {b.belt for b in per.belts} == {"transport-belt"}
+    assert not any(p.name == "express-transport-belt" for p in per.placements)
+    # the metrics are the key's terms: the same period on the express tier costs more
+    # and ranks behind, every other term being equal
+    mt = per.meta["metrics"]
+    sc = scale_for(gd, ["fast-inserter", "small-electric-pole", *spec.belts], 32, 16)
+    assert mt == metrics(per, gd, sc)
+    n_belt = sum(1 for p in per.placements if p.name == "transport-belt")
+    dear = mt["cost"] + n_belt * (sc.cost["express-transport-belt"] - sc.cost["transport-belt"])
+    assert sc.key("compact", mt) < sc.key("compact", {**mt, "cost": dear})

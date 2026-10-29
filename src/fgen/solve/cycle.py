@@ -991,7 +991,10 @@ def solve(
 ) -> SolveResult:
     """Smallest periods for ``spec`` (up to ``candidates`` of the smallest feasible
     area, fewest entities first). ``repeats``: how many periods will share each belt
-    lane (lane capacity is checked for that many)."""
+    lane (lane capacity is checked for that many). No preset: this backend takes one
+    tier of each type, so the ``compact`` cost tie-break of :mod:`fgen.solve.preset`
+    has no tier to choose here (its cost is a function of the entity count it ranks by
+    already)."""
     if not spec.single_tier():
         raise ValueError(
             "the exhaustive search takes one pole tier and one belt tier, no undergrounds "
