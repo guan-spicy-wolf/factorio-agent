@@ -42,6 +42,7 @@ from fgen.gen.mining_patch import MiningPatchParams
 from fgen.gen.mining_patch import generate as gen_mining
 from fgen.gen.smelting_row import SmeltingRowParams
 from fgen.gen.smelting_row import generate as gen_smelting
+from fgen.geom import belt as beltgeom
 from fgen.geom.vec import Tile
 from fgen.layout.model import Interface, PlacedUnit, Unit
 from fgen.layout.render import LEGEND, TERRAIN_LEGEND, to_ascii
@@ -490,14 +491,16 @@ def predict(site: Site, gd: GameData, rs: RuntimeState) -> dict[str, float]:
 def fill_time(site: Site, conn: Connection, gd: GameData, rs: RuntimeState) -> dict[str, Any]:
     """How long (game seconds) until every belt between producers and consumers has
     backed up, i.e. until the producers run at what their consumers draw: per item link
-    whose source can deliver more than is drawn, the belt buffer (route tiles of the
-    link plus the consumer's own belt tiles, at ``belt_items_per_tile`` per tile, one
-    lane when the producer uses one) over the surplus; the largest wins. Machine input
-    slots are not counted (a few items). The contract has no buffer or start-up field
-    (plan-phase3a §6 item 8); this is the site-level stand-in for it."""
+    whose source can deliver more than is drawn, the items its belts hold when full over
+    the surplus; the largest wins. Machine input slots are not counted (a few items).
+
+    Reads only the interface contracts and the routing result: the link's buffer is
+    the producer's output ``buffer_items`` + the route's belt tiles (``conn``) at
+    ``belt_items_per_tile`` over the lanes the producer fills + the consumer's input
+    ``buffer_items`` (scaled down when the producer fills fewer lanes than the input
+    belt has). A source fixture is on demand: nothing backs up on its links."""
     units = {u.name: u.unit for u in site.units}
     per_tile = float(gd.constant("belt_items_per_tile"))
-    lanes_total = float(gd.constant("belt_lanes"))
     routes = {r.link: r for r in conn.routes}
     fl = flows(site, gd, rs)
     worst: dict[str, Any] = {"seconds": 0.0, "link": None}
@@ -511,20 +514,23 @@ def fill_time(site: Site, conn: Connection, gd: GameData, rs: RuntimeState) -> d
             surplus = got - drawn
             if surplus <= 1e-9:
                 continue
-            src = site.interface(ln.src)
-            lanes = 1.0 if src.lane in ("left", "right") else lanes_total
+            src, dst = site.interface(ln.src), site.interface(ln.dst)
+            if src.buffer_items is None or dst.buffer_items is None:
+                raise ValueError(f"link {ln.label}: an end has no buffer_items")
             r = routes.get(ln.label)
             route_tiles = sum(
                 1
                 for p in (r.placements if r else [])
                 if gd.entity(p.name).type in ("transport-belt", "underground-belt")
             )
-            own = sum(
-                1
-                for p in units[n].layout.placements
-                if gd.entity(p.name).type in ("transport-belt", "underground-belt")
-            )
-            items = (route_tiles + own) * per_tile * lanes / lanes_total
+            lanes = beltgeom.lane_share(gd, src.lane)
+            items_in = dst.buffer_items * min(1.0, lanes / beltgeom.lane_share(gd, dst.lane))
+            parts = {
+                "out": src.buffer_items,
+                "route": route_tiles * per_tile * lanes,
+                "in": items_in,
+            }
+            items = sum(parts.values())
             secs = items / surplus
             details.append(
                 {
@@ -532,6 +538,7 @@ def fill_time(site: Site, conn: Connection, gd: GameData, rs: RuntimeState) -> d
                     "supply": round(got, 4),
                     "drawn": round(drawn, 4),
                     "buffer_items": round(items),
+                    "parts": {k: round(v) for k, v in parts.items()},
                     "seconds": round(secs),
                 }
             )

@@ -34,6 +34,18 @@ def lane_items_per_second(gd: GameData, name: str) -> float:
     return items_per_second(gd, name) / gd.constant("belt_lanes")
 
 
+def lane_share(gd: GameData, lane: str | None) -> float:
+    """Share of a belt's capacity that lies on the lanes a port with ``lane`` uses: one
+    lane of ``belt_lanes`` for ``left`` / ``right``, the whole belt otherwise."""
+    return 1.0 / gd.constant("belt_lanes") if lane in ("left", "right") else 1.0
+
+
+def run_items(gd: GameData, tiles: int, lane: str | None) -> float:
+    """Items a run of ``tiles`` belt tiles (underground ends count as tiles, the gap
+    between them holds nothing) holds when full on the lanes ``lane`` uses."""
+    return tiles * gd.constant("belt_items_per_tile") * lane_share(gd, lane)
+
+
 def underground_partner_range(gd: GameData, name: str) -> int:
     """Largest entrance-to-exit distance (in tiles) for an underground belt pair."""
     e = gd.entity(name)

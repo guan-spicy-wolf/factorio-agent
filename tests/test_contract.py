@@ -186,11 +186,14 @@ def test_contract_invariants(gd):
         "contract.rate"
     }
     assert codes(rate_profile=RateProfile.on_demand()) == {"contract.rate"}  # rate 5.0
-    one = replace(i, lane="left")
+    one = replace(i, lane="left", buffer_items=beltgeom.run_items(gd, 3, "left"))
     u = replace(
         good, interfaces=[replace(one, rate_profile=RateProfile.fixed(5.0, {"right": 5.0}))]
     )
     assert {v.code for v in check_contract(u, gd)} == {"contract.rate"}
+    assert codes(buffer_items=None) == {"contract.buffer"}
+    assert codes(buffer_items=i.buffer_items + 1) == {"contract.buffer"}
+    assert codes(lane="left") == {"contract.buffer"}  # same run, half the lanes
     assert codes(port_group="nope") == {"contract.group"}
     # a group spans one port tile
     two = replace(i, tile=Tile(1, 0))
@@ -334,3 +337,102 @@ def test_power_poles_from_the_contract(gd):
     site = Site(flat(-10, -10, 10, 10), [PlacedUnit("p", bad, Tile(0, 0))], [])
     with pytest.raises(rbelt.RouteError):
         power_poles(site, gd)
+
+
+# ---- buffer_items (phase 8) ----------------------------------------------------------
+
+
+def _belts(gd, spec: list[tuple[str, int, int, Direction, str | None]]):
+    out = []
+    for name, x, y, d, kind in spec:
+        extra = {"type": kind} if kind else {}
+        out.append(Placement(name, Tile(x, y).center(), d, extra))
+    return out
+
+
+def _port(gd, tile, role, lane, ps, **kw):
+    return Unit(
+        Layout(ps),
+        [
+            Interface(
+                "item",
+                "iron-plate",
+                tile,
+                Direction.E,
+                lane,
+                1.0,
+                role,
+                entity="transport-belt",
+                space=PortSpace.item("direct"),
+                **kw,
+            )
+        ],
+    )
+
+
+def test_buffer_items_counts_the_belt_run_behind_the_port(gd):
+    from fgen.layout.belt_run import run_tiles
+
+    E = Direction.E
+    ug = "underground-belt"
+    # input: the port tile to the end of the belt, an underground pair counts its two
+    # ends, not the gap; the tail past the last pickup counts too
+    ps = _belts(
+        gd,
+        [("transport-belt", 0, 0, E, None), (ug, 1, 0, E, "input"), (ug, 4, 0, E, "output")]
+        + [("transport-belt", x, 0, E, None) for x in range(5, 8)],
+    )
+    assert run_tiles(Layout(ps), gd, Tile(0, 0), "input") == 6
+    assert run_tiles(Layout(ps), gd, Tile(5, 0), "input") == 3
+    per = beltgeom.run_items(gd, 1, "both")
+    assert beltgeom.run_items(gd, 6, "left") == pytest.approx(6 * per / 2)
+    ok = _port(gd, Tile(0, 0), "input", "left", ps, buffer_items=beltgeom.run_items(gd, 6, "left"))
+    assert not [v for v in check_contract(ok, gd) if v.code == "contract.buffer"]
+    short = replace(ok, interfaces=[replace(ok.interfaces[0], buffer_items=per)])
+    assert {v.code for v in check_contract(short, gd)} >= {"contract.buffer"}
+    # output: only from the first tile an inserter drops onto
+    belt = [("transport-belt", x, 1, E, None) for x in range(6)]
+    ins = Placement("inserter", Tile(2, 0).center(), Direction.N)  # drops on (2, 1)
+    lay = Layout([*_belts(gd, belt), ins])
+    assert run_tiles(lay, gd, Tile(5, 1), "output") == 4
+    out = _port(gd, Tile(5, 1), "output", "right", [])
+    out = replace(out, layout=lay)
+    out = replace(
+        out,
+        interfaces=[replace(out.interfaces[0], buffer_items=beltgeom.run_items(gd, 4, "right"))],
+    )
+    assert not [v for v in check_contract(out, gd) if v.code == "contract.buffer"]
+    # no dropper at all (loader-fed belt): the whole belt
+    assert run_tiles(Layout(_belts(gd, belt)), gd, Tile(5, 1), "output") == 6
+
+
+def test_generators_and_fixtures_fill_buffer_items(gd):
+    from fgen.gen.smelting_row import FLOW
+    from fgen.sim import harness as hs
+
+    # smelting row: the input belt is as long as the row; the output belt starts at the
+    # first furnace's inserter column (computed from the layout, not from the generator)
+    for sides in (1, 2):
+        row = gen_smelting(SmeltingRowParams(target_rate=7.5, sides=sides), gd)
+        belts = [p for p in row.layout.placements if gd.entity(p.name).type == "transport-belt"]
+        ins = [p for p in row.layout.placements if gd.entity(p.name).type == "inserter"]
+        for i in row.interfaces:
+            if i.kind != "item":
+                continue
+            line = [p for p in belts if p.position.floor().y == i.tile.y]
+            if i.role == "input":
+                n = len(line)
+            else:
+                first = min(
+                    p.position.floor().x
+                    for p in ins
+                    if p.position.floor().y in (i.tile.y - 1, i.tile.y + 1)
+                )
+                n = len([p for p in line if p.position.floor().x >= first])
+            assert i.buffer_items == pytest.approx(beltgeom.run_items(gd, n, i.lane)), i
+    assert FLOW == Direction.E
+    # fixtures: one belt tile each
+    for u in (hs.source_unit(gd, "iron-plate"), hs.sink_unit(gd, "iron-plate")):
+        (i,) = u.interfaces
+        assert i.buffer_items == pytest.approx(beltgeom.run_items(gd, 1, "both"))
+        assert check_contract(u, gd) == []

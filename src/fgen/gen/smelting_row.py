@@ -435,6 +435,9 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
         if plan.burner:
             feed_req.append(LaneMaterial("right", p.fuel))
     in_space = PortSpace.item("both")  # the row's belt starts at the port: either works
+    # buffers: the input belt is `length` tiles to its end; the output belt starts at the
+    # first furnace's drop column
+    in_tiles, out_tiles = length, length - col
     ifaces.append(
         Interface(
             "item",
@@ -456,6 +459,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
             entity=p.belt,
             port_group=FEED,
             space=in_space,
+            buffer_items=beltgeom.run_items(gd, in_tiles, ore_lane),
         )
     )
     if p.fuel_lane:
@@ -482,6 +486,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 entity=p.belt,
                 port_group=FEED,
                 space=in_space,
+                buffer_items=beltgeom.run_items(gd, in_tiles, "right"),
             )
         )
     ifaces.append(
@@ -500,6 +505,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
             entity=p.belt,
             port_group=OUT,
             space=PortSpace.item("direct"),
+            buffer_items=beltgeom.run_items(gd, out_tiles, out_lane),
         )
     )
     if poles:

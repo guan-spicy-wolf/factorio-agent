@@ -55,6 +55,7 @@ from typing import Any, Literal
 from fgen.data.schema import GameData
 from fgen.gen import throughput as tp
 from fgen.gen.base import Infeasible
+from fgen.geom import belt as beltgeom
 from fgen.geom import footprint, mining, pole
 from fgen.geom.belt import Lane
 from fgen.geom.vec import Direction, Tile, Vec2
@@ -1156,17 +1157,34 @@ class MiningPatch:
                 dry_by_tile[mining.drop_tile(gd, p.drill, pl.position, pl.direction)] = sum(
                     patch.amounts.get(t, 0) for t in a
                 ) / (rate * max(sharers[t] for t in a))
+        drops = {mining.drop_tile(gd, p.drill, pl.position, pl.direction) for pl in drills}
+        # belt-like tiles only: a pole slot on the belt is crossed underground and holds nothing
+        on_belt = {
+            pl.position.floor()
+            for pl in unit.layout.placements
+            if gd.entity(pl.name).type in ("transport-belt", "underground-belt")
+        }
         new_ifaces = []
         for k, i in enumerate(unit.interfaces):
             if i.kind == "item" and i.role == "output" and i.rate is not None:
                 bound = None
+                first_drop = 0  # belt tiles from the output back to the farthest drill drop
+                run = 0
                 for s in range(lengths[k]):  # the belt's tiles, upstream from the output
                     t = i.tile.neighbor(i.direction.opposite, s)
+                    run += t in on_belt
+                    if t in drops:
+                        first_drop = run
                     if t in dry_by_tile:
                         v = dry_by_tile[t]
                         bound = v if bound is None else min(bound, v)
                 assert i.rate_profile is not None
-                i = replace(i, rate_profile=replace(i.rate_profile, depletion_s_lower_bound=bound))
+                i = replace(
+                    i,
+                    rate_profile=replace(i.rate_profile, depletion_s_lower_bound=bound),
+                    # the belt holds items from its first drop to the port
+                    buffer_items=beltgeom.run_items(gd, first_drop, i.lane),
+                )
             new_ifaces.append(i)
         unit = replace(unit, interfaces=new_ifaces)
         reasons: dict[str, int] = {}

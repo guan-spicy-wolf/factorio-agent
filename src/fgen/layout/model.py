@@ -152,6 +152,11 @@ class Interface:
     entity: str | None = None  # the entity at the port: belt (tier), pole (wire), fluid box
     port_group: str | None = None  # ports sharing one belt (``Unit.groups``)
     space: PortSpace | None = None  # item ports: approach and free tiles in front
+    # item ports (plan-phase3a §6 item 8, phase 8): items the unit's own belt run at this
+    # port holds when full, on the lanes the port uses (``geom.belt.run_items``). Input:
+    # the run from the port tile along the belt to its end; output: the belt tiles that
+    # flow into the port, from the first tile an inserter or drill drops onto
+    buffer_items: float | None = None
     # fluid ports (plan-phase5a): the fluid's temperature at the port (output: what the
     # unit delivers; input: what it expects, the fluid's default when any will do) and
     # the longest side, in tiles, of the unit's own part of the port's fluid segment (a

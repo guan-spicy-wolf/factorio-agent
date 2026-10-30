@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fgen.data.schema import GameData
+from fgen.geom import belt as beltgeom
 from fgen.geom.vec import Direction, Tile
 from fgen.layout.model import (
     Interface,
@@ -52,6 +53,7 @@ def belt_line(
         entity=belt,
         port_group="belt",
         space=PortSpace.item(approach),
+        buffer_items=beltgeom.run_items(gd, n, lane),
     )
     meta = {"belt_terminals": [Tile(n - 1, 0)]} if role == "input" else {}
     return Unit(Layout(ps), [i, *(extra_ifaces or [])], meta, (PortGroup("belt"),))
@@ -71,6 +73,7 @@ def ore_and_coal_input(gd: GameData, n: int = 6, ore_rate: float = 5.0) -> Unit:
         entity="transport-belt",
         port_group="feed",
         space=PortSpace.item("both"),
+        buffer_items=beltgeom.run_items(gd, n, "left"),
     )
     coal = Interface(
         "item",
@@ -84,6 +87,7 @@ def ore_and_coal_input(gd: GameData, n: int = 6, ore_rate: float = 5.0) -> Unit:
         entity="transport-belt",
         port_group="feed",
         space=PortSpace.item("both"),
+        buffer_items=beltgeom.run_items(gd, n, "right"),
     )
     ps = [Placement("transport-belt", Tile(x, 0).center(), E) for x in range(n)]
     group = PortGroup("feed", (LaneMaterial("left", "iron-ore"), LaneMaterial("right", "coal")))

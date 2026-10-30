@@ -115,6 +115,7 @@ def source_unit(gd: GameData, item: str, belt: str = "transport-belt") -> Unit:
         entity=belt,
         port_group=FIXTURE_GROUP,
         space=PortSpace.item("direct"),
+        buffer_items=beltgeom.run_items(gd, 1, "both"),  # the one belt tile after the loader
     )
     meta = {"fixture": {"kind": "source", "item": item, "chest": 0}, "family": "fixture/source"}
     return Unit(Layout(ps), [out], meta, (PortGroup(FIXTURE_GROUP),))
@@ -150,6 +151,7 @@ def sink_unit(gd: GameData, item: str | None, belt: str = "transport-belt") -> U
         entity=belt,
         port_group=FIXTURE_GROUP,
         space=PortSpace.item("direct"),
+        buffer_items=beltgeom.run_items(gd, 1, "both"),  # the one belt tile before the loader
     )
     meta = {
         "fixture": {"kind": "sink", "item": item, "chest": 2},
