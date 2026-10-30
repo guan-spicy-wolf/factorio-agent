@@ -1495,12 +1495,7 @@ def _proved(
     found: list[tuple[float, Period]] = []
     best_area: int | None = None
     pool = _Pool(ctx, workers, stats)
-    # models side by side share the box: each one takes about CORES_PER_MODEL cores, so
-    # with more of them than the box holds every model runs slower and the wall cap
-    # grows by that oversubscription (plan-phase7 B: otherwise the parallel driver pushes
-    # rows at the edge of their cap into timeouts)
-    over = max(1.0, pool.procs * CORES_PER_MODEL / (os.cpu_count() or 1))
-    deadline = t0 + time_limit * over
+    deadline = t0 + time_limit * PROVE_WALL
     try:
         for h in range(mh + 1, max_height + 1):
             ts = time.monotonic()
@@ -1624,6 +1619,21 @@ def _proved(
 
 PROCS = 4  # proof driver: independent models solved in this many forked processes
 CORES_PER_MODEL = 1.5  # one CP-SAT model's use of the box (interleaved, plan-phase7 B)
+
+
+def oversubscription() -> float:
+    """How much slower each of the proof driver's side-by-side models runs on this box:
+    ``PROCS`` models of ``CORES_PER_MODEL`` cores each over the cores there are (at least
+    1). A caller proving at the edge of its wall cap scales the cap by it (the cap also
+    steers CP-SAT's search, so it is the caller's choice, not the driver's)."""
+    return max(1.0, max(1, PROCS) * CORES_PER_MODEL / (os.cpu_count() or 1))
+
+
+# the proof driver's wall cap is ``time_limit`` times this; a sweep proving at the edge of
+# its cap sets it to :func:`oversubscription` (the palette sweep's prove rows)
+PROVE_WALL = 1.0
+
+
 _WORKER: dict[str, Any] = {}  # the forked workers' context (set before the fork)
 
 

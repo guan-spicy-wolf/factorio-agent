@@ -25,6 +25,7 @@ from fgen.gen.direct_chain_sweep import _cells, _key, load_previous
 from fgen.gen.fluid_sweep import CHARS
 from fgen.gen.sweep import Measurer, _jsonable, blueprint_sha, format_interface, runtime_section
 from fgen.layout.render import LEGEND, to_ascii
+from fgen.solve import cpsat
 
 PRESET_NAMES = ("compact", "cheap", "simple")
 BOX = 60.0  # seconds: the anytime time box of every row (deterministic budget)
@@ -90,6 +91,10 @@ def sweep(
             "predicted": None,
             "measured": None,
         }
+        # prove rows: the proof driver's side-by-side models share the box, so its wall
+        # cap grows with the oversubscription (plan-phase7 B; params, and so the keys
+        # of earlier measurements, stay as they were)
+        cpsat.PROVE_WALL = cpsat.oversubscription() if c.params.prove else 1.0
         try:
             unit = generate(c.params, gd)
         except Infeasible as exc:
@@ -120,6 +125,7 @@ def sweep(
             if old and old.get("blueprint_sha") == sha:
                 row["measured"] = old
         rows.append(row)
+    cpsat.PROVE_WALL = 1.0
     return rows
 
 
