@@ -633,6 +633,14 @@ def plan_row(
             u.name: u.unit.meta.get("params") for u in site.units if u.unit.meta.get("params")
         },
         "ports": ports(site),
+        "anchors": {
+            u.name: {
+                k: u.unit.meta["anchor"].get(k)
+                for k in ("drills", "rate", "first_dry_s_lower_bound", "est_depletion_s")
+            }
+            for u in site.units
+            if u.unit.meta.get("anchor")
+        },
         "connection": describe_connection(site, conn, gd),
         "placement": placement,
         "render": render(site, conn, gd),
