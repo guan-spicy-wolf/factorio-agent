@@ -179,6 +179,7 @@ def power_unit(gd: GameData, pole_name: str = "small-electric-pole") -> Unit:
                 "output",
                 ["infinite electricity"],
                 entity=pole_name,
+                position=c,
             )
             meta = {"fixture": {"kind": "power", "pole": 1}, "family": "fixture/power"}
             return Unit(Layout([eei, p]), [iface], meta)

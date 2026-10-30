@@ -1111,6 +1111,7 @@ class MiningPatch:
                     "input",
                     [f"connect a {p.pole}-compatible wire to this pole"],
                     entity=p.pole,
+                    position=first.position,
                 )
             )
         unit = Unit(Layout(res.placements), ifaces, {}, tuple(groups))

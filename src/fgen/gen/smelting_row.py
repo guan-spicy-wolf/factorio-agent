@@ -521,6 +521,7 @@ def _half(p: SmeltingRowParams, gd: GameData, plan: _Plan) -> tuple[Unit, int]:
                 "input",
                 [f"connect a {p.pole}-compatible wire to this pole"],
                 entity=p.pole,
+                position=first.position,
             )
         )
     meta = {"belt_terminals": [Tile(length - 1, y_belt_in)]}

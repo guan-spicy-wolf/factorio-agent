@@ -163,6 +163,11 @@ class Interface:
     # link may add at most ``pipeline_extent`` minus both ends' extents)
     temperature: float | None = None
     segment_extent: int | None = None
+    # the centre of the entity at the port when it is larger than one tile (a 2x2
+    # substation): ``tile`` is its ``position.floor()``, and only the centre transforms
+    # like the entity under rotation and mirroring (phase 8: a rotated substation port
+    # named the wrong tile). None: the port's entity sits on ``tile`` (its centre)
+    position: Vec2 | None = None
 
     def on_demand(self) -> bool:
         return self.rate_profile is not None and self.rate_profile.supply == "on_demand"

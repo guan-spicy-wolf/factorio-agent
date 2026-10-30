@@ -98,3 +98,44 @@ def test_render_overlap_and_unknown(gd: GameData) -> None:
         ]
     )
     assert to_ascii(lay, gd) == OVERLAP + EMPTY + "?"
+
+
+def test_ports_on_two_by_two_poles_follow_the_entity_under_every_pose(gd):
+    """A substation's centre sits on a tile corner: rotating its port tile as a tile
+    lands one tile off the rotated entity (phase 8: the circuit chain's power port).
+    With ``position`` the port follows the placement under every pose."""
+    from dataclasses import replace
+
+    from fgen.layout.model import Pose
+    from fgen.layout.transform import place_unit
+    from fgen.layout.validate import check_contract
+
+    pole = "substation"
+    pos = footprint.center_for_tile_anchor(gd, pole, Tile(3, 5))
+    unit = Unit(
+        Layout([Placement(pole, pos)]),
+        [
+            Interface(
+                "power",
+                None,
+                pos.floor(),
+                Direction.E,
+                None,
+                None,
+                "input",
+                entity=pole,
+                position=pos,
+            )
+        ],
+    )
+    assert check_contract(unit, gd) == []
+    for rotation in (Direction.N, Direction.E, Direction.S, Direction.W):
+        for mirror in (False, True):
+            w = place_unit(unit, Tile(10, -4), Pose(rotation, mirror))
+            p, i = w.layout.placements[0], w.interfaces[0]
+            assert i.position == p.position and i.tile == p.position.floor()
+            assert i.tile in p.tiles(gd)
+            assert check_contract(w, gd) == []
+    # without the centre the contract check says so
+    bare = Unit(unit.layout, [replace(unit.interfaces[0], position=None)])
+    assert [v.code for v in check_contract(bare, gd)] == ["contract.entity"]

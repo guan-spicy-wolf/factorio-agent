@@ -670,6 +670,7 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
             "input",
             [f"connect a {first.name}-compatible wire to this pole"],
             entity=first.name,
+            position=first.position,
         )
     )
     meta = {

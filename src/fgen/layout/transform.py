@@ -48,10 +48,14 @@ def _swap_profile(rp: RateProfile | None) -> RateProfile | None:
     return replace(rp, lanes=lanes)  # type: ignore[arg-type]
 
 
-def _map_iface(i: Interface, tile: _Fn[Tile], d: _Fn[Direction], swap: bool) -> Interface:
+def _map_iface(
+    i: Interface, tile: _Fn[Tile], pos: _Fn[Vec2], d: _Fn[Direction], swap: bool
+) -> Interface:
+    position = None if i.position is None else pos(i.position)
     return replace(
         i,
-        tile=tile(i.tile),
+        tile=tile(i.tile) if position is None else position.floor(),
+        position=position,
         direction=d(i.direction),
         lane=_swap_lane(i.lane) if swap else i.lane,
         requires=_swap_requires(i.requires) if swap else i.requires,
@@ -70,7 +74,7 @@ def _map_layout(layout: Layout, pos: _Fn[Vec2], d: _Fn[Direction]) -> Layout:
 
 
 def _map_unit(unit: Unit, pos: _Fn[Vec2], tile: _Fn[Tile], d: _Fn[Direction], swap: bool) -> Unit:
-    ifaces = [_map_iface(i, tile, d, swap) for i in unit.interfaces]
+    ifaces = [_map_iface(i, tile, pos, d, swap) for i in unit.interfaces]
     meta = dict(unit.meta)
     for key in GEOMETRIC_META_KEYS:
         if key in meta:
@@ -133,9 +137,16 @@ def place_interface(i: Interface, origin: Tile, pose: Pose) -> Interface:
     """``place_unit`` for a single interface."""
     out = i
     if pose.mirror:
-        out = _map_iface(out, lambda t: t.mirror_x(), lambda x: x.mirror_x(), True)
+        out = _map_iface(
+            out, lambda t: t.mirror_x(), lambda v: v.mirror_x(), lambda x: x.mirror_x(), True
+        )
     if pose.rotation != Direction.N:
         q = pose.rotation.quarter_turns
         rot = pose.rotation
-        out = _map_iface(out, lambda t: t.rotate(rot), lambda x: x.rotate_cw(q), False)
-    return replace(out, tile=out.tile.translate(origin.x, origin.y))
+        out = _map_iface(
+            out, lambda t: t.rotate(rot), lambda v: v.rotate(rot), lambda x: x.rotate_cw(q), False
+        )
+    off = Vec2(origin.x, origin.y)
+    return _map_iface(
+        out, lambda t: t.translate(origin.x, origin.y), lambda v: v + off, lambda x: x, False
+    )

@@ -459,6 +459,30 @@ _PORT_ENTITY_TYPES = {
 }
 
 
+def _position_problem(unit: Unit, gd: GameData, i: Interface) -> str:
+    assert i.entity is not None
+    standing = [
+        p
+        for p in unit.layout.placements
+        if p.name == i.entity and i.tile in footprint.tiles_of(gd, p.name, p.position, p.direction)
+    ]
+    if not standing:
+        return ""
+    p = standing[0]
+    w, h = footprint.size(gd, p.name, p.direction)
+    if i.position is None:
+        if (w, h) != (1, 1):
+            return f"{i.entity} is {w}x{h}: the port needs the entity's centre (position)"
+        return ""
+    if i.position != p.position:
+        return (
+            f"position {i.position} is not the centre of the {i.entity} on {i.tile} ({p.position})"
+        )
+    if i.position.floor() != i.tile:
+        return f"tile {i.tile} is not position.floor() of {i.position}"
+    return ""
+
+
 def check_contract(unit: Unit, gd: GameData) -> list[Violation]:
     """The interface fields the router reads agree with the unit (``contract.*``)."""
     out: list[Violation] = []
@@ -500,6 +524,13 @@ def check_contract(unit: Unit, gd: GameData) -> list[Violation]:
                         where,
                     )
                 )
+            else:
+                # a port on an entity larger than one tile must carry the entity's
+                # centre (``position``), and it must be the centre of the entity on
+                # that tile: only the centre transforms correctly under rotation
+                bad = _position_problem(unit, gd, i)
+                if bad:
+                    out.append(Violation("contract.entity", f"interface {k}: {bad}", where))
         if i.kind == "item":
             if i.space is None:
                 out.append(

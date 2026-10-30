@@ -1,0 +1,7 @@
+{
+  "name": "sonnet-green",
+  "patches": {"iron-ore": "iron-ore@(-66,35)", "copper-ore": "copper-ore@(-2,61)"},
+  "place_costs": {"resource": 4.0},
+  "answered_by": {"who": "claude-sonnet-5-5", "date": "2026-10-30", "given": "questions-green-1.json + README.md"},
+  "rationale": "两种矿选最近且彼此仅相距36格的铁(-66,35)与铜(-2,61)，带短、路由快、冶炼列和链放得下；铁估计采空约28500秒(约8小时)、铜约245000秒，足够长期供科研，而更大的铁矿(101,192)离铜186格、带太长。铁矿边缘有混矿，所以把resource权重提到4，避免压矿。"
+}

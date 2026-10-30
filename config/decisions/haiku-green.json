@@ -1,0 +1,11 @@
+{
+  "name": "haiku-green",
+  "patches": {
+    "iron-ore": "iron-ore@(101,192)",
+    "copper-ore": "copper-ore@(-2,61)"
+  },
+  "place_costs": {},
+  "order_priority": ["unit", "placed_neighbours", "linked_rate"],
+  "answered_by": { "who": "claude-haiku-5-5", "date": "2026-10-30", "given": "questions-green-1.json + README.md" },
+  "rationale": "铁选 iron-ore@(101,192)：储量 220 万，按 5.5/s 估计约 111 小时才采空，是唯一能支撑长期供科研的候选；代价是到铜矿 186 格、路由和占地更大，但 62 次 max_belts 丢弃说明它能放下 11 台钻机。默认的 iron-ore@(-66,35) 只有约 8 小时（est_depletion 28541s），且有 197 格混矿边缘，不适合长跑。铜保持默认 copper-ore@(-2,61)：约 68 小时，且离铁默认矿区近，但这里是铁改选后仍用的铜矿，需注意 315 格水域。权重不改用默认。"
+}

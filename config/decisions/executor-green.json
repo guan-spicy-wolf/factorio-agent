@@ -1,0 +1,16 @@
+{
+  "name": "executor-green",
+  "patches": {
+    "iron-ore": "iron-ore@(-66,35)",
+    "copper-ore": "copper-ore@(-2,61)"
+  },
+  "place_costs": {
+    "resource": 4.0
+  },
+  "answered_by": {
+    "who": "claude-fable-5-1 (the task A executor)",
+    "date": "2026-10-30",
+    "given": "questions-green-1.json + README.md (same as the weak models), plus knowledge of the placement rule and the measurement window"
+  },
+  "rationale": "铁矿取最近的那个：157k 矿量按 5.5/s 是 8 小时，首台钻机采空 3606 s 已在实测窗口之外；换 221 格外的 220 万矿量要付出两条 200 格以上的板带、4 倍的清障面积和翻倍的缓冲填充时间（预热会顶到 3600 s 上限、上游读数失真），富矿留给以后的第二条矿带。铜矿最近的就是最好的。把 resource 从 2 提到 4：最近的铁矿小，希望冶炼列和链一格都别压在矿上，给以后扩矿留地方。"
+}

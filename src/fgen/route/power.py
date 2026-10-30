@@ -36,7 +36,10 @@ def power_poles(site: Any, gd: GameData) -> list[tuple[str, str, Vec2]]:
             continue
         if i.entity is None or gd.entity(i.entity).type != "electric-pole":
             raise RouteError(str(ep), f"power interface {i.tile} names no electric pole")
-        out.append((str(ep), i.entity, footprint.center_at_tile(gd, i.entity, i.tile)))
+        centre = i.position
+        if centre is None:
+            centre = footprint.center_at_tile(gd, i.entity, i.tile)
+        out.append((str(ep), i.entity, centre))
     return out
 
 
