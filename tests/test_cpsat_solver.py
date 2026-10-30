@@ -132,3 +132,70 @@ def test_proof_driver_is_the_same_in_parallel(gd):
     )
     assert a.stats.pruned["cp_screen_infeasible"] == b.stats.pruned["cp_screen_infeasible"]
     assert a.stats.pruned["cp_first_infeasible"] == b.stats.pruned["cp_first_infeasible"]
+
+
+def _skeletons(ctx):
+    from fgen.solve.period import belt_sets, input_lanes_ok
+
+    sets = belt_sets(ctx.flows, ctx.lanes, ctx.spec.lane_items)
+    return [b for b in sets if input_lanes_ok(b, ctx.flows, ctx.lane_cap, ctx.lanes, 1)]
+
+
+def _red_direct() -> CycleSpec:
+    return CycleSpec((Stage("automation-science-pack", AM1, 2), Stage("iron-gear-wheel", AM1, 1)))
+
+
+@needs_ortools
+@pytest.mark.parametrize("which", ["red-direct", "3:2"])
+def test_slim_models_are_exact(gd, which):
+    """Plan-phase8 C: single-machine stages without anchor-indexed flows (``aggregate``)
+    and rows no belt assignment allows left out (``prune``) are the same model: the same
+    status and the same optimum at every size (a size that fits and one that does not)."""
+    from fgen.solve import preset as presets
+    from fgen.solve.cycle import SolveStats
+
+    sp = _red_direct() if which == "red-direct" else spec()
+    ctx = cpsat._Ctx(sp, gd, 1)
+    ctx.scale = presets.scale_for(gd, ctx.palette_names(), 32, 16)
+    best = cpsat.solve(sp, gd, time_limit=120, prove=True).best
+    assert best is not None
+    for belts in _skeletons(ctx):
+        for w in (best.width - 1, best.width):
+            out = set()
+            for agg, prune in ((False, False), (True, False), (True, True)):
+                st, per, obj = cpsat._solve_height(
+                    ctx, best.height, w, w, belts, 120, 4, SolveStats(), aggregate=agg, prune=prune
+                )
+                assert st in ("OPTIMAL", "INFEASIBLE"), st
+                if per is not None:
+                    assert check_period(per, gd) == []
+                out.add((st, obj))
+            assert len(out) == 1, (belts, w, out)
+
+
+@needs_ortools
+def test_static_rows_hold_the_solved_periods(gd):
+    """Every belt row and machine anchor row of a solved period is one the static row
+    analysis allows; a height too small for the machines and belts is refuted."""
+    for sp in (_red_direct(), spec(2, 1), spec()):
+        per = cpsat.solve(sp, gd, time_limit=120, prove=True).best
+        assert per is not None
+        ctx = cpsat._Ctx(sp, gd, 1)
+        rows = {(b.role, tuple(sorted(b.materials()))): b.y for b in per.belts}
+        sk = next(
+            b
+            for b in _skeletons(ctx)
+            if sorted((s.role, tuple(sorted(s.materials))) for s in b) == sorted(rows)
+        )
+        allowed = ctx.belt_rows(per.height, sk)
+        assert allowed is not None
+        ok_rows, anchors = allowed
+        for k, s in enumerate(sk):
+            assert (k, rows[(s.role, tuple(sorted(s.materials)))]) in ok_rows
+        for q, si in zip(per.placements, per.stage_of, strict=True):
+            if si is None:
+                continue
+            _, mh = ctx.msize[si]
+            assert round(q.position.y - mh / 2) in anchors[si], (q, si)
+        mh = max(h for _, h in ctx.msize)
+        assert all(ctx.belt_rows(mh, b) is None for b in _skeletons(ctx))

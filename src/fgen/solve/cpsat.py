@@ -206,6 +206,7 @@ class _Ctx:
         out_total = sum(v for k, v in f.output_rate.items() if not gd.is_fluid(k))
         self.out_total = out_total
         self.output_lanes_bind = out_total * repeats > min(self.lane_caps) + 1e-9
+        self._rows: dict[Any, Any] = {}  # belt_rows cache
 
     def palette_names(self) -> list[str]:
         """Every non-machine entity the model may place (costs, kinds)."""
@@ -216,6 +217,95 @@ class _Ctx:
             if self.spec.pipe_to_ground:
                 names.append(self.spec.pipe_to_ground)
         return list(dict.fromkeys(names))
+
+    def belt_rows(
+        self, h: int, belts: list[SkeletonBelt]
+    ) -> tuple[set[tuple[int, int]], list[set[int]]] | None:
+        """Rows the belts and machine anchors can take at height ``h`` (plan-phase8 C):
+        a relaxation of the model that ignores x, solved by enumerating the belts' rows.
+        Under one assignment a stage's anchor row is possible when its footprint rows hold
+        no belt and every belt each of its machines must use is in reach of a north/south
+        inserter standing on a row with no belt and outside the machine: every input belt
+        it takes from (``need_in``, at full speed) and, for a final stage, its output belt.
+        Returns the (belt, row) pairs and per stage the anchor rows of some passing
+        assignment, or None when none passes (the model is infeasible). With underground
+        belts a belt row has free tiles: nothing is pruned. Cached per (height, skeleton)."""
+        key = (h, tuple(belts))
+        if key not in self._rows:
+            self._rows[key] = self._belt_rows(h, belts)
+        return self._rows[key]
+
+    def _belt_rows(
+        self, h: int, belts: list[SkeletonBelt]
+    ) -> tuple[set[tuple[int, int]], list[set[int]]] | None:
+        from itertools import permutations
+
+        f, nb = self.flows, len(belts)
+        if any(self.ug):
+            return {(k, r) for k in range(nb) for r in range(h)}, [set(range(h)) for _ in f.stages]
+        lane = set(self.spec.lane_items)
+        belt_of = {(b.role, mat): k for k, b in enumerate(belts) for mat in b.materials}
+        need: list[set[int]] = []
+        out: list[set[int]] = []
+        for sf in f.stages:
+            need.append(
+                {
+                    belt_of[("input", mat)]
+                    for mat in [*sf.external_in, *sf.internal_in]
+                    if (mat in sf.external_in and not self.gd.is_fluid(mat)) or mat in lane
+                }
+            )
+            fin = sf.final and not self.gd.is_fluid(sf.product)
+            out.append({belt_of[("output", sf.product)]} if fin else set())
+        # per stage, anchor row y and belt row r: the rows (bit mask) of an inserter that
+        # takes from row r into the machine, or drops onto row r out of it
+        take_m: list[dict[tuple[int, int], int]] = []
+        put_m: list[dict[tuple[int, int], int]] = []
+        for _, mh in self.msize:
+            tk: dict[tuple[int, int], int] = defaultdict(int)
+            pt: dict[tuple[int, int], int] = defaultdict(int)
+            for y in range(h - mh + 1):
+                for _, _, pu, dr in self.reach:
+                    if pu.x or dr.x:
+                        continue
+                    for yi in range(h):
+                        py, dy = yi + pu.y, yi + dr.y
+                        if y <= yi < y + mh or not (0 <= py < h and 0 <= dy < h):
+                            continue
+                        if y <= dy < y + mh:
+                            tk[(y, py)] |= 1 << yi
+                        if y <= py < y + mh:
+                            pt[(y, dy)] |= 1 << yi
+            take_m.append(tk)
+            put_m.append(pt)
+        full = (1 << h) - 1
+        ok_rows: set[tuple[int, int]] = set()
+        anchors: list[set[int]] = [set() for _ in f.stages]
+        for rows in permutations(range(h), nb):
+            if 2 * rows[0] > h - 1:
+                continue  # the model's mirror cut
+            bm = 0
+            for r in rows:
+                bm |= 1 << r
+            free = full & ~bm
+            ys: list[list[int]] = []
+            for si, (_, mh) in enumerate(self.msize):
+                tk, pt = take_m[si], put_m[si]
+                good = [
+                    y
+                    for y in range(h - mh + 1)
+                    if not (((1 << mh) - 1) << y) & bm
+                    and all(tk.get((y, rows[k]), 0) & free for k in need[si])
+                    and all(pt.get((y, rows[k]), 0) & free for k in out[si])
+                ]
+                if not good:
+                    break
+                ys.append(good)
+            else:
+                ok_rows.update(enumerate(rows))
+                for si, g in enumerate(ys):
+                    anchors[si].update(g)
+        return (ok_rows, anchors) if ok_rows else None
 
     def slots_ok(self) -> bool:
         """Necessary condition (seconds, no model): every machine has at least as many
@@ -495,6 +585,8 @@ def _solve_height(
     preset: str | None = None,
     bound: int | None = None,
     det: float | None = None,
+    aggregate: bool = True,
+    prune: bool = False,
 ) -> tuple[str, Period | None, float]:
     """One CP-SAT model for height ``h`` and widths ``w_min..w`` (the width is a
     variable); ``optimize``: minimise width, poles, inserters (or the ``preset`` key),
@@ -504,6 +596,16 @@ def _solve_height(
     name, period, objective: the preset key of the period when ``preset`` is given)."""
     cp_model = _cp()
     spec, f = ctx.spec, ctx.flows
+    rows_ok: set[tuple[int, int]] | None = None
+    anchor_rows: list[set[int]] = []
+    if prune:  # plan-phase8 C: rows no assignment of the belts allows (ctx.belt_rows)
+        allowed = ctx.belt_rows(h, belts)
+        if allowed is None:
+            stats.pruned["static_rows_infeasible"] += 1
+            if DEBUG:
+                print(f"  h={h} {[b.materials for b in belts]} static rows INFEASIBLE", flush=True)
+            return "INFEASIBLE", None, math.inf
+        rows_ok, anchor_rows = allowed
     t_build = time.monotonic()
     m = cp_model.CpModel()
     tiles = [(x, y) for y in range(h) for x in range(w)]
@@ -527,6 +629,11 @@ def _solve_height(
     for y in range(h):
         m.add_at_most_one(row[b][y] for b in range(nb))
     m.add(2 * sum(y * row[0][y] for y in range(h)) <= h - 1)
+    if rows_ok is not None:
+        for b in range(nb):
+            for y in range(h):
+                if (b, y) not in rows_ok:
+                    m.add(row[b][y] == 0)
     in_belts = {k: b for k, b in enumerate(belts) if b.role == "input"}
     out_belts = {k: b for k, b in enumerate(belts) if b.role == "output"}
     pal = _belt_palette(m, ctx, h, w, u, belts, row, occ)
@@ -540,6 +647,8 @@ def _solve_height(
         ps: dict[tuple[int, int], Any] = {}
         cv: dict[tuple[int, int], list[tuple[tuple[int, int], Any]]] = defaultdict(list)
         for y in range(h - mh + 1):
+            if rows_ok is not None and y not in anchor_rows[si]:
+                continue
             for x in range(w - mw + 1):
                 v = m.new_bool_var(f"P{si}_{x}_{y}")
                 m.add(v <= u[x + mw - 1])
@@ -632,7 +741,7 @@ def _solve_height(
             cap = _q(ctx.caps[tier])
             inside = u[max(x, px, dx)]
             for k in in_belts:
-                if py == y:
+                if py == y or (rows_ok is not None and (k, py) not in rows_ok):
                     continue
                 tgt = covered(users[k], (dx, dy))
                 if not tgt:
@@ -649,7 +758,7 @@ def _solve_height(
                     lane_pick[k].append((v, px))
                 slots.append((v, PlacedInserter(x, y, d, tier, "in", -1, k), (px, py), (dx, dy)))
             for k in out_belts:
-                if dx != x or dy == y:
+                if dx != x or dy == y or (rows_ok is not None and (k, dy) not in rows_ok):
                     continue
                 src = covered(makers[k], (px, py))
                 if not src:
@@ -669,7 +778,7 @@ def _solve_height(
                 )
             for key in lane_keys:
                 k = key[0]
-                if dx != x or dy == y:
+                if dx != x or dy == y or (rows_ok is not None and (k, dy) not in rows_ok):
                     continue
                 src = covered(lane_makers[key], (px, py))
                 if not src:
@@ -729,26 +838,44 @@ def _solve_height(
                 if ctx.output_lanes_bind:
                     out_flow[(si, a)] = [(pv, v, k, ln) for v, _, k, ln in terms2]
 
-    # intermediates: flow per producer/consumer anchor pair
-    pair_terms: dict[tuple[int, int, tuple[int, int], tuple[int, int]], list[Any]] = defaultdict(
-        list
-    )
+    # intermediates: flow per producer/consumer anchor pair. A stage with one machine
+    # needs no anchor index in its machine-to-machine flows (plan-phase8 C,
+    # ``aggregate``): which machine of it gives or takes is unique (a slot's
+    # ``v <= sum(src)``/``v <= sum(tgt)`` already put both ends on machines of the right
+    # stages), so those flows, and its supply and demand, are per stage; the same set of
+    # periods with far fewer variables (green science: 13248 flows -> 2). Stages in no
+    # such pair keep their model exactly as it was.
+    linked = {si for pr in pairs for si in pr}
+    one = [aggregate and s.count == 1 and si in linked for si, s in enumerate(spec.stages)]
+
+    def idx(si: int, a: tuple[int, int]) -> tuple[int, int] | None:
+        return None if one[si] else a
+
+    def on(si: int, a: tuple[int, int] | None) -> Any:
+        return 1 if a is None else P[si][a]
+
+    Key = tuple[int, int] | None
+    pair_terms: dict[tuple[int, int, Key, Key], list[Any]] = defaultdict(list)
     for v, ps, cs, pt, dt, pi in link_vars:
         cap = _q(ctx.caps[pi.tier])
-        for ap, _ in cover[ps][pt]:
-            for ac, _ in cover[cs][dt]:
+        aps = dict.fromkeys(idx(ps, ap) for ap, _ in cover[ps][pt])
+        acs = dict.fromkeys(idx(cs, ac) for ac, _ in cover[cs][dt])
+        for ap in aps:
+            for ac in acs:
                 pair_terms[(ps, cs, ap, ac)].append((v, cap))
-    give: dict[tuple[int, tuple[int, int]], list[Any]] = defaultdict(list)
-    take: dict[tuple[int, str, tuple[int, int]], list[Any]] = defaultdict(list)
+    give: dict[tuple[int, Key], list[Any]] = defaultdict(list)
+    take: dict[tuple[int, str, Key], list[Any]] = defaultdict(list)
     for (ps, cs, ap, ac), terms in pair_terms.items():
-        if set(fp(ps, ap)) & set(fp(cs, ac)):
+        if ap is not None and ac is not None and set(fp(ps, ap)) & set(fp(cs, ac)):
             continue
         item = f.stages[ps].product
         hi = _q(min(f.stages[ps].rate, f.stages[cs].internal_in[item]))
         fv = m.new_int_var(0, hi, "")
         m.add(fv <= sum(c * v for v, c in terms))
-        m.add(fv <= hi * P[ps][ap])
-        m.add(fv <= hi * P[cs][ac])
+        if ap is not None:
+            m.add(fv <= hi * P[ps][ap])
+        if ac is not None:
+            m.add(fv <= hi * P[cs][ac])
         give[(ps, ap)].append(fv)
         take[(cs, item, ac)].append(fv)
     # lane intermediates: what each maker drops onto its lane covers the period's use,
@@ -773,12 +900,22 @@ def _solve_height(
             m.add(last >= x * v)
         for v, x in lane_pick.get(k, []):
             m.add(x >= last - w * (1 - v))
+
+    def anchors_of(si: int) -> list[Key]:
+        return [None] if one[si] else list(P[si])
+
+    def gives(si: int, a: Key) -> list[Any]:
+        """What a machine hands on; a single machine's by stage, its lane drops too."""
+        if a is not None:
+            return give.get((si, a), [])
+        return [*give.get((si, None), []), *(g for ap in P[si] for g in give.get((si, ap), []))]
+
     for ps in stages:
         if f.stages[ps].final:
             continue
-        for ap, pv in P[ps].items():
-            if give.get((ps, ap)):
-                m.add(sum(give[(ps, ap)]) <= _q(f.stages[ps].rate) * pv)
+        for ap in anchors_of(ps):
+            if gives(ps, ap):
+                m.add(sum(gives(ps, ap)) <= _q(f.stages[ps].rate) * on(ps, ap))
     # consumers: a final machine runs at full speed; an intermediate one needs its
     # ingredients in proportion to what it hands on (multi-level trees with surplus)
     for cs in stages:
@@ -786,12 +923,12 @@ def _solve_height(
         for item, dem in csf.internal_in.items():
             if item in lane_set:
                 continue  # taken from the belt with the raw inputs (need_in)
-            for ac, cv in P[cs].items():
+            for ac in anchors_of(cs):
                 got = take.get((cs, item, ac), [])
                 if csf.final:
-                    m.add(sum(got) >= _q(dem) * cv)
+                    m.add(sum(got) >= _q(dem) * on(cs, ac))
                 else:
-                    m.add(_q(csf.rate) * sum(got) >= _q(dem) * sum(give.get((cs, ac), [])))
+                    m.add(_q(csf.rate) * sum(got) >= _q(dem) * sum(gives(cs, ac)))
 
     # output lanes, only when they can bind: even split over a machine's output inserters
     if out_flow:
@@ -1339,6 +1476,7 @@ def _proved(
                 ],
                 optimize=False,
                 power=False,
+                prune=True,
             )
             for (belts, w_lo), (status, _, _) in zip(todo, screens, strict=True):
                 stats.pruned[f"cp_screen_{status.lower()}"] += 1
@@ -1362,6 +1500,7 @@ def _proved(
                     outs = pool.run(
                         [dict(h=h, w_min=wf, w=wf, belts=belts, seconds=left) for wf in ws],
                         optimize=False,
+                        prune=True,
                     )
                     for wf, (status, per2, _) in zip(ws, outs, strict=True):
                         stats.pruned[f"cp_first_{status.lower()}"] += 1
@@ -1375,8 +1514,19 @@ def _proved(
                         break
                 if w_min is not None and not stats.timed_out:
                     left = deadline - time.monotonic()
+                    # the period kept: the phase-4b model as it was (no aggregation, no
+                    # row pruning), so the characterized blueprints stay put
                     status, per, obj = _solve_height(
-                        ctx, h, w_min, w_min, belts, left, workers, stats, optimize=True
+                        ctx,
+                        h,
+                        w_min,
+                        w_min,
+                        belts,
+                        left,
+                        workers,
+                        stats,
+                        optimize=True,
+                        aggregate=False,
                     )
                     stats.pruned[f"cp_{status.lower()}"] += 1
                     if status == "UNKNOWN" or (per is not None and not per.meta["proved_optimal"]):
@@ -1602,8 +1752,10 @@ def _anytime(
     def bnd() -> int | None:
         return best[0] - 1 if best is not None else None
 
-    def at(h: int, wf: int, belts: list[SkeletonBelt], share: float = PROBE_SHARE) -> Any:
-        st, per, key = run(h, wf, wf, belts, cap(share), optimize=False, bound=bnd())
+    def at(
+        h: int, wf: int, belts: list[SkeletonBelt], share: float = PROBE_SHARE, **kw: Any
+    ) -> Any:
+        st, per, key = run(h, wf, wf, belts, cap(share), optimize=False, bound=bnd(), **kw)
         take(per, key, belts)
         return st, per
 
@@ -1637,15 +1789,29 @@ def _anytime(
     # proofs for the small heights), and at the first height it lets through the widest
     # period (the roomiest model of the smallest plausible height). Fluids skip this:
     # their models grow with the width, the upward width scan of phase 2 is faster.
+    # Without underground belts the belt rows are whole and the static row analysis
+    # (:meth:`_Ctx.belt_rows`, plan-phase8 C) does the screen's job here for free: a pair
+    # it refutes is infeasible at every width, and the probe's model leaves out the rows
+    # and anchors no assignment of the belts allows.
+    static = not any(ctx.ug)
     if best is None and ctx.fluid is None:
         for i, (h, belts) in enumerate(pairs):
             if best is not None or left() <= 0:
                 break
             lo = _bounds(ctx, h, belts, max_width)
-            # a screen only skips hopeless heights here: it may not hold up the probe
-            if lo > max_width or screen(i, lo, max_width, 0.1 * budget) == "INFEASIBLE":
+            if lo > max_width:
                 continue
-            st, _ = at(h, max_width, belts, PHASE1_SHARE)
+            if static:
+                if ctx.belt_rows(h, belts) is None:
+                    screened[i] = "INFEASIBLE"
+                    stats.pruned["static_rows_infeasible"] += 1
+                    continue
+                st, _ = at(h, max_width, belts, PHASE1_SHARE, prune=True)
+            else:
+                # a screen only skips hopeless heights here: it may not hold up the probe
+                if screen(i, lo, max_width, 0.1 * budget) == "INFEASIBLE":
+                    continue
+                st, _ = at(h, max_width, belts, PHASE1_SHARE)
             if st == "INFEASIBLE":
                 refuted.add((i, max_width))
 
