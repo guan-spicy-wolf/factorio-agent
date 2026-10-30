@@ -1,0 +1,16 @@
+{
+  "name": "executor-red",
+  "patches": {
+    "iron-ore": "iron-ore@(-66,35)",
+    "copper-ore": "copper-ore@(-2,61)"
+  },
+  "place_costs": {
+    "resource": 4.0
+  },
+  "answered_by": {
+    "who": "claude-fable-5-1 (the task A executor)",
+    "date": "2026-10-30",
+    "given": "questions-red-1.json + README.md (same as the weak models), plus knowledge of the placement rule and the measurement window"
+  },
+  "rationale": "红瓶 1/s 只要 2/s 铁矿：最近的铁矿按这个速率 22 小时才采空，首台钻机采空 3787 s 在窗口之外，富矿带来的只有 200 格外的带与 4 倍清障面积。铜矿同理取最近。resource 提到 4 与绿瓶站一致，让单元离矿远一格。"
+}
