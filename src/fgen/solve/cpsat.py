@@ -91,6 +91,7 @@ exhaustive one.
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import defaultdict
 from dataclasses import replace
@@ -1254,6 +1255,8 @@ def solve(
             ctx, skeletons, stats, t0, time_limit, workers, screen_seconds, max_width, max_height
         )
         finish_stats(stats, found)
+        if found:  # CP-SAT deterministic time spent until the first period
+            stats.phases["first_feasible_det_s"] = min(p.meta["det_to_find"] for p in found)
         sc = ctx.scale
         for per in found:
             per.meta.setdefault("metrics", presets.metrics(per, gd, sc))
@@ -1298,6 +1301,9 @@ def solve(
                 per.meta["metrics"] = presets.metrics(per, gd, ctx.scale)
                 seed = (ctx.scale.key(preset, per.meta["metrics"]), per, match)
                 stats.phases["first_feasible_s"] = per.meta["seconds_to_find"]
+                stats.phases["first_feasible_det_s"] = (
+                    r0.stats.variables.get("det_time_ms", 0) / 1000
+                )
                 stats.phases["area_s"] = stats.phases["objective_s"] = stats.phases[
                     "first_feasible_s"
                 ]
@@ -1446,11 +1452,16 @@ def _proved(
     (the screens of one height, the fixed widths in chunks of ``PROCS``) run in forked
     processes (plan-phase7 B): every model is the same deterministic CP-SAT solve, only
     the wall clock changes."""
-    deadline = t0 + time_limit
     mh = max(h for _, h in ctx.msize)
     found: list[tuple[float, Period]] = []
     best_area: int | None = None
     pool = _Pool(ctx, workers, stats)
+    # models side by side share the box: each one takes about CORES_PER_MODEL cores, so
+    # with more of them than the box holds every model runs slower and the wall cap
+    # grows by that oversubscription (plan-phase7 B: otherwise the parallel driver pushes
+    # rows at the edge of their cap into timeouts)
+    over = max(1.0, pool.procs * CORES_PER_MODEL / (os.cpu_count() or 1))
+    deadline = t0 + time_limit * over
     try:
         for h in range(mh + 1, max_height + 1):
             ts = time.monotonic()
@@ -1533,6 +1544,7 @@ def _proved(
                         stats.timed_out = True
                 if per is not None:
                     per.meta["seconds_to_find"] = round(time.monotonic() - t0, 3)
+                    per.meta["det_to_find"] = round(stats.nodes["cp_det_ms"] / 1000, 3)
                     found.append((obj, per))
                     n_found += 1
                     best_area = per.area if best_area is None else min(best_area, per.area)
@@ -1565,6 +1577,7 @@ def _proved(
 
 
 PROCS = 4  # proof driver: independent models solved in this many forked processes
+CORES_PER_MODEL = 1.5  # one CP-SAT model's use of the box (interleaved, plan-phase7 B)
 _WORKER: dict[str, Any] = {}  # the forked workers' context (set before the fork)
 
 
@@ -1732,6 +1745,7 @@ def _anytime(
         now = round(time.monotonic() - t0, 3)
         per.meta["seconds_to_find"] = now
         stats.phases.setdefault("first_feasible_s", now)
+        stats.phases.setdefault("first_feasible_det_s", round(stats.nodes["cp_det_ms"] / 1000, 3))
         if best is None or key < best[0]:
             if best is None or per.area != best[1].area:
                 stats.phases["area_s"] = now
