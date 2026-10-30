@@ -53,16 +53,16 @@
       "demand": 1.0,
       "drills": 2,
       "dropped_by_reason": {
-       "belt_rate_cap": 16,
-       "low_ore": 6,
-       "max_belts": 37
+       "belt_rate_cap": 13,
+       "low_ore": 24,
+       "max_belts": 24
       },
       "est_depletion_s": 367416.0,
-      "first_dry_s_lower_bound": 969.0,
+      "first_dry_s_lower_bound": 4013.0,
       "params": {
        "axis": "x",
        "flow": "+",
-       "min_ore": 300
+       "min_ore": 3600
       }
      },
      "mixed_ore_tiles_at_edge": 0,
@@ -118,15 +118,16 @@
       "demand": 1.0,
       "drills": 2,
       "dropped_by_reason": {
-       "belt_rate_cap": 11,
-       "max_belts": 15
+       "belt_rate_cap": 10,
+       "low_ore": 7,
+       "max_belts": 10
       },
       "est_depletion_s": 338944.0,
-      "first_dry_s_lower_bound": 1403.0,
+      "first_dry_s_lower_bound": 5458.0,
       "params": {
        "axis": "x",
        "flow": "+",
-       "min_ore": 600
+       "min_ore": 3600
       }
      },
      "mixed_ore_tiles_at_edge": 0,
@@ -180,17 +181,17 @@
       "demand": 2.0,
       "drills": 4,
       "dropped_by_reason": {
-       "belt_rate_cap": 11,
-       "low_ore": 15,
-       "max_belts": 24,
-       "mixed_resource": 10
+       "belt_rate_cap": 8,
+       "low_ore": 30,
+       "max_belts": 16,
+       "mixed_resource": 6
       },
       "est_depletion_s": 78489.0,
-      "first_dry_s_lower_bound": 1007.0,
+      "first_dry_s_lower_bound": 3787.3333333333335,
       "params": {
        "axis": "x",
        "flow": "+",
-       "min_ore": 300
+       "min_ore": 1800
       }
      },
      "mixed_ore_tiles_at_edge": 197,
@@ -238,15 +239,16 @@
       "demand": 2.0,
       "drills": 4,
       "dropped_by_reason": {
-       "belt_rate_cap": 10,
-       "max_belts": 23
+       "belt_rate_cap": 8,
+       "low_ore": 6,
+       "max_belts": 17
       },
       "est_depletion_s": 258870.5,
-      "first_dry_s_lower_bound": 1624.0,
+      "first_dry_s_lower_bound": 7722.0,
       "params": {
        "axis": "x",
        "flow": "+",
-       "min_ore": 0
+       "min_ore": 3600
       }
      },
      "mixed_ore_tiles_at_edge": 0,
@@ -303,7 +305,7 @@
       "params": {
        "axis": "x",
        "flow": "+",
-       "min_ore": 1200
+       "min_ore": 1800
       }
      },
      "mixed_ore_tiles_at_edge": 0,
@@ -395,5 +397,5 @@
  },
  "product": "automation-science-pack",
  "rate": 1.0,
- "window_s": 600.0
+ "window_s": 3600.0
 }
