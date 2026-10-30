@@ -38,6 +38,7 @@ from fgen.gen.base import Infeasible
 from fgen.geom import belt as beltgeom
 from fgen.geom import footprint, inserter
 from fgen.geom.vec import Tile
+from fgen.layout import belt_run
 from fgen.layout.model import (
     Interface,
     LaneMaterial,
@@ -47,6 +48,7 @@ from fgen.layout.model import (
     PortSpace,
     Predicate,
     RateProfile,
+    Role,
     Unit,
 )
 from fgen.layout.validate import Violation, validate_unit
@@ -535,6 +537,12 @@ def _lane(lanes: list[str]) -> Any:
     return lanes[0] if len(lanes) == 1 else "both"
 
 
+def _buffer(layout: Layout, gd: GameData, tile: Tile, role: Role, lane: Any) -> float:
+    """``Interface.buffer_items`` of an item port: the period rows are irregular enough
+    (undergrounds, rows starting at the first drop) to count off the tiled layout."""
+    return beltgeom.run_items(gd, belt_run.run_tiles(layout, gd, tile, role), lane)  # type: ignore[arg-type]
+
+
 def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -> Unit:
     k, w = pl.periods, per.width
     layout: Layout = tile(per, k)
@@ -576,6 +584,7 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                         entity=belt,
                         port_group=g,
                         space=PortSpace.item("both"),
+                        buffer_items=_buffer(layout, gd, Tile(0, b.y), "input", _lane(lns)),
                     )
                 )
         else:
@@ -614,6 +623,7 @@ def build_unit(per: Period, pl: ChainPlan, p: DirectChainParams, gd: GameData) -
                     entity=belt,
                     port_group=g,
                     space=PortSpace.item("direct"),
+                    buffer_items=_buffer(layout, gd, Tile(k * w - 1, b.y), "output", _lane(lns)),
                 )
             )
     fluids = {

@@ -29,6 +29,9 @@ Contract checks (``validate_unit`` only: they need the unit's port groups; phase
                               entity / pole that stands on its tile
 ``contract.space``            an item port without ``space``, or ``side`` approach on a
                               port that names no single lane
+``contract.buffer``           an item port without ``buffer_items``, or one that disagrees
+                              with the belt run behind the port tile (``belt_run``: tiles
+                              x items per tile x the port's lane share)
 ``contract.rate``             ``rate`` disagrees with ``rate_profile`` (fixed: ``initial``;
                               on-demand: ``rate`` must be None), or per-lane rates do not
                               add up to ``initial`` / name a lane the port does not use
@@ -45,8 +48,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from fgen.data.schema import GameData
+from fgen.geom import belt as beltgeom
 from fgen.geom import fluid, footprint, inserter, mining, pole
 from fgen.geom.vec import Direction, Tile
+from fgen.layout import belt_run
 from fgen.layout.model import Interface, Layout, Placement, Unit
 
 ITEM_HOLDER_TYPES = frozenset(
@@ -506,6 +511,24 @@ def check_contract(unit: Unit, gd: GameData) -> list[Violation]:
                         "contract.space", f"interface {k}: side approach on lane {i.lane}", where
                     )
                 )
+            if i.buffer_items is None:
+                out.append(
+                    Violation(
+                        "contract.buffer", f"interface {k}: item port without buffer_items", where
+                    )
+                )
+            elif here:
+                n = belt_run.run_tiles(unit.layout, gd, i.tile, i.role)
+                want = beltgeom.run_items(gd, n, i.lane)
+                if abs(i.buffer_items - want) > 1e-6:
+                    out.append(
+                        Violation(
+                            "contract.buffer",
+                            f"interface {k}: buffer_items {i.buffer_items:g}, the {n}-tile "
+                            f"belt run on lane {i.lane} holds {want:g}",
+                            where,
+                        )
+                    )
         rp = i.rate_profile
         if rp is not None:
             bad = ""

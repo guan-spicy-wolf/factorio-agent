@@ -69,3 +69,46 @@ def test_flat_site_routes_cleanly_and_writes(gd, tmp_path):
     ss.write(tmp_path, [row], gd)
     assert json.loads(jsonl.read_text())["measured"] == {"x": 1}
     assert "## flat" in md.read_text()
+
+
+def test_fill_time_reads_the_contract_and_the_routes(gd):
+    """Phase 8: the buffer of a link is the producer's output ``buffer_items``, the
+    route's belt tiles and the consumer's input ``buffer_items``; fill_time never looks
+    at a unit layout."""
+    import inspect
+
+    from fgen.data.runtime import RuntimeState
+    from fgen.geom import belt as beltgeom
+    from fgen.terrain import paint
+    from fgen.terrain.model import patches
+
+    assert "layout" not in inspect.getsource(ss.fill_time)
+    res = paint.to_resources(paint.rectangle(0, 0, 16, 16, 3000), "iron-ore")
+    terrain = Terrain.from_resources(res, margin=40)
+    patch = patches(terrain, "iron-ore")[0]
+    site, conn, _ = ss.plan_and_connect(ss.real_map_plan(gd, terrain, patch), gd)
+    rs = RuntimeState(mining_drill_productivity_bonus=0.3)
+    ft = ss.fill_time(site, conn, gd, rs)
+    (ore,) = [d for d in ft["links"] if d["link"] == "ore"]
+    ln = next(x for x in site.links if x.label == "ore")
+    src, dst = site.interface(ln.src), site.interface(ln.dst)
+    route = next(r for r in conn.routes if r.link == "ore")
+    tiles = sum(
+        1
+        for p in route.placements
+        if gd.entity(p.name).type in ("transport-belt", "underground-belt")
+    )
+    per_tile = gd.constant("belt_items_per_tile")
+    # mine port: both lanes; the row's ore port: the left lane only, fed from both
+    # lanes, so the row's belt holds one lane's worth
+    want_in = dst.buffer_items
+    want = src.buffer_items + tiles * per_tile * beltgeom.lane_share(gd, src.lane) + want_in
+    assert ore["buffer_items"] == round(want)
+    assert ore["seconds"] == round(want / (ore["supply"] - ore["drawn"]))
+    assert ft["seconds"] >= ore["seconds"] > 0
+    assert ft["link"] == "ore"
+    # a flat site has no surplus anywhere: nothing to fill
+    flat_site = ss.flat_site(gd, Terrain(buildable=area_tiles(ss.FLAT_AREA)))
+    from fgen.route.connect import connect
+
+    assert ss.fill_time(flat_site, connect(flat_site, gd), gd, rs)["seconds"] == 0.0
