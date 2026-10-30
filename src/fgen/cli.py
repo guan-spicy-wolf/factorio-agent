@@ -332,9 +332,9 @@ def cmd_ask(args: argparse.Namespace) -> int:
     # (cleared terrain) and read the mines' consumers' contracts
     terrain = decide.cleared(raw)
     patches = {res: decide.DEFAULT.choose(terrain, res) for res in ("iron-ore", "copper-ore")}
-    window = site_measure.RED_MEASURE["warmup_s"] + (
-        site_measure.RED_MEASURE["samples"] * site_measure.RED_MEASURE["sample_s"]
-    )
+    # the facts are asked for the longest window a measurement runs (the warm-up cap):
+    # how many drills a patch keeps when none may run dry within it
+    window = site_measure.WARMUP_CAP_S
     plan = planner(gd, terrain, patches, args.rate, window_s=window)
     demand = {}
     for ln in plan.links:
