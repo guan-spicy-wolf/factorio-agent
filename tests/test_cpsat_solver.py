@@ -187,7 +187,7 @@ def test_static_rows_hold_the_solved_periods(gd):
             for b in _skeletons(ctx)
             if sorted((s.role, tuple(sorted(s.materials))) for s in b) == sorted(rows)
         )
-        allowed = ctx.belt_rows(per.height, sk)
+        allowed = ctx.belt_rows(per.height, sk, per.width)
         assert allowed is not None
         ok_rows, anchors = allowed
         for k, s in enumerate(sk):
@@ -198,4 +198,8 @@ def test_static_rows_hold_the_solved_periods(gd):
             _, mh = ctx.msize[si]
             assert round(q.position.y - mh / 2) in anchors[si], (q, si)
         mh = max(h for _, h in ctx.msize)
-        assert all(ctx.belt_rows(mh, b) is None for b in _skeletons(ctx))
+        assert all(ctx.belt_rows(mh, b, 32) is None for b in _skeletons(ctx))
+        # one band of machines (these periods): side by side they need their total width
+        total = sum(w * s.count for (w, _), s in zip(ctx.msize, sp.stages, strict=True))
+        assert per.height < 2 * mh + len(sk) and total <= per.width
+        assert ctx.belt_rows(per.height, sk, total - 1) is None

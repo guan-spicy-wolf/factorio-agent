@@ -118,30 +118,30 @@ input  power -            at (3,3) facing E
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | solver-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | 0.52 | 1 |
 | baseline-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 2:1 | 1 | 11x7 | 77 | 3 | 6 | 2 | - | 1 |
-| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.88 | 2 |
+| solver-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.87 | 2 |
 | baseline-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.88 | 4 |
+| solver-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 3 | 1.87 | 4 |
 | baseline-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 1.69 | 3 |
-| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.78 | 2 |
-| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.55 | 2 |
+| solver-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 3 | 2.10 | 3 |
+| solver-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 3 | 1.82 | 2 |
+| solver-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 5 | 2.41 | 2 |
 | baseline-am2-r3 | assembling-machine-2 | fast-inserter | small-electric-pole | 3 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 13 | 6 | - | 3 |
 | baseline-medium-r2 | assembling-machine-1 | fast-inserter | medium-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
 | baseline-basic-r2 | assembling-machine-1 | inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 24 | 8 | - | 2 |
-| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 19.99 | 2 |
+| solver-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 9x12 | 108 | 5 | 11 | 3 | 22.34 | 2 |
 | baseline-fastlong-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 3:2 | 1 | 19x7 | 133 | 5 | 11 | 4 | - | 2 |
-| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 19.99 | 4 |
+| solver-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 9x12 | 216 | 10 | 11 | 3 | 22.34 | 4 |
 | baseline-fastlong-r4 | assembling-machine-1 | fast-inserter | small-electric-pole | 4 | ok | 3:2 | 2 | 19x7 | 266 | 10 | 11 | 4 | - | 4 |
-| red-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:5 | 1 | 15x13 | 195 | 6 | 12 | 5 | 19.79 | 0.5 |
-| red-direct-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:2 | 3 | 11x7 | 231 | 9 | 7 | 2 | 2.85 | 0.6 |
-| red-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:10 | 1 | 30x13 | 390 | 11 | 22 | 9 | 55.51 | - |
-| red-direct-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:2 | 5 | 11x7 | 385 | 15 | 7 | 2 | 2.85 | 1 |
-| red-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 1:10 | 2 | 30x13 | 780 | 22 | 22 | 9 | 55.51 | - |
-| red-direct-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 1:2 | 10 | 11x7 | 770 | 30 | 7 | 2 | 2.85 | 2 |
-| red-direct-exhaustive-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:2 | 5 | 11x7 | 385 | 15 | 7 | 2 | 1.75 | 1 |
-| green-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:1:1:6 | 1 | 29x8 | 232 | 9 | 26 | 7 | 2401.28 | 0.5 |
-| green-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:1:1:6 | 2 | 29x8 | 464 | 18 | 26 | 7 | 2401.28 | 1 |
-| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 8. (try backend='cpsat'; belt='fast-transport-belt') |  |  |  |  |  |  |  |  |  |
+| red-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:5 | 1 | 15x13 | 195 | 6 | 12 | 5 | 10.21 | 0.5 |
+| red-direct-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:2 | 3 | 11x7 | 231 | 9 | 7 | 2 | 1.15 | 0.6 |
+| red-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:10 | 1 | 30x13 | 390 | 11 | 22 | 9 | 90.47 | - |
+| red-direct-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:2 | 5 | 11x7 | 385 | 15 | 7 | 2 | 1.15 | 1 |
+| red-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 1:10 | 2 | 30x13 | 780 | 22 | 22 | 9 | 90.47 | - |
+| red-direct-r2 | assembling-machine-1 | fast-inserter | small-electric-pole | 2 | ok | 1:2 | 10 | 11x7 | 770 | 30 | 7 | 2 | 1.15 | 2 |
+| red-direct-exhaustive-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:2 | 5 | 11x7 | 385 | 15 | 7 | 2 | 0.56 | 1 |
+| green-r0.5 | assembling-machine-1 | fast-inserter | small-electric-pole | 0.5 | ok | 1:1:1:6 | 1 | 29x8 | 232 | 9 | 26 | 7 | 1794.84 | 0.5 |
+| green-r1 | assembling-machine-1 | fast-inserter | small-electric-pole | 1 | ok | 1:1:1:6 | 2 | 29x8 | 464 | 18 | 26 | 7 | 1794.84 | 1 |
+| solver-r6 | assembling-machine-1 | fast-inserter | small-electric-pole | 6 | infeasible: 3:2 x3: solver found no 5-machine period (no period within the search bounds; 9. (try backend='cpsat'; belt='fast-transport-belt') |  |  |  |  |  |  |  |  |  |
 | solver-r20 | assembling-machine-1 | fast-inserter | small-electric-pole | 20 | infeasible: 3:2: copper-plate 30/s exceeds one transport-belt (15/s); electronic-circuit 20/ (try backend='cpsat'; target_rate=5) |  |  |  |  |  |  |  |  |  |
 
 ## Solver vs hand-written baseline

@@ -237,7 +237,7 @@ class _Ctx:
         return list(dict.fromkeys(names))
 
     def belt_rows(
-        self, h: int, belts: list[SkeletonBelt]
+        self, h: int, belts: list[SkeletonBelt], w: int
     ) -> tuple[set[tuple[int, int]], list[set[int]]] | None:
         """Rows the belts and machine anchors can take at height ``h`` (plan-phase8 C):
         a relaxation of the model that ignores x, solved by enumerating the belts' rows.
@@ -245,22 +245,40 @@ class _Ctx:
         no belt and every belt each of its machines must use is in reach of a north/south
         inserter standing on a row with no belt and outside the machine: every input belt
         it takes from (``need_in``, at full speed) and, for a final stage, its output belt.
-        Returns the (belt, row) pairs and per stage the anchor rows of some passing
-        assignment, or None when none passes (the model is infeasible). With underground
-        belts a belt row has free tiles: nothing is pruned. Cached per (height, skeleton)."""
+        And the machines must fit the width ``w``: if at most ``k`` of the allowed machine
+        positions are pairwise row-disjoint, the machines (row intervals: a perfect graph,
+        Helly) split into ``k`` groups sharing a row, each at most ``w`` wide side by
+        side. Returns the (belt,
+        row) pairs and per stage the anchor rows of some passing assignment, or None when
+        none passes (the model is infeasible). With underground belts a belt row has free
+        tiles: nothing is pruned. The assignments are cached per (height, skeleton)."""
+        nb = len(belts)
+        if any(self.ug):
+            return {(k, r) for k in range(nb) for r in range(h)}, [
+                set(range(h)) for _ in self.msize
+            ]
         key = (h, tuple(belts))
         if key not in self._rows:
             self._rows[key] = self._belt_rows(h, belts)
-        return self._rows[key]
+        need = sum(mw * s.count for (mw, _), s in zip(self.msize, self.spec.stages, strict=True))
+        ok_rows: set[tuple[int, int]] = set()
+        anchors: list[set[int]] = [set() for _ in self.msize]
+        for rows, ys, units in self._rows[key]:
+            if need > w * units:
+                continue
+            ok_rows.update(enumerate(rows))
+            for si, g in enumerate(ys):
+                anchors[si].update(g)
+        return (ok_rows, anchors) if ok_rows else None
 
     def _belt_rows(
         self, h: int, belts: list[SkeletonBelt]
-    ) -> tuple[set[tuple[int, int]], list[set[int]]] | None:
+    ) -> list[tuple[tuple[int, ...], list[list[int]], int]]:
+        """The passing belt-row assignments of :meth:`belt_rows`, each with its anchor
+        rows per stage and its machine capacity in widths."""
         from itertools import permutations
 
         f, nb = self.flows, len(belts)
-        if any(self.ug):
-            return {(k, r) for k in range(nb) for r in range(h)}, [set(range(h)) for _ in f.stages]
         lane = set(self.spec.lane_items)
         belt_of = {(b.role, mat): k for k, b in enumerate(belts) for mat in b.materials}
         need: list[set[int]] = []
@@ -297,8 +315,7 @@ class _Ctx:
             take_m.append(tk)
             put_m.append(pt)
         full = (1 << h) - 1
-        ok_rows: set[tuple[int, int]] = set()
-        anchors: list[set[int]] = [set() for _ in f.stages]
+        out_list: list[tuple[tuple[int, ...], list[list[int]], int]] = []
         for rows in permutations(range(h), nb):
             if 2 * rows[0] > h - 1:
                 continue  # the model's mirror cut
@@ -320,10 +337,15 @@ class _Ctx:
                     break
                 ys.append(good)
             else:
-                ok_rows.update(enumerate(rows))
-                for si, g in enumerate(ys):
-                    anchors[si].update(g)
-        return (ok_rows, anchors) if ok_rows else None
+                # capacity in widths: the most pairwise row-disjoint machine positions
+                # (earliest end first over every stage's allowed rows)
+                spans = sorted({(y + self.msize[si][1], y) for si, g in enumerate(ys) for y in g})
+                units, top = 0, -1
+                for end, y in spans:
+                    if y >= top:
+                        units, top = units + 1, end
+                out_list.append((rows, ys, units))
+        return out_list
 
     def slots_ok(self) -> bool:
         """Necessary condition (seconds, no model): every machine has at least as many
@@ -617,7 +639,7 @@ def _solve_height(
     rows_ok: set[tuple[int, int]] | None = None
     anchor_rows: list[set[int]] = []
     if prune:  # plan-phase8 C: rows no assignment of the belts allows (ctx.belt_rows)
-        allowed = ctx.belt_rows(h, belts)
+        allowed = ctx.belt_rows(h, belts, w)
         if allowed is None:
             stats.pruned["static_rows_infeasible"] += 1
             if DEBUG:
@@ -1840,7 +1862,7 @@ def _anytime(
             if lo > max_width:
                 continue
             if static:
-                if ctx.belt_rows(h, belts) is None:
+                if ctx.belt_rows(h, belts, max_width) is None:
                     screened[i] = "INFEASIBLE"
                     stats.pruned["static_rows_infeasible"] += 1
                     continue
