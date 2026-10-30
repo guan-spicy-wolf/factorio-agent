@@ -77,7 +77,8 @@ GREEN_CHAIN = DirectChainParams(
 TOLERANCE = 0.05  # M5: plates >= 95% of min(ore belt, 7.5)
 FLAT_AREA: Area = (Tile(-40, -30), Tile(100, 40))
 MINING_FAMILY = "anchor/mining-patch"
-FILL_FACTOR = 1.25  # measured warm-up = base + this x the estimated buffer fill time
+FILL_FACTOR = 2.0  # measured warm-up = base + this x the estimated buffer fill time (phase 8:
+#   1.25 left small-surplus links still filling; the estimate counts belts only)
 
 
 def red_case(rate: float) -> str:

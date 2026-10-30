@@ -59,7 +59,7 @@ uv run fgen sweep smelting --measure   # 18 组冶炼列实测写入 characteriz
 uv run fgen sweep mining --measure     # 7 个画矿形状实测，约 30 秒
 uv run fgen sweep mining --real-map    # 正常地图（config/ore-map-gen-settings.json）端到端，约 15 秒
 uv run fgen sweep site --measure       # 平地整站仿真（M4），约 12 秒
-uv run --extra solver fgen sweep site --measure --real-map   # 另加真实地图整站（M5：采矿→带→冶炼列）与红瓶站两档（阶段 7：两矿→两列→红瓶链，含两次 CP-SAT 求解与长预热），约 7 分钟
+uv run --extra solver fgen sweep site --measure --real-map   # 另加真实地图整站（M5）、红瓶站两档（阶段 7）与绿瓶站两档（阶段 8：两矿→两列→绿板链 + 分离器→绿瓶链，四次 CP-SAT 求解、预热到 7200 s），约 25 分钟；`--only`/`--rates` 选场景与档
 uv run --extra solver fgen sweep fluid --measure   # 11 行流体（塑料 7 + 硫酸 3 + 1 行不可行），约 7 分钟
 uv run --extra solver fgen sweep palette --measure   # 17 行全调色板 × 预设（含两行证明驱动，约 20 分钟），实测约 40 分钟
 uv run fgen sweep direct-chain --measure       # 25 行直插链（绿板求解器 vs 手写基线、红瓶、绿瓶；需 --extra solver），绿瓶周期求解约 30 分钟

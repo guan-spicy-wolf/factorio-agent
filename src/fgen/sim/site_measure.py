@@ -541,7 +541,7 @@ def station_rows(
 
 
 FILL_FACTOR = ss.FILL_FACTOR
-WARMUP_CAP_S = 3600.0  # game seconds; longer fills are measured as they are and flagged
+WARMUP_CAP_S = 7200.0  # game seconds; longer fills are measured as they are and flagged
 
 
 def warmup_for(
