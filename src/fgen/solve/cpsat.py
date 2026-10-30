@@ -28,7 +28,10 @@ Variables (all boolean unless stated):
   ``LINK`` (pick up from a stage-``ps`` machine, drop into a stage-``cs`` machine that
   uses its product);
 - ``f[ap, ac]`` (integer, items/s in fixed point): intermediate moved from the producer
-  at ``ap`` to the consumer at ``ac``;
+  at ``ap`` to the consumer at ``ac``; a stage with a single machine drops its anchor
+  from these (``f[ps, cs, ac]``, ``f[ps, cs, ap]`` or one per pair, plan-phase8 C:
+  which machine of it is meant is unique, so this is the same model; green science's
+  13248 flow variables become 2);
 - ``Q[q]``: a pole at anchor ``q``.
 
 Constraints: one thing per tile (belt row + machine cover + inserters + poles <= 1);
@@ -44,6 +47,18 @@ and the model re-solved (valid for every connected solution, so nothing is lost)
 Objective: ``poles * 1000 + inserters``. Output-lane loads (an even split of each final
 machine's product over its output inserters, as the exhaustive search and
 :func:`fgen.solve.period.assemble` count them) are only modelled when they can bind.
+
+**Static belt rows (plan-phase8 C).** :meth:`_Ctx.belt_rows` enumerates the belts'
+rows of a (height, skeleton) ignoring x: a stage's anchor row is possible when its rows
+hold no belt and every belt each of its machines must use (every input at full speed,
+the output of a final stage) is in reach of a north/south inserter on a row with no belt.
+It is a relaxation of the model, so a pair it refutes is infeasible at every width, and
+``prune`` leaves out the rows, anchors and belt slots no assignment allows (presolve's
+probing found the same, at 1-3 deterministic seconds a model). Used where only a status
+counts (the proof driver's screens and fixed-width first periods) and by the anytime
+driver's phase 1b; the period the proof driver keeps comes from the phase-4b model as
+it was (characterized blueprints stay put). Not with underground belts: their rows have
+free tiles.
 
 **Palette and presets (plan-phase4c).** The spec's inserter, pole and belt tiers are a
 palette: every inserter slot and pole anchor carries its tier, every belt row a tier
@@ -65,7 +80,9 @@ optimality. Default (**anytime**, plan-phase4c), within a time box:
    alone (stage 0, given up when its loose sizes find nothing);
 1. first feasible period: analytically loose sizes (:func:`loose_sizes`), then up the
    heights the pole-free screen and the widest model of the first height it lets
-   through (fluids skip the loose sizes: wide fluid models are expensive);
+   through (fluids skip the loose sizes: wide fluid models are expensive; without
+   underground belts the static belt rows take the screen's place and the widest model
+   is pruned);
 2. one pass over (height, skeleton), the incumbent's first: the screen; ``compact``:
    the smallest width that beats the incumbent by bisection over fixed-width models
    (first solutions with ``key <= best - 1``), then the unrefuted widths below it
@@ -1501,7 +1518,7 @@ def _proved(
                 # first period each (a feasible width is cheap to show, its optimum is
                 # not): the smallest feasible one is the height's width, as in the
                 # sequential scan; then that width's phase-4b model with the objective
-                per, obj, w_min = None, math.inf, None
+                per, obj, w_min, first = None, math.inf, None, None
                 for w0 in range(w_lo, w_hi + 1, pool.procs):
                     left = deadline - time.monotonic()
                     if left <= 0:
@@ -1516,7 +1533,7 @@ def _proved(
                     for wf, (status, per2, _) in zip(ws, outs, strict=True):
                         stats.pruned[f"cp_first_{status.lower()}"] += 1
                         if per2 is not None:
-                            w_min = wf
+                            w_min, first = wf, per2
                             break
                         if status != "INFEASIBLE":
                             stats.timed_out = True
@@ -1542,6 +1559,13 @@ def _proved(
                     stats.pruned[f"cp_{status.lower()}"] += 1
                     if status == "UNKNOWN" or (per is not None and not per.meta["proved_optimal"]):
                         stats.timed_out = True
+                    if per is None:
+                        # out of time before the objective model's first period (or its
+                        # wire cuts' re-solve): the first period of this width stands in
+                        per = first
+                        if per is not None:
+                            per.meta["proved_optimal"] = False
+                            stats.pruned["first_period_kept"] += 1
                 if per is not None:
                     per.meta["seconds_to_find"] = round(time.monotonic() - t0, 3)
                     per.meta["det_to_find"] = round(stats.nodes["cp_det_ms"] / 1000, 3)
