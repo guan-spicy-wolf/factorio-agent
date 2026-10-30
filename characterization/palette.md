@@ -8,23 +8,23 @@ legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furna
 
 | case | preset | result | periods | period WxH | unit area | machines | ins/poles/pipes per period | cost per period (raw units) | kinds | entities (period) | first feasible s | solve s (proven) | measured/s |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| circuit-r2-compact | compact | ok | 1 | 19x8 | 133 | 5 | 11/3/0 | 197.5 | 3 | fast-inserter, small-electric-pole, transport-belt | 4.2 | 52.7 (no) | 2 |
-| circuit-r2-cheap | cheap | ok | 1 | 19x8 | 133 | 5 | 11/3/0 | 197.5 | 3 | fast-inserter, small-electric-pole, transport-belt | 4.6 | 60.9 (no) | 2 |
-| circuit-r2-simple | simple | ok | 1 | 19x8 | 133 | 5 | 11/3/0 | 197.5 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.6 | 63.7 (no) | 2 |
-| red-r1-compact | compact | ok | 1 | 30x14 | 390 | 11 | 22/9/0 | 419 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.2 | 48.8 (no) | 1 |
-| red-r1-cheap | cheap | ok | 1 | 30x14 | 420 | 11 | 30/72/0 | 582 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.1 | 50.0 (no) | 0.9833 |
-| red-r1-simple | simple | ok | 1 | 30x14 | 390 | 11 | 22/9/0 | 419 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.2 | 51.8 (no) | 1 |
-| green-r0.5-compact | compact | ok | 1 | 32x8 | 256 | 9 | 27/10/0 | 5366.5 | 7 | express-transport-belt, express-underground-belt, fast-inserter, inserter, long-handed-inserter, medium-electric-pole, small-electric-pole | 281.0 | 405.8 (no) | 0.5 |
-| green-r0.5-cheap | cheap | ok | 1 | 32x8 | 256 | 9 | 27/10/0 | 5366.5 | 7 | express-transport-belt, express-underground-belt, fast-inserter, inserter, long-handed-inserter, medium-electric-pole, small-electric-pole | 274.7 | 391.7 (no) | 0.5 |
-| green-r0.5-simple | simple | ok | 1 | 32x8 | 256 | 9 | 26/2/0 | 1775 | 4 | fast-inserter, fast-transport-belt, long-handed-inserter, substation | 238.0 | 361.9 (no) | 0.5 |
-| plastic-r2-compact | compact | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 34 | 5 | fast-inserter, long-handed-inserter, pipe, small-electric-pole, transport-belt | 2.0 | 5.8 (yes) | 2.2 |
-| plastic-r2-cheap | cheap | ok | 1 | 3x9 | 21 | 1 | 2/1/3 | 34 | 5 | fast-inserter, long-handed-inserter, pipe, small-electric-pole, transport-belt | 1.9 | 35.5 (no) | 2.2 |
-| plastic-r2-simple | simple | ok | 1 | 3x8 | 24 | 1 | 3/1/3 | 98.5 | 4 | fast-transport-belt, long-handed-inserter, pipe, small-electric-pole | 1.7 | 30.8 (no) | 2.2 |
-| acid-r50-compact | compact | ok | 1 | 8x5 | 40 | 1 | 3/1/15 | 503.5 | 5 | express-transport-belt, fast-inserter, medium-electric-pole, pipe, pipe-to-ground | 4.5 | 33.0 (yes) | 50 |
-| acid-r50-cheap | cheap | ok | 1 | 8x5 | 40 | 1 | 3/2/15 | 92.5 | 5 | fast-inserter, pipe, pipe-to-ground, small-electric-pole, transport-belt | 4.5 | 38.4 (no) | 50 |
-| acid-r50-simple | simple | ok | 1 | 8x5 | 40 | 1 | 3/1/15 | 183.5 | 5 | fast-inserter, fast-transport-belt, medium-electric-pole, pipe, pipe-to-ground | 4.3 | 37.1 (no) | 50 |
-| circuit-r2-compact-prove | compact | ok | 1 | 9x11 | 99 | 5 | 13/1/0 | 1857 | 5 | express-transport-belt, express-underground-belt, fast-inserter, long-handed-inserter, substation | 125.7 | 1085.6 (yes) | 2 |
-| circuit-r2-compact-prove-4a | compact | ok | 1 | 9x12 | 108 | 5 | 11/3/0 | 173 | 4 | fast-inserter, long-handed-inserter, small-electric-pole, transport-belt | 13.3 | 92.5 (yes) | 2 |
+| circuit-r2-compact | compact | ok | 1 | 19x8 | 133 | 5 | 11/3/0 | 197.5 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.9 | 49.5 (no) | - |
+| circuit-r2-cheap | cheap | ok | 1 | 19x8 | 133 | 5 | 11/3/0 | 197.5 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.9 | 55.5 (no) | 2 |
+| circuit-r2-simple | simple | ok | 1 | 19x8 | 133 | 5 | 11/3/0 | 197.5 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.9 | 61.4 (no) | 2 |
+| red-r1-compact | compact | ok | 1 | 30x14 | 390 | 11 | 22/9/0 | 419 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.2 | 49.5 (no) | 1 |
+| red-r1-cheap | cheap | ok | 1 | 30x14 | 420 | 11 | 30/72/0 | 582 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.5 | 50.5 (no) | 0.9833 |
+| red-r1-simple | simple | ok | 1 | 30x14 | 390 | 11 | 22/9/0 | 419 | 3 | fast-inserter, small-electric-pole, transport-belt | 3.6 | 49.9 (no) | 1 |
+| green-r0.5-compact | compact | ok | 1 | 32x8 | 256 | 9 | 26/9/0 | 1411 | 6 | fast-inserter, fast-transport-belt, inserter, long-handed-inserter, medium-electric-pole, small-electric-pole | 182.2 | 251.8 (no) | - |
+| green-r0.5-cheap | cheap | ok | 1 | 32x8 | 256 | 9 | 28/8/0 | 337 | 5 | fast-inserter, inserter, long-handed-inserter, small-electric-pole, transport-belt | 184.5 | 263.5 (no) | - |
+| green-r0.5-simple | simple | ok | 1 | 32x8 | 256 | 9 | 26/9/0 | 1411 | 6 | fast-inserter, fast-transport-belt, inserter, long-handed-inserter, medium-electric-pole, small-electric-pole | 195.7 | 273.2 (no) | - |
+| plastic-r2-compact | compact | ok | 1 | 3x7 | 21 | 1 | 2/1/3 | 34 | 5 | fast-inserter, long-handed-inserter, pipe, small-electric-pole, transport-belt | 1.8 | 5.6 (yes) | 2.2 |
+| plastic-r2-cheap | cheap | ok | 1 | 3x9 | 21 | 1 | 2/1/3 | 34 | 5 | fast-inserter, long-handed-inserter, pipe, small-electric-pole, transport-belt | 2.4 | 35.7 (no) | 2.2 |
+| plastic-r2-simple | simple | ok | 1 | 3x8 | 24 | 1 | 3/1/3 | 98.5 | 4 | fast-transport-belt, long-handed-inserter, pipe, small-electric-pole | 1.9 | 30.4 (no) | 2.2 |
+| acid-r50-compact | compact | ok | 1 | 8x5 | 40 | 1 | 3/1/15 | 103.5 | 5 | fast-inserter, medium-electric-pole, pipe, pipe-to-ground, transport-belt | 4.3 | 31.8 (yes) | - |
+| acid-r50-cheap | cheap | ok | 1 | 8x5 | 40 | 1 | 3/2/15 | 92.5 | 5 | fast-inserter, pipe, pipe-to-ground, small-electric-pole, transport-belt | 4.3 | 36.4 (no) | 50 |
+| acid-r50-simple | simple | ok | 1 | 8x5 | 40 | 1 | 3/1/15 | 183.5 | 5 | fast-inserter, fast-transport-belt, medium-electric-pole, pipe, pipe-to-ground | 4.6 | 35.7 (no) | 50 |
+| circuit-r2-compact-prove | compact | ok | 1 | 9x11 | 99 | 5 | 13/1/0 | 1857 | 5 | express-transport-belt, express-underground-belt, fast-inserter, long-handed-inserter, substation | 144.1 | 958.7 (yes) | 2 |
+| circuit-r2-compact-prove-4a | compact | ok | 1 | 9x12 | 108 | 5 | 11/3/0 | 173 | 4 | fast-inserter, long-handed-inserter, small-electric-pole, transport-belt | 6.1 | 38.8 (yes) | 2 |
 
 ## Units
 
@@ -32,21 +32,21 @@ legend: ^>v< belt (flow)  U underground  S splitter  i inserter  P pole  F furna
 
 ```
 >>>>>>>>>>>>>>>>>>>
-..i..i..iP...i..i..
-AAAiAAA.AAAiAAA.AAA
-AAAPAAAiAAA.AAAPAAA
-AAA.AAA.AAA.AAAiAAA
-....i........i.....
+..i..i...Pi...i..i.
+AAA.AAA.AAA.AAA.AAA
+AAAPAAAiAAAiAAAPAAA
+AAAiAAA.AAA.AAAiAAA
+.....i........i....
 >>>>>>>>>>>>>>>>>>>
-input  item  copper-plate at (0,0) facing E lane=left 3/s
+input  item  copper-plate at (0,1) facing E lane=left 3/s
          requires: at least 3/s
          assumes: transport-belt enters from the west, copper-plate on lane(s) left
-input  item  iron-plate   at (0,0) facing E lane=right 2/s
+input  item  iron-plate   at (0,1) facing E lane=right 2/s
          requires: at least 2/s
          assumes: transport-belt enters from the west, iron-plate on lane(s) right
-output item  electronic-circuit at (18,6) facing E lane=right 2/s
+output item  electronic-circuit at (18,7) facing E lane=right 2/s
          assumes: electronic-circuit on lane(s) right; downstream must keep it moving
-input  power -            at (3,3) facing E
+input  power -            at (3,4) facing E
          assumes: connect a small-electric-pole-compatible wire to this pole
 ```
 
@@ -185,69 +185,13 @@ input  power -            at (1,1) facing E
 ### green-r0.5-compact
 
 ```
->UP.AAA.U>>>>>>>>>>>>>>>UP.U>>>>
-AAAiAAA....ii.i..P.ii..i....iP.i
-AAAPAAA.i.AAAPAAAAAAAAAAAAAAAAAA
-AAA...P...AAA.AAAAAAAAAAAAAAAAAA
-.ii..ii...AAA.AAAAAAAAAAAAAAAAAA
-..........i...i.i.iiiPii.iPiiPii
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
->U.U>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-input  item  electronic-circuit at (0,0) facing E lane=right 0.5/s
-         requires: at least 0.5/s
-         assumes: express-transport-belt enters from the west, electronic-circuit on lane(s) right
-input  item  iron-plate   at (0,6) facing E lane=left 2.25/s
-         requires: at least 2.25/s
-         assumes: express-transport-belt enters from the west, iron-plate on lane(s) left
-output item  logistic-science-pack at (31,7) facing E lane=right 0.5/s
-         assumes: logistic-science-pack on lane(s) right; downstream must keep it moving
-         assumes: inserter rides the left lane of the input belt at y=0: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
-         assumes: transport-belt rides the right lane of the input belt at y=6: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
-         assumes: inserter: 1/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-         assumes: transport-belt: 2/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-         assumes: iron-gear-wheel: 1/s made per period, 0.75/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-input  power -            at (2,0) facing E
-         assumes: connect a small-electric-pole-compatible wire to this pole
-```
-
-### green-r0.5-cheap
-
-```
->UP.AAA.U>>>>>>>>>>>>>>>UP.U>>>>
-AAAiAAA....ii.i..P.ii..i....iP.i
-AAAPAAA.i.AAAPAAAAAAAAAAAAAAAAAA
-AAA...P...AAA.AAAAAAAAAAAAAAAAAA
-.ii..ii...AAA.AAAAAAAAAAAAAAAAAA
-..........i...i.i.iiiPii.iPiiPii
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
->U.U>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-input  item  electronic-circuit at (0,0) facing E lane=right 0.5/s
-         requires: at least 0.5/s
-         assumes: express-transport-belt enters from the west, electronic-circuit on lane(s) right
-input  item  iron-plate   at (0,6) facing E lane=left 2.25/s
-         requires: at least 2.25/s
-         assumes: express-transport-belt enters from the west, iron-plate on lane(s) left
-output item  logistic-science-pack at (31,7) facing E lane=right 0.5/s
-         assumes: logistic-science-pack on lane(s) right; downstream must keep it moving
-         assumes: inserter rides the left lane of the input belt at y=0: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
-         assumes: transport-belt rides the right lane of the input belt at y=6: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
-         assumes: inserter: 1/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-         assumes: transport-belt: 2/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-         assumes: iron-gear-wheel: 1/s made per period, 0.75/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-input  power -            at (2,0) facing E
-         assumes: connect a small-electric-pole-compatible wire to this pole
-```
-
-### green-r0.5-simple
-
-```
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-AAA.......iiii.ii..ii.iiPP.ii.ii
-AAA.AAA.iAAAAAAAAAAAAAAAPPAAAAAA
-AAAiAAA..AAAAAAAAAAAAAAA..AAAAAA
-.ii.AAAPPAAAAAAAAAAAAAAA..AAAAAA
-.....i.PPi....ii..i..i.....i...i
+...AAA.....i.i.iiPii.iiPii.iiPii
+.P.AAAPAAAiAAAAAAAAAAAAAAAAAAAAA
+...AAAiAAA.AAAAAAAAAAAAAAAAAAAAA
+....ii.AAAPAAAAAAAAAAAAAAAAAAAAA
+.......i.....i..i.Pi..i.Pi..i.Pi
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 input  item  electronic-circuit at (0,1) facing E lane=right 0.5/s
          requires: at least 0.5/s
@@ -262,8 +206,64 @@ output item  logistic-science-pack at (31,0) facing E lane=left 0.5/s
          assumes: inserter: 1/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
          assumes: transport-belt: 2/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
          assumes: iron-gear-wheel: 1/s made per period, 0.75/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
-input  power -            at (8,6) facing E
-         assumes: connect a substation-compatible wire to this pole
+input  power -            at (1,3) facing E
+         assumes: connect a small-electric-pole-compatible wire to this pole
+```
+
+### green-r0.5-cheap
+
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+..AAA.....iii..iiiPii.iiPii.iiPi
+..AAAiAAAPAAA.AAAAAAAAAAAAAAAAAA
+..AAA.AAA.AAAPAAAAAAAAAAAAAAAAAA
+..iiP.AAAiAAA.AAAAAAAAAAAAAAAAAA
+......i....ii.i...iPi....i.Pii..
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+input  item  electronic-circuit at (0,1) facing E lane=right 0.5/s
+         requires: at least 0.5/s
+         assumes: transport-belt enters from the west, electronic-circuit on lane(s) right
+input  item  iron-plate   at (0,7) facing E lane=left 2.25/s
+         requires: at least 2.25/s
+         assumes: transport-belt enters from the west, iron-plate on lane(s) left
+output item  logistic-science-pack at (31,0) facing E lane=left 0.5/s
+         assumes: logistic-science-pack on lane(s) left; downstream must keep it moving
+         assumes: inserter rides the left lane of the input belt at y=1: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
+         assumes: transport-belt rides the right lane of the input belt at y=7: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
+         assumes: inserter: 1/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
+         assumes: transport-belt: 2/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
+         assumes: iron-gear-wheel: 1/s made per period, 0.75/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
+input  power -            at (4,5) facing E
+         assumes: connect a small-electric-pole-compatible wire to this pole
+```
+
+### green-r0.5-simple
+
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+...AAA.....i.i.iiPii.iiPii.iiPii
+.P.AAAPAAAiAAAAAAAAAAAAAAAAAAAAA
+...AAAiAAA.AAAAAAAAAAAAAAAAAAAAA
+....ii.AAAPAAAAAAAAAAAAAAAAAAAAA
+.......i.....i..i.Pi..i.Pi..i.Pi
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+input  item  electronic-circuit at (0,1) facing E lane=right 0.5/s
+         requires: at least 0.5/s
+         assumes: fast-transport-belt enters from the west, electronic-circuit on lane(s) right
+input  item  iron-plate   at (0,7) facing E lane=left 2.25/s
+         requires: at least 2.25/s
+         assumes: fast-transport-belt enters from the west, iron-plate on lane(s) left
+output item  logistic-science-pack at (31,0) facing E lane=left 0.5/s
+         assumes: logistic-science-pack on lane(s) left; downstream must keep it moving
+         assumes: inserter rides the left lane of the input belt at y=1: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
+         assumes: transport-belt rides the right lane of the input belt at y=7: made in every period upstream of its pickups; the feeder leaves that lane empty, surplus backs it up to the belt end
+         assumes: inserter: 1/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
+         assumes: transport-belt: 2/s made per period, 0.5/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
+         assumes: iron-gear-wheel: 1/s made per period, 0.75/s used (approximate 1:1:1:6 ratio, exact 2:1:3:24); producers idle the rest
+input  power -            at (1,3) facing E
+         assumes: connect a small-electric-pole-compatible wire to this pole
 ```
 
 ### plastic-r2-compact
@@ -337,22 +337,22 @@ input  power -            at (0,3) facing E
 
 ```
 >>>>>>>>
-=uiii.u=
-==AAA=.=
-.PAAA==.
-=uAAAu==
+=u.iiiu=
+=.=AAA==
+.==AAAP.
+==uAAAu=
 input  item  iron-plate   at (0,0) facing E lane=left 1/s
          requires: at least 1/s
-         assumes: express-transport-belt enters from the west, iron-plate on lane(s) left
+         assumes: transport-belt enters from the west, iron-plate on lane(s) left
 input  item  sulfur       at (0,0) facing E lane=right 5/s
          requires: at least 5/s
-         assumes: express-transport-belt enters from the west, sulfur on lane(s) right
+         assumes: transport-belt enters from the west, sulfur on lane(s) right
 output fluid sulfuric-acid at (7,4) facing E 50/s
          assumes: pipe at the east end of the sulfuric-acid pipes; the segment spans 8 tiles of the unit (limit 320 with the link)
 input  fluid water        at (0,2) facing W 100/s
          requires: at least 100/s
          assumes: pipe at the west end of the water pipes; the segment spans 8 tiles of the unit (limit 320 with the link)
-input  power -            at (1,3) facing E
+input  power -            at (6,3) facing E
          assumes: connect a medium-electric-pole-compatible wire to this pole
 ```
 
@@ -461,19 +461,14 @@ Built from the blueprint in Factorio headless (full research, recipes unlocked),
 
 | case | target/s | predicted/s | measured/s | Δ vs predicted | note |
 | --- | --- | --- | --- | --- | --- |
-| circuit-r2-compact | 2 | 2 | 2 | +0.0% |  |
 | circuit-r2-cheap | 2 | 2 | 2 | +0.0% |  |
 | circuit-r2-simple | 2 | 2 | 2 | +0.0% |  |
 | red-r1-compact | 1 | 1 | 1 | +0.0% |  |
 | red-r1-cheap | 1 | 1 | 0.9833 | -1.7% | below target |
 | red-r1-simple | 1 | 1 | 1 | +0.0% |  |
-| green-r0.5-compact | 0.5 | 0.5 | 0.5 | +0.0% |  |
-| green-r0.5-cheap | 0.5 | 0.5 | 0.5 | +0.0% |  |
-| green-r0.5-simple | 0.5 | 0.5 | 0.5 | +0.0% |  |
 | plastic-r2-compact | 2 | 2.2 | 2.2 | +0.0% |  |
 | plastic-r2-cheap | 2 | 2.2 | 2.2 | +0.0% |  |
 | plastic-r2-simple | 2 | 2.2 | 2.2 | +0.0% |  |
-| acid-r50-compact | 50 | 50 | 50 | +0.0% |  |
 | acid-r50-cheap | 50 | 50 | 50 | +0.0% |  |
 | acid-r50-simple | 50 | 50 | 50 | +0.0% |  |
 | circuit-r2-compact-prove | 2 | 2 | 2 | +0.0% |  |

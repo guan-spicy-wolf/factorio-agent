@@ -129,6 +129,7 @@ def run_case(c: Case, gd: GameData, procs: int) -> dict[str, Any]:
         "time_limit": p.time_limit,
         "seconds": round(time.monotonic() - t, 1),
         "first_feasible_s": st.phases.get("first_feasible_s"),
+        "first_feasible_det_s": st.phases.get("first_feasible_det_s"),
         "proven": st.proven,
         "timed_out": st.timed_out,
         "unproven_infeasible": st.unproven_infeasible,
@@ -197,7 +198,9 @@ def write(
         "models are the same deterministic CP-SAT solves either way, so `placements` (a "
         "hash of the period's entities) must agree between the two rows of a case. "
         "`load` is the 1-minute load average before/after (shared 4-core box; `nproc`). "
-        "Experiment log: `docs/experiments/7-solver-speed.md`.",
+        "`first feasible det s`: CP-SAT deterministic time spent until the first period "
+        "(phase 8; `-` on rows from before). `det s`: all of it. "
+        "Experiment logs: `docs/experiments/7-solver-speed.md`, `8-solver-model.md`.",
         "",
         _cells(
             "case",
@@ -207,6 +210,7 @@ def write(
             "limit s",
             "wall s",
             "first feasible s",
+            "first feasible det s",
             "result",
             "period WxH / poles / ins",
             "placements",
@@ -215,7 +219,7 @@ def write(
             "nproc / load before-after",
             "utc",
         ),
-        _cells(*["---"] * 14),
+        _cells(*["---"] * 15),
     ]
     for r in rs:
         per = r["period"]
@@ -239,6 +243,9 @@ def write(
                 f"{r['time_limit']:g}",
                 r["seconds"],
                 "-" if r["first_feasible_s"] is None else f"{r['first_feasible_s']:.1f}",
+                "-"
+                if r.get("first_feasible_det_s") is None
+                else f"{r['first_feasible_det_s']:.1f}",
                 res,
                 "-"
                 if per is None
