@@ -63,13 +63,16 @@ RED_RECIPE = "automation-science-pack"
 GREEN_SCIENCE = "green-science"
 GREEN_SCIENCE_RATES = (0.5, 1.0)  # packs/s tiers of the green-science scenario
 GREEN_RECIPE = "logistic-science-pack"
-# the green chain as characterized in phase 4b (``direct_chain_sweep``), lane kind only
+# the green chain as characterized in phase 4b (``direct_chain_sweep``: the given tiers,
+# fast + long-handed inserters, six final machines per period), lane kind only; the full
+# palette on this chain has never been characterized and found no period in 17 minutes
 GREEN_CHAIN = DirectChainParams(
     recipe=GREEN_RECIPE,
     belt_inputs=("electronic-circuit",),
     extra_inserters=("long-handed-inserter",),
     max_lane_consumers=6,
     intermediates="lane",
+    palette="given",
 )
 TOLERANCE = 0.05  # M5: plates >= 95% of min(ore belt, 7.5)
 FLAT_AREA: Area = (Tile(-40, -30), Tile(100, 40))

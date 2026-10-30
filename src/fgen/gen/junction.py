@@ -97,6 +97,7 @@ def splitter_unit(
         requires=(MinRate(total),),
         entity=belt,
         space=PortSpace.item("direct"),
+        buffer_items=beltgeom.run_items(gd, 1, lane),  # the one belt tile before the splitter
     )
     outs = [
         Interface(
@@ -111,6 +112,7 @@ def splitter_unit(
             rate_profile=profile(float(r)),
             entity=belt,
             space=PortSpace.item("direct"),
+            buffer_items=beltgeom.run_items(gd, 1, lane),  # the one belt tile after it
         )
         for k, r in enumerate(shares)
     ]

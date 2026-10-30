@@ -21,6 +21,9 @@ uv run fgen gen mining --case l-shape [--pole medium-electric-pole --axis y ...]
 uv run fgen sweep mining                                  # 写 characterization/mining_patch.{jsonl,md}
 uv run fgen sweep site                                    # 平地整站（规划+路由）写 characterization/site.{jsonl,md}
 uv run --extra solver fgen sweep site --measure --real-map [--only red-science] [--keep-save red-1ps]   # 真实地图整站 + 红瓶站（阶段 7）
+uv run --extra solver fgen sweep site --measure --real-map --only green-science [--keep-save green-science-1ps]   # 绿瓶站：矿 → 板 → 绿板 → 绿瓶，铁板经分离器分给两条链（阶段 8）
+uv run --extra solver fgen ask site --product logistic-science-pack --rate 1 --out q.json   # 站点的判断题（选矿候选 + 事实、放置偏好）给 agent 回答
+uv run --extra solver fgen sweep site --measure --real-map --only green-science --decisions config/decisions/haiku.json   # 按答案文件规划实测，行名 green-science-1@haiku
 uv run fgen gen direct-chain --recipe electronic-circuit --rate 2   # 直插链：求解器周期 × k
 uv run fgen gen direct-chain --rate 2 --layout baseline             # 手写经典 3:2 排法
 uv run fgen gen direct-chain --rate 2 --extra-inserters long-handed-inserter   # 允许混长臂爪
