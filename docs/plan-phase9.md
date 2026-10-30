@@ -54,6 +54,8 @@
 - 家族：加采矿（变体要带地形快照与矿区：快照存 JSON、矿区按 `decide.patch_id`）与站点（变体 = 答案文件 + 链参数集，`fgen sweep site --decisions` 现在的能力并进来，行名 `@name` 的约定保留）。
 - 决赛实测：`--measure TOP_K`，只对排名前 k 的成员起服务器实测（试错的梯子：`validate` → `predict` → 离线放置路由 → 求解 → 实测，广度放在便宜的级）。
 - 续跑：成员多、机器满时能中断续跑（按 `variant` 名与 `params` 键跳过已有行）。
+- 失败成员的成本：`generate` 在不可行时为建议重新求解（更快的带、更小的目标），第一张绿瓶表里每个全调色板成员为此多付 4–24 分钟；给生成器一个不算建议的开关，runner 默认用它。
+- 备忘：同一进程里相同规格的成员直接命中 `_SOLVED`，表里标 `(memo)`；要量成本得 `--only` 单跑或按成员清备忘（二选一，写清口径）。
 - 表：同一张表多次运行的差异（成员增删、换解）要能看出来；`asked_by.question` 与选中的行写回变体文件的 `chosen` 字段。
 - 现有 sweep 模块（`direct_chain_sweep`、`fluid_sweep`、`palette_sweep`、`solver_time_sweep`、`site_sweep` 的表部分）是否并入 `compare`：先不动（它们是回归表，键是 `params`），等 B 的家族补齐后再定；`docs/scripts.md` 标了每张表的去向。
 
@@ -99,4 +101,8 @@
 - `config/variants/README.md`（格式与约定）、`circuit-smoke.json`（穷尽后端秒级冒烟：ok / baseline / 不可行三种行）、`green-chain.json`（手钉 `GREEN_CHAIN` 回答的那道题：给定 vs 全调色板 × lane vs auto × 6 vs 12 台）。
 - 测试 `tests/test_compare_variants.py` 11 个：文件校验、网格展开、`procs` 1 与 2 行相同、三种行、`first` 不取不可行行、冶炼列家族按面积排、CLI 的 `--only` / `--rank` / 退出码。
 - 文档：本任务书；`docs/scripts.md`（命令与脚本地图）；`docs/design.md`、`CLAUDE.md`、`README.md` 按本阶段修订。
+- 第一张真实对照表 `compare/green-chain.{jsonl,md}`（9 成员、`--procs 2`、机器安静，1720 s 墙钟）回答了架子要回答的问题：
+  - 给定调色板的 5 个成员全部给出同一个周期 29×8 / 7 杆 / 26 爪（`7abbb7dd66f26e83`，= 8C 证明最小），首解 8.4 s；`max_lane_consumers` 6 与 12、`intermediates` lane 与 auto 在这组参数下给同一个首选规格，所以后四行是同一进程里的**备忘命中**（`(memo)`，墙钟 0.01 s），auto 多付多少**没有量到**，要 `--only` 单跑。
+  - **全调色板的 4 个成员在 60 s 盒里一个周期都没有**（确定性时间 54 s 用完、未证明），与 8A"17 分钟无首解"一致：这就是手钉 `GREEN_CHAIN` 的原因，现在有行可指。
+  - 不可行成员的墙钟 249–1461 s，远超 60 s 盒：失败后 `generate` 为了给建议（`_belt_suggestions`）又为更快的带与更小的目标各解一遍。对照表不需要这些建议；任务 B 要给 `generate` 一个"不算建议"的开关，否则并发试错的成本被失败成员主导。
 - 没做：组合驱动本身（任务 A）、采矿与站点家族、决赛实测、续跑（任务 B 剩余）、诚实失败与确定性（任务 C）。现有 sweep 模块与 CLI 布局没有移动：并行会话期间大搬家只会制造冲突，去向见 `docs/scripts.md`。

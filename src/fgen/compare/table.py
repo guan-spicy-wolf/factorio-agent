@@ -91,7 +91,7 @@ def render_md(
             "**1**" if rk == 1 else (rk or "-"),
             r["variant"],
             status,
-            _g(r["wall_s"]),
+            _g(r["wall_s"]) + (" (memo)" if r.get("memoised") else ""),
         ]
         per, pred = r.get("period") or {}, r.get("predicted") or {}
         if has_period:
@@ -117,6 +117,13 @@ def render_md(
         ]
         lines.append(_cells(*cells))
     lines += [""]
+    if any(r.get("memoised") for r in rows):
+        lines += [
+            "`(memo)`: the worker had already solved this member's spec for an earlier member; "
+            "its wall seconds are not a measurement (the solver columns are the earlier "
+            "solve's). Run it alone (`--only`) to time it.",
+            "",
+        ]
     w = meta.get("winner")
     if w:
         lines += [f"Winner by `{vset.rank}`: **{w}**.", ""]

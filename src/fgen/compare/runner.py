@@ -12,7 +12,13 @@ A row holds hard metrics only: status (``ok`` / ``infeasible`` / ``error``) and 
 reason, wall seconds, the predicted throughput and size, the period (size, poles,
 inserters, pipes, solver seconds, proven, seconds to the first period, preset metrics,
 entities) when the family has one, the blueprint hash, the ASCII render and the
-contract. :func:`rank` orders the feasible rows by the set's ``rank``: a preset's
+contract; ``memoised`` marks a period the worker had already solved for an earlier
+member (same spec), whose wall seconds are therefore not a measurement. Infeasible
+members pay for the generator's suggestions (it re-solves for faster belts and smaller
+targets), which can dwarf the time box; the first green-chain table spent 4-24 minutes
+per full-palette member there (plan-phase9 task B).
+
+:func:`rank` orders the feasible rows by the set's ``rank``: a preset's
 lexicographic terms (:data:`fgen.solve.preset.PRESETS`) over the period metrics (area
 alone for families without a period), or ``first`` = fewest seconds to the first
 period. Ties keep member order.
@@ -100,6 +106,11 @@ def generate_row(gd: GameData, vset: VariantSet, m: Member) -> dict[str, Any]:
         p["periods"] = unit.meta.get("periods")
         p["ratio"] = unit.meta.get("ratio")
         row["period"] = _jsonable(p)
+        # the generator memoises solved specs per process: a member whose spec another
+        # member of the same worker already solved returns at once, and its wall seconds
+        # say nothing about its cost (the solver statistics are the earlier solve's)
+        secs = p.get("seconds") or 0.0
+        row["memoised"] = bool(secs) and row["wall_s"] < 0.5 * secs
     return row
 
 
