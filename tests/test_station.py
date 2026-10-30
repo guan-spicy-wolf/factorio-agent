@@ -247,3 +247,22 @@ def test_splitter_unit_routes_one_producer_to_two_consumers(gd):
     _, conn, log = plan_and_connect(plan, gd)
     assert conn.violations == [] and conn.ok and log[-1]["error"] is None
     assert {r.link for r in conn.routes} == {"in", "a", "b"}
+
+
+def test_choose_mining_rounds_the_cap_up_to_whole_drills(gd):
+    """A consumer asking 0.75/s from 0.5/s drills gets two drills (1.0/s capped), not
+    one: the phase-8 green 0.5 station starved its copper row on the old rule."""
+    from fgen.gen.mining_patch import generate as gen_mining
+    from fgen.geom import mining as mining_geom
+
+    res = paint.to_resources(paint.rectangle(0, 0, 20, 16, 5000), "copper-ore")
+    terrain = Terrain.from_resources(res, margin=20)
+    patch = patches(terrain, "copper-ore")[0]
+    per_drill = mining_geom.drill_rate(gd, "electric-mining-drill", "copper-ore")
+    mp = ss.choose_mining(gd, terrain, patch, max_rate=1.5 * per_drill, window_s=300)
+    assert mp.max_belt_rate == pytest.approx(2 * per_drill)
+    unit = gen_mining(mp, gd, patch, terrain)
+    assert unit.meta["anchor"]["rate"] == pytest.approx(2 * per_drill)
+    # an exact multiple is unchanged
+    mp2 = ss.choose_mining(gd, terrain, patch, max_rate=2 * per_drill, window_s=300)
+    assert mp2.max_belt_rate == pytest.approx(2 * per_drill)

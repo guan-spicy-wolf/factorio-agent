@@ -171,16 +171,21 @@ def choose_mining(
 ) -> MiningPatchParams:
     """One-belt mining params for the end-to-end site: for each axis and flow, raise
     ``min_ore_amount_per_drill`` until no drill can run dry within ``window_s`` (as in
-    phase 2), then keep the variant with the highest belt rate not above ``max_rate``
-    (what the consumer takes). Every variant is asked for at most ``max_rate`` per belt
-    (``max_belt_rate``: the generator cuts upstream drills). A fixed selection rule, not
-    a search over layouts; the patch's resource comes from ``patch``."""
+    phase 2), then keep the variant with the highest belt rate not above the cap. The
+    cap is ``max_rate`` (what the consumer needs) rounded up to whole drills: a consumer
+    asking 0.75/s from 0.5/s drills gets two drills, not one (phase 8: the green 0.5
+    station's copper mine starved its row), the surplus backs up on the belt. Every
+    variant is asked for at most the cap per belt (``max_belt_rate``: the generator cuts
+    upstream drills). A fixed selection rule, not a search over layouts; the patch's
+    resource comes from ``patch``."""
     from fgen.geom import mining as mining_geom
 
-    base = replace(
-        base or MiningPatchParams(max_belts=1), resource=patch.resource, max_belt_rate=max_rate
-    )
-    need = math.ceil(mining_geom.drill_rate(gd, base.drill, base.resource) * window_s)
+    base = base or MiningPatchParams(max_belts=1)
+    per_drill = mining_geom.drill_rate(gd, base.drill, patch.resource)
+    cap = math.ceil(max_rate / per_drill - 1e-9) * per_drill
+    base = replace(base, resource=patch.resource, max_belt_rate=cap)
+    max_rate = cap
+    need = math.ceil(per_drill * window_s)
     best: tuple[float, MiningPatchParams] | None = None
     for axis in ("x", "y"):
         for flow in ("+", "-"):
