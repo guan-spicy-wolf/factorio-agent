@@ -1,0 +1,7 @@
+{
+  "name": "sonnet-red",
+  "patches": {"copper-ore": "copper-ore@(-2,61)", "iron-ore": "iron-ore@(-66,35)"},
+  "place_costs": {"resource": 3.0},
+  "answered_by": {"who": "claude-sonnet-5-5", "date": "2026-10-30", "given": "questions-red-1.json + README.md"},
+  "rationale": "两矿相距仅36格、离出生点50-60格，带短、路由快、中间放得下冶炼列；铜36.7万、铁15.7万，红瓶1/s下估计采空约21小时以上且首台钻机采空下限均超过窗口3600s，够长期供科研；远处候选（186-540格）带太长。铁矿边缘混矿较多，所以把resource权重略提到3以免冶炼列压矿。"
+}

@@ -1,0 +1,401 @@
+{
+ "order_priority": {
+  "default": [
+   "unit",
+   "placed_neighbours",
+   "linked_rate"
+  ],
+  "meaning": "placement order among the units whose producers are placed: generated units before fixtures, then most placed neighbours, then the largest linked rate; a permutation of these keys"
+ },
+ "patches": {
+  "copper-ore": {
+   "candidates": [
+    {
+     "blocked_tiles_within_45": 0,
+     "bounds": [
+      [
+       -2,
+       61
+      ],
+      [
+       22,
+       85
+      ]
+     ],
+     "centroid": [
+      10.7,
+      74.4
+     ],
+     "distance_to_other_candidates": {
+      "iron-ore": [
+       [
+        "iron-ore@(-66,35)",
+        36.0
+       ],
+       [
+        "iron-ore@(-1,-230)",
+        275.0
+       ],
+       [
+        "iron-ore@(101,192)",
+        186.0
+       ],
+       [
+        "iron-ore@(277,234)",
+        404.0
+       ]
+      ]
+     },
+     "distance_to_spawn": 62.1,
+     "id": "copper-ore@(-2,61)",
+     "mining_at_demand": {
+      "belt_rate": 1.5,
+      "demand": 1.5,
+      "drills": 3,
+      "dropped_by_reason": {
+       "belt_rate_cap": 10,
+       "low_ore": 28,
+       "max_belts": 22
+      },
+      "est_depletion_s": 244944.0,
+      "first_dry_s_lower_bound": 5854.0,
+      "params": {
+       "axis": "x",
+       "flow": "+",
+       "min_ore": 7200
+      }
+     },
+     "mixed_ore_tiles_at_edge": 0,
+     "resource": "copper-ore",
+     "size": [
+      25,
+      25
+     ],
+     "tiles": 428,
+     "total_amount": 367416,
+     "water_tiles_within_45": 315
+    },
+    {
+     "blocked_tiles_within_45": 0,
+     "bounds": [
+      [
+       -142,
+       200
+      ],
+      [
+       -126,
+       212
+      ]
+     ],
+     "centroid": [
+      -133.3,
+      206.7
+     ],
+     "distance_to_other_candidates": {
+      "iron-ore": [
+       [
+        "iron-ore@(-66,35)",
+        197.0
+       ],
+       [
+        "iron-ore@(-1,-230)",
+        539.0
+       ],
+       [
+        "iron-ore@(101,192)",
+        227.0
+       ],
+       [
+        "iron-ore@(277,234)",
+        425.0
+       ]
+      ]
+     },
+     "distance_to_spawn": 239.3,
+     "id": "copper-ore@(-142,200)",
+     "mining_at_demand": {
+      "belt_rate": 1.5,
+      "demand": 1.5,
+      "drills": 3,
+      "dropped_by_reason": {
+       "belt_rate_cap": 9,
+       "low_ore": 7,
+       "max_belts": 10
+      },
+      "est_depletion_s": 225962.66666666666,
+      "first_dry_s_lower_bound": 3638.6666666666665,
+      "params": {
+       "axis": "x",
+       "flow": "+",
+       "min_ore": 3600
+      }
+     },
+     "mixed_ore_tiles_at_edge": 0,
+     "resource": "copper-ore",
+     "size": [
+      17,
+      13
+     ],
+     "tiles": 168,
+     "total_amount": 338944,
+     "water_tiles_within_45": 0
+    }
+   ],
+   "default": "copper-ore@(-2,61)",
+   "demand": 1.5
+  },
+  "iron-ore": {
+   "candidates": [
+    {
+     "blocked_tiles_within_45": 0,
+     "bounds": [
+      [
+       -66,
+       35
+      ],
+      [
+       -38,
+       63
+      ]
+     ],
+     "centroid": [
+      -50.1,
+      49.7
+     ],
+     "distance_to_other_candidates": {
+      "copper-ore": [
+       [
+        "copper-ore@(-2,61)",
+        36.0
+       ],
+       [
+        "copper-ore@(-142,200)",
+        197.0
+       ]
+      ]
+     },
+     "distance_to_spawn": 53.9,
+     "id": "iron-ore@(-66,35)",
+     "mining_at_demand": {
+      "belt_rate": 5.5,
+      "demand": 5.5,
+      "drills": 11,
+      "dropped_by_reason": {
+       "belt_rate_cap": 1,
+       "low_ore": 30,
+       "max_belts": 16,
+       "mixed_resource": 6
+      },
+      "est_depletion_s": 28541.454545454544,
+      "first_dry_s_lower_bound": 3606.0,
+      "params": {
+       "axis": "x",
+       "flow": "+",
+       "min_ore": 1800
+      }
+     },
+     "mixed_ore_tiles_at_edge": 197,
+     "resource": "iron-ore",
+     "size": [
+      29,
+      29
+     ],
+     "tiles": 352,
+     "total_amount": 156978,
+     "water_tiles_within_45": 0
+    },
+    {
+     "blocked_tiles_within_45": 0,
+     "bounds": [
+      [
+       -1,
+       -230
+      ],
+      [
+       15,
+       -214
+      ]
+     ],
+     "centroid": [
+      7.5,
+      -221.8
+     ],
+     "distance_to_other_candidates": {
+      "copper-ore": [
+       [
+        "copper-ore@(-2,61)",
+        275.0
+       ],
+       [
+        "copper-ore@(-142,200)",
+        539.0
+       ]
+      ]
+     },
+     "distance_to_spawn": 213.5,
+     "id": "iron-ore@(-1,-230)",
+     "mining_at_demand": {
+      "belt_rate": 5.5,
+      "demand": 5.5,
+      "drills": 11,
+      "dropped_by_reason": {
+       "belt_rate_cap": 1,
+       "low_ore": 6,
+       "max_belts": 17
+      },
+      "est_depletion_s": 94134.72727272728,
+      "first_dry_s_lower_bound": 7722.0,
+      "params": {
+       "axis": "x",
+       "flow": "+",
+       "min_ore": 3600
+      }
+     },
+     "mixed_ore_tiles_at_edge": 0,
+     "resource": "iron-ore",
+     "size": [
+      17,
+      17
+     ],
+     "tiles": 227,
+     "total_amount": 517741,
+     "water_tiles_within_45": 0
+    },
+    {
+     "blocked_tiles_within_45": 0,
+     "bounds": [
+      [
+       101,
+       192
+      ],
+      [
+       132,
+       221
+      ]
+     ],
+     "centroid": [
+      116.0,
+      206.1
+     ],
+     "distance_to_other_candidates": {
+      "copper-ore": [
+       [
+        "copper-ore@(-2,61)",
+        186.0
+       ],
+       [
+        "copper-ore@(-142,200)",
+        227.0
+       ]
+      ]
+     },
+     "distance_to_spawn": 221.3,
+     "id": "iron-ore@(101,192)",
+     "mining_at_demand": {
+      "belt_rate": 5.5,
+      "demand": 5.5,
+      "drills": 11,
+      "dropped_by_reason": {
+       "belt_rate_cap": 11,
+       "low_ore": 3,
+       "max_belts": 62
+      },
+      "est_depletion_s": 401601.45454545453,
+      "first_dry_s_lower_bound": 4219.333333333333,
+      "params": {
+       "axis": "x",
+       "flow": "+",
+       "min_ore": 1800
+      }
+     },
+     "mixed_ore_tiles_at_edge": 0,
+     "resource": "iron-ore",
+     "size": [
+      32,
+      30
+     ],
+     "tiles": 674,
+     "total_amount": 2208808,
+     "water_tiles_within_45": 0
+    },
+    {
+     "blocked_tiles_within_45": 5786,
+     "bounds": [
+      [
+       277,
+       234
+      ],
+      [
+       299,
+       261
+      ]
+     ],
+     "centroid": [
+      289.7,
+      246.9
+     ],
+     "distance_to_other_candidates": {
+      "copper-ore": [
+       [
+        "copper-ore@(-2,61)",
+        404.0
+       ],
+       [
+        "copper-ore@(-142,200)",
+        425.0
+       ]
+      ]
+     },
+     "distance_to_spawn": 370.6,
+     "id": "iron-ore@(277,234)",
+     "mining_at_demand": {
+      "belt_rate": 5.5,
+      "demand": 5.5,
+      "drills": 11,
+      "dropped_by_reason": {
+       "belt_rate_cap": 5,
+       "max_belts": 40
+      },
+      "est_depletion_s": 133948.0,
+      "first_dry_s_lower_bound": 10199.5,
+      "params": {
+       "axis": "x",
+       "flow": "+",
+       "min_ore": 0
+      }
+     },
+     "mixed_ore_tiles_at_edge": 0,
+     "resource": "iron-ore",
+     "size": [
+      23,
+      28
+     ],
+     "tiles": 358,
+     "total_amount": 736714,
+     "water_tiles_within_45": 0
+    }
+   ],
+   "default": "iron-ore@(-66,35)",
+   "demand": 5.5
+  }
+ },
+ "place_costs": {
+  "default": {
+   "detour": 2.0,
+   "resource": 2.0,
+   "slack": 12,
+   "step": 1.0,
+   "turn": 2.0
+  },
+  "meaning": {
+   "detour": "per tile of overshoot when the goal lies behind the start",
+   "resource": "per footprint tile a free unit would put on an ore tile",
+   "slack": "placement window radius beyond the unit's longer side (tiles); doubled once when nothing fits",
+   "step": "per tile of estimated belt between a unit's port and its neighbour's",
+   "turn": "per 90-degree turn the two ports' directions force on the belt"
+  }
+ },
+ "product": "logistic-science-pack",
+ "rate": 1.0,
+ "window_s": 3600.0
+}

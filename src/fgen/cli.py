@@ -386,6 +386,7 @@ def cmd_sweep_site(args: argparse.Namespace) -> int:
         keep = getattr(args, "keep_save", None)
         dec = Decisions.load(args.decisions) if getattr(args, "decisions", None) else None
         radius = args.radius if args.radius else (300 if dec else 150)
+        rates = tuple(float(x) for x in args.rates.split(",")) if args.rates else None
         with HeadlessServer(map_gen_settings=mining.ORE_MAP, save_label=keep) as srv:
             if wanted(ss.REAL_MAP) and dec is None:
                 row = site_measure.real_map_row(srv, gd, seed=seed)
@@ -399,7 +400,13 @@ def cmd_sweep_site(args: argparse.Namespace) -> int:
                     continue
                 last = case == ss.GREEN_SCIENCE or not wanted(ss.GREEN_SCIENCE)
                 for row in fn(
-                    srv, gd, seed=seed, keep_last=bool(keep) and last, decisions=dec, radius=radius
+                    srv,
+                    gd,
+                    rates,
+                    seed=seed,
+                    keep_last=bool(keep) and last,
+                    decisions=dec,
+                    radius=radius,
                 ):
                     rows.append(row)
                     print(f"{row['case']}: {row['judged']}", file=sys.stderr)
@@ -666,6 +673,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="site --real-map: snapshot radius for candidate patches (default 150, or "
         "300 with --decisions)",
+    )
+    p.add_argument(
+        "--rates",
+        default=None,
+        help="site --real-map: comma list of science-station tiers to run (default all)",
     )
     p.set_defaults(fn=cmd_sweep)
 
