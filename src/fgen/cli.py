@@ -311,6 +311,48 @@ def cmd_sweep_mining(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ask(args: argparse.Namespace) -> int:
+    """Write the site's judgment questions (siting candidates with facts, placement
+    preferences) for an agent to answer: a real-map snapshot, the station planned once
+    on the default patches to know how much ore it wants, then ``decide.questions``."""
+    from fgen.gen import site_sweep as ss
+    from fgen.sim import mining, site_measure
+    from fgen.sim.server import HeadlessServer
+    from fgen.site import decide
+
+    gd = _gd(args)
+    planner = ss.green_science_plan if args.product == ss.GREEN_RECIPE else ss.red_science_plan
+    with HeadlessServer(map_gen_settings=mining.ORE_MAP) as srv:
+        from fgen.geom.vec import Tile
+        from fgen.sim.terrain import RconTerrain
+
+        r = args.radius or 300
+        raw = RconTerrain(srv.rcon).snapshot((Tile(-r, -r), Tile(r - 1, r - 1)))
+    # the ore demand of the station at this rate: plan it on the default patches
+    # (cleared terrain) and read the mines' consumers' contracts
+    terrain = decide.cleared(raw)
+    patches = {res: decide.DEFAULT.choose(terrain, res) for res in ("iron-ore", "copper-ore")}
+    window = site_measure.RED_MEASURE["warmup_s"] + (
+        site_measure.RED_MEASURE["samples"] * site_measure.RED_MEASURE["sample_s"]
+    )
+    plan = planner(gd, terrain, patches, args.rate, window_s=window)
+    demand = {}
+    for ln in plan.links:
+        src = next((u for u in plan.fixed if u.name == ln.src.unit), None)
+        if src is None:
+            continue
+        dst = dict(plan.free)[ln.dst.unit].interfaces[ln.dst.iface]
+        demand[src.unit.meta["anchor"]["resource"]] = dst.min_rate() or dst.fixed_rate() or 0.0
+    q = decide.questions(gd, raw, demand, window, product=args.product)
+    q["rate"] = args.rate
+    Path(args.out).write_text(json.dumps(q, indent=1, sort_keys=True) + "\n")
+    print(
+        f"wrote {args.out}: "
+        + ", ".join(f"{r} x{len(v['candidates'])}" for r, v in q["patches"].items())
+    )
+    return 0
+
+
 def cmd_sweep_site(args: argparse.Namespace) -> int:
     from fgen.gen import site_sweep as ss
     from fgen.terrain.model import Terrain, area_tiles
@@ -338,16 +380,27 @@ def cmd_sweep_site(args: argparse.Namespace) -> int:
 
         from fgen.sim import mining, site_measure
         from fgen.sim.server import REPO_CONFIG, HeadlessServer
+        from fgen.site.decide import Decisions
 
         seed = _json.loads((REPO_CONFIG / mining.ORE_MAP).read_text()).get("seed")
         keep = getattr(args, "keep_save", None)
+        dec = Decisions.load(args.decisions) if getattr(args, "decisions", None) else None
+        radius = args.radius if args.radius else (300 if dec else 150)
         with HeadlessServer(map_gen_settings=mining.ORE_MAP, save_label=keep) as srv:
-            if wanted(ss.REAL_MAP):
+            if wanted(ss.REAL_MAP) and dec is None:
                 row = site_measure.real_map_row(srv, gd, seed=seed)
                 rows.append(row)
                 print(f"real map: {row['judged']}", file=sys.stderr)
-            if wanted(ss.RED_SCIENCE):
-                for row in site_measure.red_science_rows(srv, gd, seed=seed, keep_last=bool(keep)):
+            for case, fn in (
+                (ss.RED_SCIENCE, site_measure.red_science_rows),
+                (ss.GREEN_SCIENCE, site_measure.green_science_rows),
+            ):
+                if not wanted(case):
+                    continue
+                last = case == ss.GREEN_SCIENCE or not wanted(ss.GREEN_SCIENCE)
+                for row in fn(
+                    srv, gd, seed=seed, keep_last=bool(keep) and last, decisions=dec, radius=radius
+                ):
                     rows.append(row)
                     print(f"{row['case']}: {row['judged']}", file=sys.stderr)
         if srv.kept_save:
@@ -592,16 +645,37 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--only",
         default=None,
-        help="site / solver-time: comma list of cases to run (site: flat, real-map, "
-        "red-science; solver-time: case names); the others keep their old rows",
+        help="site / solver-time: comma list of cases to run (site: flat, real-map, red-science, "
+        "green-science; solver-time: case names); the others keep their old rows",
     )
     p.add_argument(
         "--keep-save",
         metavar="LABEL",
-        help="site --real-map: leave the last red-science site in the map and keep the save "
+        help="site --real-map: leave the last science site in the map and keep the save "
         "as saves/LABEL.zip (or $FGEN_SAVE_DIR/LABEL.zip); publish it with bin/publish-save.sh",
     )
+    p.add_argument(
+        "--decisions",
+        metavar="FILE",
+        help="site --real-map: answer file (config/decisions/*.json) for the siting and "
+        "placement questions; rows are named <case>@<name>",
+    )
+    p.add_argument(
+        "--radius",
+        type=int,
+        default=None,
+        help="site --real-map: snapshot radius for candidate patches (default 150, or "
+        "300 with --decisions)",
+    )
     p.set_defaults(fn=cmd_sweep)
+
+    p = sub.add_parser("ask", help="write the site's judgment questions for an agent")
+    p.add_argument("what", choices=["site"])
+    p.add_argument("--product", default="logistic-science-pack")
+    p.add_argument("--rate", type=float, default=1.0)
+    p.add_argument("--radius", type=int, default=300, help="snapshot radius for candidates")
+    p.add_argument("--out", default="questions.json")
+    p.set_defaults(fn=cmd_ask)
 
     p = sub.add_parser("verify", help="run the in-game VERIFY.md checks (needs headless)")
     p.add_argument("--ids", help="comma separated check ids (default: all)")

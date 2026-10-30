@@ -41,6 +41,9 @@ class SitePlan:
     free: list[tuple[str, Unit]] = field(default_factory=list)  # to be placed, in any order
     links: list[Link] = field(default_factory=list)
     costs: PlaceCosts = field(default_factory=PlaceCosts)
+    # placement order priorities among the ready units (a permutation of ORDER_KEYS):
+    # generated unit before fixture, most placed neighbours, largest linked rate
+    order_priority: tuple[str, ...] = ("unit", "placed_neighbours", "linked_rate")
     margin: int = 1  # free tiles around every placed unit
     reach: int | None = None  # placement window radius (None: unit size + slack)
     poses: tuple[Pose, ...] = tuple(Pose(d) for d in CARDINALS)  # candidate rotations
@@ -107,10 +110,15 @@ def order(plan: SitePlan, gd: GameData) -> list[str]:
             producers = {ln.src.unit for ln in plan.links if ln.dst.unit == name} - fixtures
             n = len(nbrs & placed)
             if n and producers <= placed:  # flow order: a unit follows all its producers
-                ready.append((not _is_fixture(unit), n, _linked_rate(unit, name, plan.links), name))
+                score = {
+                    "unit": not _is_fixture(unit),
+                    "placed_neighbours": n,
+                    "linked_rate": _linked_rate(unit, name, plan.links),
+                }
+                ready.append((tuple(score[k] for k in plan.order_priority), name))
         if ready:
-            ready.sort(key=lambda r: (r[0], r[1], r[2]), reverse=True)
-            pick = ready[0][3]
+            ready.sort(key=lambda r: r[0], reverse=True)
+            pick = ready[0][1]
         else:  # nothing placed yet: the largest non-fixture unit starts the site
             pick = max(
                 left,
@@ -185,4 +193,6 @@ def plan_and_connect(
     raise last
 
 
-__all__ = ["SitePlan", "build", "ends_of", "free_fn", "order", "plan_and_connect"]
+ORDER_KEYS = SitePlan.order_priority
+
+__all__ = ["ORDER_KEYS", "SitePlan", "build", "ends_of", "free_fn", "order", "plan_and_connect"]

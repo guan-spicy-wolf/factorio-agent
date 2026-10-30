@@ -28,13 +28,14 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from fgen.data.runtime import RuntimeState
 from fgen.data.schema import GameData
 from fgen.gen import direct_chain as dc
+from fgen.gen import junction
 from fgen.gen import throughput as tp
 from fgen.gen.direct_chain import DirectChainParams
 from fgen.gen.direct_chain import generate as gen_chain
@@ -48,13 +49,27 @@ from fgen.layout.render import LEGEND, TERRAIN_LEGEND, to_ascii
 from fgen.route.connect import Connection, connect
 from fgen.sim import harness as hs
 from fgen.site.build import SitePlan, plan_and_connect
+from fgen.site.decide import Decisions
 from fgen.site.model import Endpoint, Link, Site
+from fgen.site.place import PlaceCosts
 from fgen.terrain.model import Area, Patch, Terrain, background
 
 FLAT = "flat"
 REAL_MAP = "real-map"
 RED_SCIENCE = "red-science"
 RED_SCIENCE_RATES = (0.5, 1.0)  # packs/s tiers of the red-science scenario
+RED_RECIPE = "automation-science-pack"
+GREEN_SCIENCE = "green-science"
+GREEN_SCIENCE_RATES = (0.5, 1.0)  # packs/s tiers of the green-science scenario
+GREEN_RECIPE = "logistic-science-pack"
+# the green chain as characterized in phase 4b (``direct_chain_sweep``), lane kind only
+GREEN_CHAIN = DirectChainParams(
+    recipe=GREEN_RECIPE,
+    belt_inputs=("electronic-circuit",),
+    extra_inserters=("long-handed-inserter",),
+    max_lane_consumers=6,
+    intermediates="lane",
+)
 TOLERANCE = 0.05  # M5: plates >= 95% of min(ore belt, 7.5)
 FLAT_AREA: Area = (Tile(-40, -30), Tile(100, 40))
 MINING_FAMILY = "anchor/mining-patch"
@@ -63,6 +78,10 @@ FILL_FACTOR = 1.25  # measured warm-up = base + this x the estimated buffer fill
 
 def red_case(rate: float) -> str:
     return f"{RED_SCIENCE}-{rate:g}"
+
+
+def green_case(rate: float) -> str:
+    return f"{GREEN_SCIENCE}-{rate:g}"
 
 
 def _iface(unit: Unit, kind: str, role: str, material: str | None = None) -> int:
@@ -80,13 +99,20 @@ def _item_ports(unit: Unit, role: str) -> list[tuple[int, Interface]]:
     ]
 
 
-def add_fixtures(plan: SitePlan, name: str, unit: Unit, gd: GameData) -> None:
-    """A source fixture for every unlinked item input of ``name``, a sink for every
+def add_fixtures(
+    plan: SitePlan,
+    name: str,
+    unit: Unit,
+    gd: GameData,
+    supplied: Callable[[str], bool] | None = None,
+) -> None:
+    """A source fixture for every unlinked item input of ``name`` (except those whose
+    material ``supplied`` says a generated unit will feed later), a sink for every
     unlinked item output, and (once per plan) a power fixture linked to its power
     input. Fixture names are ``<unit>.<material>`` / ``<unit>.power``."""
     linked = {ep for ln in plan.links for ep in (ln.src, ln.dst) if ep.unit == name}
     for k, i in _item_ports(unit, "input"):
-        if Endpoint(name, k) in linked:
+        if Endpoint(name, k) in linked or (supplied is not None and supplied(str(i.material))):
             continue
         fx = f"{name}.{i.material}"
         plan.free.append((fx, hs.source_unit(gd, str(i.material), _belt(i))))
@@ -226,6 +252,235 @@ def smelting_for(need: Interface, gd: GameData, **params: Any) -> SmeltingRowPar
     return SmeltingRowParams(recipe=recipe, target_rate=rate, belt=_belt(need), **params)
 
 
+# ---- who supplies a material (plan-phase8 task A) ---------------------------------------
+#
+# One rule, read off the game data, never off a material's name: the product of a
+# resource comes from an anchored mining unit (when the site has a patch for it; a
+# resource without a patch, coal here, is left to a fixture); the main product of a
+# recipe the smelting row's furnace can craft comes from a smelting row; of a recipe the
+# direct chain's machine can craft, from a direct chain; anything else from a fixture.
+# A material several generated units want is made by one supplier sized to the sum of
+# their ``MinRate`` and handed out through a splitter (``fgen.gen.junction``).
+
+MINE, ROW, CHAIN = "mine", "row", "chain"
+TOP_NAME = "science"  # the site's product unit (the red/green science chain)
+
+
+def recipe_for(gd: GameData, material: str, machine: str) -> str | None:
+    """The first recipe (by name) whose main product is ``material`` and which
+    ``machine`` can craft; None when there is none."""
+    cats = set(gd.entity(machine).crafting_categories or ())
+    for n, r in sorted(gd.recipes.items()):
+        if tp.main_product(gd, n)[0] == material and set(r.categories) & cats:
+            return n
+    return None
+
+
+def supplier_family(
+    gd: GameData,
+    material: str,
+    patches: dict[str, Patch],
+    *,
+    furnace: str | None = None,
+    machine: str | None = None,
+) -> tuple[str, str] | None:
+    """``(family, recipe or resource)`` that makes ``material`` in a site, or None for a
+    fixture (see the section comment)."""
+    furnace = furnace or SmeltingRowParams().furnace
+    machine = machine or DirectChainParams().machine
+    for name, res in sorted(gd.resources.items()):
+        if res.product == material:
+            return (MINE, name) if name in patches else None
+    r = recipe_for(gd, material, furnace)
+    if r is not None:
+        return ROW, r
+    r = recipe_for(gd, material, machine)
+    if r is not None:
+        return CHAIN, r
+    return None
+
+
+def chain_inputs(p: DirectChainParams, gd: GameData) -> list[str]:
+    """The item materials a chain with ``p`` takes from outside (its recipe tree's
+    ingredients that it does not make itself), without solving it."""
+    inter = dc.tree(p, gd)
+    made = {item for item, _ in inter}
+    out: list[str] = []
+    for r in (p.recipe, *(rec for _, rec in inter)):
+        for n, _ in gd.recipe(r).ingredients:
+            if n not in made and n not in out and not gd.is_fluid(n):
+                out.append(n)
+    return out
+
+
+def stage_name(material: str) -> str:
+    """Display stem of a material for unit names (``iron-plate`` / ``iron-ore`` ->
+    ``iron``); naming only."""
+    for suffix in ("-plate", "-ore"):
+        if material.endswith(suffix):
+            return material.removesuffix(suffix)
+    return material
+
+
+@dataclass
+class StationSpec:
+    """What :func:`station_plan` builds: ``product`` at ``rate``/s from ``patches``
+    (resource name -> patch). ``chains`` gives the chain parameters per product
+    (``recipe`` and ``target_rate`` are set by the planner); ``units`` caches generated
+    chains by ``(product, rate)`` across plans (the solver takes a while)."""
+
+    product: str
+    rate: float
+    patches: dict[str, Patch]
+    window_s: float
+    chains: dict[str, DirectChainParams] = field(default_factory=dict)
+    mining: MiningPatchParams | None = None
+    units: dict[tuple[str, float], Unit] = field(default_factory=dict)
+    top_name: str = TOP_NAME
+    costs: PlaceCosts | None = None
+    order_priority: tuple[str, ...] | None = None
+
+    def chain_params(self, product: str, rate: float) -> DirectChainParams:
+        base = self.chains.get(product) or DirectChainParams()
+        return replace(base, recipe=product, target_rate=rate)
+
+
+def demand_counts(spec: StationSpec, gd: GameData) -> dict[str, int]:
+    """How many generated units will want each material (fixtures excluded): walks the
+    recipe tree of the station without generating anything, so the planner knows when
+    the last consumer of a material has been generated."""
+    counts: dict[str, int] = {}
+    seen: set[str] = set()
+    queue = [spec.product]
+    while queue:
+        m = queue.pop(0)
+        if m in seen:
+            continue
+        seen.add(m)
+        fam = supplier_family(gd, m, spec.patches)
+        if fam is None:
+            continue
+        kind, what = fam
+        if kind == CHAIN:
+            p = spec.chain_params(m, spec.rate)
+            inputs = chain_inputs(p, gd)
+        elif kind == ROW:
+            inputs = [n for n, _ in gd.recipe(what).ingredients]
+        else:
+            inputs = []
+        for n in inputs:
+            if supplier_family(gd, n, spec.patches) is not None:
+                counts[n] = counts.get(n, 0) + 1
+                queue.append(n)
+    return counts
+
+
+def station_plan(gd: GameData, terrain: Terrain, spec: StationSpec) -> SitePlan:
+    """A site that makes ``spec.product`` at ``spec.rate``/s from the patches: the
+    product's chain, then (depth first, in port order) a supplier per input material
+    sized to what its consumers' contracts need (:func:`supplier_family`); a material
+    wanted by several units gets one supplier sized to the sum and a splitter between.
+    Anchored mines go to ``fixed``, everything else to ``free``; every unlinked port gets
+    a fixture (:func:`add_fixtures`). Nothing here is a coordinate."""
+    plan = SitePlan(terrain)
+    if spec.costs is not None:
+        plan.costs = spec.costs
+    if spec.order_priority is not None:
+        plan.order_priority = tuple(spec.order_priority)
+    counts = demand_counts(spec, gd)
+    wanted: dict[str, list[tuple[str, int, Interface]]] = {}
+    names: set[str] = set()
+
+    def unique(name: str) -> str:
+        n, k = name, 2
+        while n in names:
+            n, k = f"{name}{k}", k + 1
+        names.add(n)
+        return n
+
+    def generated(material: str) -> bool:
+        return supplier_family(gd, material, spec.patches) is not None
+
+    def consume(name: str, unit: Unit) -> None:
+        """Supply the item inputs of a generated unit (its consumers are known)."""
+        for k, need in _item_ports(unit, "input"):
+            m = str(need.material)
+            if supplier_family(gd, m, spec.patches) is None:
+                continue  # a fixture
+            wanted.setdefault(m, []).append((name, k, need))
+            if len(wanted[m]) >= counts.get(m, 1):
+                supply(m)
+
+    def supply(material: str) -> None:
+        fam = supplier_family(gd, material, spec.patches)
+        assert fam is not None
+        kind, what = fam
+        consumers = wanted[material]
+        rates = [(i.min_rate() or i.fixed_rate() or 0.0) for _, _, i in consumers]
+        total = sum(rates)
+        first = consumers[0][2]
+        if kind == MINE:
+            patch = spec.patches[what]
+            mp = choose_mining(
+                gd, terrain, patch, max_rate=total, window_s=spec.window_s, base=spec.mining
+            )
+            unit = gen_mining(mp, gd, patch, terrain)
+            name = unique(f"{stage_name(material)}-mine")
+            plan.fixed.append(PlacedUnit(name, unit))
+        elif kind == ROW:
+            sp = SmeltingRowParams(recipe=what, target_rate=total, belt=_belt(first))
+            unit = gen_smelting(sp, gd)
+            name = unique(f"{stage_name(material)}-row")
+            plan.free.append((name, unit))
+            consume(name, unit)
+        else:
+            key = (material, total)
+            unit = spec.units.get(key)
+            if unit is None:
+                unit = gen_chain(spec.chain_params(material, total), gd)
+                spec.units[key] = unit
+            name = unique(stage_name(material))
+            plan.free.append((name, unit))
+            consume(name, unit)
+        out_k, out = _one_output(unit)
+        src = Endpoint(name, out_k)
+        if len(consumers) == 1:
+            plan.links.append(Link(src, Endpoint(consumers[0][0], consumers[0][1]), material))
+        else:
+            # one splitter per extra consumer: the first consumers take one side each,
+            # the last splitter's second side feeds the rest
+            rest = list(zip(consumers, rates, strict=True))
+            src_iface = out
+            while len(rest) > 1:
+                (c, r), tail = rest[0], rest[1:]
+                shares = (r, sum(x for _, x in tail))
+                sp_unit = junction.splitter_unit(gd, material, src_iface, shares)
+                sp_name = unique(f"{stage_name(material)}-split")
+                plan.free.append((sp_name, sp_unit))
+                label = material if src.unit != sp_name else f"{material}>{sp_name}"
+                plan.links.append(Link(src, Endpoint(sp_name, 0), label))
+                plan.links.append(
+                    Link(Endpoint(sp_name, 1), Endpoint(c[0], c[1]), f"{material}>{c[0]}")
+                )
+                src, src_iface = Endpoint(sp_name, 2), sp_unit.interfaces[2]
+                rest = tail
+            ((c, _),) = rest
+            plan.links.append(Link(src, Endpoint(c[0], c[1]), f"{material}>{c[0]}"))
+        if kind != MINE:
+            add_fixtures(plan, name, unit, gd, generated)
+
+    key = (spec.product, spec.rate)
+    top = spec.units.get(key)
+    if top is None:
+        top = gen_chain(spec.chain_params(spec.product, spec.rate), gd)
+        spec.units[key] = top
+    names.add(spec.top_name)
+    plan.free.append((spec.top_name, top))
+    consume(spec.top_name, top)
+    add_fixtures(plan, spec.top_name, top, gd)
+    return plan
+
+
 def red_science_plan(
     gd: GameData,
     terrain: Terrain,
@@ -236,45 +491,59 @@ def red_science_plan(
     chain: DirectChainParams | None = None,
     mining: MiningPatchParams | None = None,
     chain_unit: Unit | None = None,
+    units: dict[tuple[str, float], Unit] | None = None,
+    decisions: Decisions | None = None,
 ) -> SitePlan:
-    """Two patches (keyed by the plate they end up as: ``iron-plate`` -> iron patch,
-    ``copper-plate`` -> copper patch) -> two one-belt mining units -> two smelting rows ->
-    the red-science chain at ``rate`` packs/s. Each stage is sized from the next stage's
-    input contract: the rows from the chain's ``MinRate``, the mines from the rows'.
-    ``chain_unit`` reuses an already generated chain (the solver takes a while)."""
-    cp = replace(chain or DirectChainParams(recipe="automation-science-pack"), target_rate=rate)
-    unit = chain_unit if chain_unit is not None else gen_chain(cp, gd)
-    plan = SitePlan(terrain, free=[("science", unit)])
-    for k, need in _item_ports(unit, "input"):
-        patch = patches.get(str(need.material))
-        if patch is None:
-            continue  # no patch for it: a fixture supplies it
-        stage = str(need.material).removesuffix("-plate")
-        sp = smelting_for(need, gd)
-        row = gen_smelting(sp, gd)
-        row_name = f"{stage}-row"
-        ore_k, ore_port = next(
-            (j, i) for j, i in _item_ports(row, "input") if i.material == patch.resource
-        )
-        mp = choose_mining(
-            gd,
-            terrain,
-            patch,
-            max_rate=ore_port.min_rate() or ore_port.fixed_rate() or 0.0,
-            window_s=window_s,
-            base=mining,
-        )
-        mine = gen_mining(mp, gd, patch, terrain)
-        mine_name = f"{stage}-mine"
-        out_k, _ = _one_output(mine)
-        plan.fixed.append(PlacedUnit(mine_name, mine))
-        plan.free.append((row_name, row))
-        mine_out, row_out = Endpoint(mine_name, out_k), Endpoint(row_name, _one_output(row)[0])
-        plan.links.append(Link(mine_out, Endpoint(row_name, ore_k), f"{stage}-ore"))
-        plan.links.append(Link(row_out, Endpoint("science", k), f"{stage}-plate"))
-        add_fixtures(plan, row_name, row, gd)
-    add_fixtures(plan, "science", unit, gd)
-    return plan
+    """Two patches (``iron-ore``, ``copper-ore``) -> two one-belt mining units -> two
+    smelting rows -> the red-science chain at ``rate`` packs/s: :func:`station_plan`
+    for ``automation-science-pack``. ``chain_unit`` / ``units`` reuse already generated
+    chains (the solver takes a while); ``decisions`` gives the placement preferences."""
+    spec = StationSpec(
+        RED_RECIPE,
+        rate,
+        patches,
+        window_s,
+        chains={RED_RECIPE: chain or DirectChainParams(recipe=RED_RECIPE)},
+        mining=mining,
+        units=units if units is not None else {},
+        costs=decisions.place_costs if decisions else None,
+        order_priority=decisions.order_priority if decisions else None,
+    )
+    if chain_unit is not None:
+        spec.units[(RED_RECIPE, rate)] = chain_unit
+    return station_plan(gd, terrain, spec)
+
+
+def green_science_plan(
+    gd: GameData,
+    terrain: Terrain,
+    patches: dict[str, Patch],
+    rate: float,
+    *,
+    window_s: float,
+    chains: dict[str, DirectChainParams] | None = None,
+    mining: MiningPatchParams | None = None,
+    units: dict[tuple[str, float], Unit] | None = None,
+    decisions: Decisions | None = None,
+) -> SitePlan:
+    """Patches -> mines -> rows -> the circuit chain -> the green-science chain at
+    ``rate`` packs/s (:func:`station_plan`); iron plates go to both chains through a
+    splitter. The green chain's parameters are the phase-4b ones (circuits on a belt,
+    long-handed inserters allowed, six final machines per period) plus the lane period
+    kind outright: phase 4b found the direct kinds infeasible and the solver would spend
+    a time box on each before getting there."""
+    spec = StationSpec(
+        GREEN_RECIPE,
+        rate,
+        patches,
+        window_s,
+        chains={GREEN_RECIPE: GREEN_CHAIN, **(chains or {})},
+        mining=mining,
+        units=units if units is not None else {},
+        costs=decisions.place_costs if decisions else None,
+        order_priority=decisions.order_priority if decisions else None,
+    )
+    return station_plan(gd, terrain, spec)
 
 
 # ---- contracts per port ---------------------------------------------------------------
@@ -287,8 +556,9 @@ def ports(site: Site) -> list[dict[str, Any]]:
     out = []
     for ln in site.links:
         for ep in (ln.src, ln.dst):
-            if "fixture" in site.placed(ep.unit).unit.meta:
-                continue
+            meta = site.placed(ep.unit).unit.meta
+            if "fixture" in meta or meta.get("family") == junction.FAMILY:
+                continue  # a junction neither makes nor consumes: no counter for it
             i = site.interface(ep)
             if i.kind != "item" or i.material is None:
                 continue
@@ -373,7 +643,28 @@ def plan_row(
 CAPACITY: dict[str, Callable[[Unit, GameData, RuntimeState], dict[str, Any]]] = {
     "belt-fed-row/smelting": tp.predict,
     dc.DirectChain.family: dc.predict,
+    junction.FAMILY: junction.predict,
 }
+
+
+def allocate(cap: float, draws: list[float]) -> list[float]:
+    """Split a capacity among demands the way a splitter does: every side gets what it
+    draws while the total fits; beyond that the sides that take more share what is left
+    equally (water-filling)."""
+    out = [0.0] * len(draws)
+    left, open_ = cap, list(range(len(draws)))
+    while open_:
+        fair = left / len(open_)
+        small = [k for k in open_ if draws[k] <= fair + 1e-12]
+        if not small:
+            for k in open_:
+                out[k] = fair
+            return out
+        for k in small:
+            out[k] = draws[k]
+            left -= draws[k]
+        open_ = [k for k in open_ if k not in small]
+    return out
 
 
 def register_capacity(family: str, fn: Callable[[Unit, GameData, RuntimeState], dict[str, Any]]):
@@ -441,6 +732,8 @@ def flows(site: Site, gd: GameData, rs: RuntimeState) -> dict[str, dict[str, Any
                 supply[str(ln.dst)] = None
                 continue
             if src in out:
+                # what that port can still deliver: the unit's capacity less what its
+                # other outputs are drawn (one output: the capacity itself)
                 got = out[src]["cap"]
             else:
                 got = port_supply(site.interface(ln.src), units[src], gd, rs)
@@ -448,25 +741,51 @@ def flows(site: Site, gd: GameData, rs: RuntimeState) -> dict[str, dict[str, Any
             sh = _share(units, n, ln.dst.iface)
             if sh > 0:
                 c = min(c, got / sh)
-        out[n] = {"cap": c, "actual": c, "supply": supply, "into": into[n], "outof": outof[n]}
+        out[n] = {
+            "cap": c,
+            "actual": c,
+            "ports": {},
+            "supply": supply,
+            "into": into[n],
+            "outof": outof[n],
+        }
     for n in reversed(seq):
         if n not in out:
             continue
-        a = out[n]["cap"]
+        # per output port, what its consumers draw (a sink takes the port's planned
+        # rate); the unit's outputs share its capacity like a splitter's sides
+        u = units[n]
+        port_ks = [k for k, _ in _item_ports(u, "output")]
+        draws: dict[int, float] = {}
         for ln in out[n]["outof"]:
             if ln.dst.unit in fixture:
-                continue  # a sink takes everything
-            a = min(a, out[ln.dst.unit]["actual"] * _share(units, ln.dst.unit, ln.dst.iface))
-        out[n]["actual"] = a
+                d = u.interfaces[ln.src.iface].fixed_rate() or out[n]["cap"]
+            else:
+                d = out[ln.dst.unit]["actual"] * _share(units, ln.dst.unit, ln.dst.iface)
+            draws[ln.src.iface] = draws.get(ln.src.iface, 0.0) + d
+        if len(port_ks) == 1:
+            got = allocate(out[n]["cap"], [draws.get(port_ks[0], 0.0)])
+        else:
+            got = allocate(out[n]["cap"], [draws.get(k, 0.0) for k in port_ks])
+        out[n]["ports"] = dict(zip(port_ks, got, strict=True))
+        out[n]["actual"] = sum(got)
+    # what each consumer's port receives from a multi-output source: the source's
+    # capacity less what its other ports are drawn
+    for f in out.values():
+        for ln in f["into"]:
+            src = ln.src.unit
+            if src in out and len(out[src]["ports"]) > 1:
+                others = sum(v for k, v in out[src]["ports"].items() if k != ln.src.iface)
+                f["supply"][str(ln.dst)] = max(0.0, out[src]["cap"] - others)
     return out
 
 
 def _share(units: dict[str, Unit], name: str, k: int) -> float:
-    """Input port ``k``'s rate per unit of the unit's output, from the contract."""
+    """Input port ``k``'s rate per unit of the unit's total output, from the contract."""
     u = units[name]
-    _, out = _one_output(u)
+    total = sum((i.fixed_rate() or 0.0) for _, i in _item_ports(u, "output"))
     i = u.interfaces[k]
-    return (i.fixed_rate() or 0.0) / (out.fixed_rate() or 1.0)
+    return (i.fixed_rate() or 0.0) / (total or 1.0)
 
 
 def predict(site: Site, gd: GameData, rs: RuntimeState) -> dict[str, float]:
@@ -478,7 +797,7 @@ def predict(site: Site, gd: GameData, rs: RuntimeState) -> dict[str, float]:
     out: dict[str, float] = {}
     for n, f in flows(site, gd, rs).items():
         for ln in f["outof"]:
-            out[str(ln.src)] = f["actual"]
+            out[str(ln.src)] = f["ports"][ln.src.iface]
         for ln in f["into"]:
             drawn = f["actual"] * _share(units, n, ln.dst.iface)
             out[str(ln.dst)] = drawn

@@ -31,6 +31,8 @@ from fgen.sim import harness as hs
 from fgen.sim import lua, runtime
 from fgen.sim.deployer import RconDeployer
 from fgen.sim.server import HeadlessServer
+from fgen.site.decide import DEFAULT as DEFAULT_DECISIONS
+from fgen.site.decide import Decisions
 from fgen.site.model import Site
 from fgen.terrain.model import Area
 
@@ -296,6 +298,18 @@ REAL_NOTE = (
 # the red-science chain's gear lane and three belts of buffers fill before the packs
 # flow steadily; the science assembler is slow (5 s crafts), so samples are long
 RED_MEASURE = {"warmup_s": 240.0, "sample_s": 60.0, "samples": 6, "speed": 32.0}
+GREEN_NOTE = (
+    "Normal map, one patch per resource (`station_rows`: the answer file's choice, else "
+    "the nearest): clear obstacles over the patches and the land between -> snapshot -> "
+    "green-science direct chain at the target rate (phase-4b parameters: circuits on a "
+    "belt, long-handed inserters, six final machines per period, lane period kind) -> a "
+    "supplier per input material by the supplier rule (`site_sweep.supplier_family`): the "
+    "circuit chain for circuits, a smelting row per plate sized to the sum of its "
+    "consumers' `MinRate` (iron plates feed both chains: one row and a splitter unit, "
+    "`gen.junction`), a one-belt mining unit per row -> every free unit placed from its "
+    "links -> router; coal fixtures, a pack sink, one power fixture. Nothing here is a "
+    "coordinate."
+)
 RED_NOTE = (
     "Normal map, nearest iron and copper patches (`red_science_rows`): clear obstacles "
     "over both patches and the land between -> snapshot -> red-science direct chain at "
@@ -317,10 +331,13 @@ def real_map_prepare(
     radius: int = 150,
     margin: int = 45,
     min_tiles: int = 50,
+    decisions: Decisions | None = None,
+    raw: Any | None = None,
 ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
-    """Nearest patch of each resource to the spawn, obstacles cleared over all of them
-    and the land between (one rectangle), snapshot after clearing. Returns the snapshot,
-    the patches by resource and the run info."""
+    """The chosen patch of each resource (``decisions``, default the nearest to the
+    spawn), obstacles cleared over all of them and the land between (one rectangle),
+    snapshot after clearing. Returns the snapshot, the patches by resource and the run
+    info. ``raw`` reuses an earlier radius snapshot (before clearing)."""
     from fgen.geom.vec import Tile
     from fgen.sim import clear
     from fgen.sim.terrain import RconTerrain
@@ -328,10 +345,11 @@ def real_map_prepare(
 
     rt = RconTerrain(srv.rcon)
     whole: Area = (Tile(-radius, -radius), Tile(radius - 1, radius - 1))
-    snap = rt.snapshot(whole)
+    snap = raw if raw is not None else rt.snapshot(whole)
+    d = decisions or DEFAULT_DECISIONS
     found = {}
     for res in resources:
-        patch = nearest_patch(snap, res, (0.0, 0.0), min_tiles=min_tiles)
+        patch = d.choose(snap, res, min_tiles)
         if patch is None:
             raise RuntimeError(f"no {res} patch near the spawn")
         found[res] = patch
@@ -346,10 +364,16 @@ def real_map_prepare(
     snap = rt.snapshot(work, generate=False)
     patches = {}
     for res in resources:
-        patch = nearest_patch(snap, res, (0.0, 0.0), min_tiles=min_tiles)
+        # the same patch in the cleared snapshot (its id survives clearing)
+        patch = (
+            nearest_patch(snap, res, found[res].centroid(), min_tiles=1)
+            if res in d.patches
+            else nearest_patch(snap, res, (0.0, 0.0), min_tiles=min_tiles)
+        )
         assert patch is not None
         patches[res] = patch
     info = {
+        "decisions": d.name,
         "patches": {res: p.describe() for res, p in patches.items()},
         "work_area": [[work[0].x, work[0].y], [work[1].x, work[1].y]],
         "entities_before_clearing": before,
@@ -398,30 +422,101 @@ def red_science_rows(
     margin: int = 45,
     seed: int | None = None,
     keep_last: bool = False,
+    decisions: Decisions | None = None,
     **opts: Any,
 ) -> list[dict[str, Any]]:
     """Plan-phase7 task A: two patches -> two rows -> red-science chain, one row per
     target rate. With ``keep_last`` the last site stays in the map (for a kept save)."""
     from fgen.gen import site_sweep as ss
 
-    mo = {**RED_MEASURE, **opts}
     rates = rates or ss.RED_SCIENCE_RATES
+    return station_rows(
+        srv,
+        gd,
+        ss.red_science_plan,
+        ss.red_case,
+        rates,
+        RED_NOTE,
+        radius=radius,
+        margin=margin,
+        seed=seed,
+        keep_last=keep_last,
+        decisions=decisions,
+        **opts,
+    )
+
+
+def green_science_rows(
+    srv: HeadlessServer,
+    gd: GameData,
+    rates: tuple[float, ...] | None = None,
+    *,
+    radius: int = 150,
+    margin: int = 45,
+    seed: int | None = None,
+    keep_last: bool = False,
+    decisions: Decisions | None = None,
+    **opts: Any,
+) -> list[dict[str, Any]]:
+    """Plan-phase8 task A: patches -> rows -> circuit chain -> green-science chain (iron
+    plates split between the chains), one row per target rate."""
+    from fgen.gen import site_sweep as ss
+
+    rates = rates or ss.GREEN_SCIENCE_RATES
+    return station_rows(
+        srv,
+        gd,
+        ss.green_science_plan,
+        ss.green_case,
+        rates,
+        GREEN_NOTE,
+        radius=radius,
+        margin=margin,
+        seed=seed,
+        keep_last=keep_last,
+        decisions=decisions,
+        **opts,
+    )
+
+
+def case_name(case: str, decisions: Decisions | None) -> str:
+    """A row planned under an answer file is its own case: ``<case>@<name>``."""
+    return case if decisions is None or decisions.name == "default" else f"{case}@{decisions.name}"
+
+
+def station_rows(
+    srv: HeadlessServer,
+    gd: GameData,
+    planner: Any,
+    case: Any,
+    rates: tuple[float, ...],
+    note: str,
+    *,
+    radius: int,
+    margin: int,
+    seed: int | None,
+    keep_last: bool,
+    decisions: Decisions | None,
+    **opts: Any,
+) -> list[dict[str, Any]]:
+    """One measured row per target rate of a science station: choose the patches
+    (``decisions``), clear, snapshot, plan with the window the buffers need, measure."""
+    mo = {**RED_MEASURE, **opts}
     snap, patches, info = real_map_prepare(
-        srv, gd, ["iron-ore", "copper-ore"], radius=radius, margin=margin
+        srv, gd, ["iron-ore", "copper-ore"], radius=radius, margin=margin, decisions=decisions
     )
     info = {"seed": seed, **info}
     base_window = mo["warmup_s"] + mo["samples"] * mo["sample_s"]
     rows = []
     for k, rate in enumerate(rates):
-        by_plate = {"iron-plate": patches["iron-ore"], "copper-plate": patches["copper-ore"]}
         # the buffers between the stages fill before the flow is steady (fill_time); the
         # mines must not run dry within that longer window either, so plan again with it
-        window, chain_unit, plan = base_window, None, None
+        # (the generated chains are reused across the re-plans: ``units``)
+        window, units, plan = base_window, {}, None
         for _ in range(3):
-            plan = ss.red_science_plan(
-                gd, snap, by_plate, rate, window_s=window, chain_unit=chain_unit
+            plan = planner(
+                gd, snap, patches, rate, window_s=window, units=units, decisions=decisions
             )
-            chain_unit = dict(plan.free)["science"]
             opts_k, _ = warmup_for(srv, gd, plan, mo)
             need = opts_k["warmup_s"] + mo["samples"] * mo["sample_s"]
             if need <= window + 1e-9:
@@ -431,7 +526,15 @@ def red_science_rows(
         keep = keep_last and k == len(rates) - 1
         rows.append(
             _measure_plan(
-                srv, gd, ss.red_case(rate), plan, mo, keep=keep, note=RED_NOTE, real_map=info
+                srv,
+                gd,
+                case_name(case(rate), decisions),
+                plan,
+                mo,
+                keep=keep,
+                note=note,
+                real_map=info,
+                decisions=decisions.to_json() if decisions else None,
             )
         )
     return rows

@@ -172,8 +172,8 @@ def test_red_science_plan_on_painted_patches(gd):
     res.update(paint.to_resources(paint.rectangle(60, 10, 16, 16, 3000), "copper-ore"))
     terrain = Terrain.from_resources(res, margin=50)
     pt = {
-        "iron-plate": patches(terrain, "iron-ore")[0],
-        "copper-plate": patches(terrain, "copper-ore")[0],
+        "iron-ore": patches(terrain, "iron-ore")[0],
+        "copper-ore": patches(terrain, "copper-ore")[0],
     }
     chain = DirectChainParams(recipe="automation-science-pack", time_limit=5)
     plan = ss.red_science_plan(gd, terrain, pt, 1.0, window_s=300, chain=chain)
