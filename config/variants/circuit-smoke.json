@@ -1,0 +1,13 @@
+{
+  "name": "circuit-smoke",
+  "family": "direct-chain",
+  "base": {"recipe": "electronic-circuit", "target_rate": 2.0, "backend": "exhaustive", "palette": "given", "prove": true},
+  "variants": [
+    {"name": "solver", "params": {}, "note": "穷尽搜索，证明最小（4a 的 19x7）"},
+    {"name": "baseline", "params": {"layout": "baseline"}, "note": "手写经典 3:2 排法"},
+    {"name": "bad-machine", "params": {"machine": "stone-furnace"}, "note": "故意不可行：参数检查的那一路"}
+  ],
+  "grid": {"pole": ["small-electric-pole", "medium-electric-pole"]},
+  "rank": "compact",
+  "asked_by": {"who": "scaffold", "date": "2026-10-30", "question": "fgen compare 的冒烟样例：秒级、不需要 OR-Tools，演示 ok / baseline / infeasible 三种行"}
+}

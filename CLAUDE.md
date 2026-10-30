@@ -1,6 +1,8 @@
 # factorio-agent (fgen 分支)
 
-Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不是坐标。总体方案见 `docs/design.md`（第二版，按六轮实验结论修订；第一版存为 `docs/design-v1-2026-10-24.md`），任务书见 `docs/plan-phase0.md`、`docs/plan-phase1.md`、`docs/plan-phase2.md`、`docs/plan-phase3a.md`、`docs/plan-phase4a.md`、`docs/plan-phase4b.md`、`docs/plan-phase5a.md`、`docs/plan-phase7.md`、`docs/plan-phase8.md`（实验，记录在 `docs/experiments/`），待实机核对清单见 `docs/VERIFY.md`，用法见 `README.md`。
+Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不是坐标。总体方案见 `docs/design.md`（第二版，按六轮实验结论修订；第一版存为 `docs/design-v1-2026-10-24.md`），任务书见 `docs/plan-phase0.md`、`docs/plan-phase1.md`、`docs/plan-phase2.md`、`docs/plan-phase3a.md`、`docs/plan-phase4a.md`、`docs/plan-phase4b.md`、`docs/plan-phase5a.md`、`docs/plan-phase7.md`、`docs/plan-phase8.md`、`docs/plan-phase9.md`（实验，记录在 `docs/experiments/`），待实机核对清单见 `docs/VERIFY.md`，用法见 `README.md`，命令与表的地图见 `docs/scripts.md`。
+
+阶段 9 起主线的重心是求解器与选择机制，不是推进配方：模型的长处是并发试错、按硬指标对照、选择，不是想出排法。
 
 本分支是孤儿分支；`master` 上的旧 agent（Lua 脚本 + RCON 循环）与本分支无关，不要引用。
 
@@ -26,3 +28,6 @@ Factorio 蓝图生成器库：agent 的产出是参数或生成器代码，不�
 - 存档不进主分支：`FGEN_SAVE_DIR` / `--keep-save` 保留的 zip 用 `bin/publish-save.sh` 推到孤儿分支 `saves`。
 - 同一测试模块里只能用一个服务器 fixture（`server` 或 `ore_server`），两个都要用就拆模块。
 - 种子要加原型时改 `scripts/extract_seed.py` 的 `ADD` 表（及 `loader.py` 字段表）后重新生成。
+- `uv run --extra solver fgen compare config/variants/NAME.json [--procs N] [--only a,b] [--rank …]`（阶段 9）：变体文件的每个成员各一进程并排生成，表写到 `compare/NAME.{jsonl,md}`，只含硬指标；格式见 `config/variants/README.md`。进仓库的每个选择（钉住的参数、答案文件、任务书里的"取 X"）要指向它所依据的那一行（变体名 + `blueprint_sha`），不凭记忆钉；支撑了已提交选择的表进仓库，草稿表不进。
+- 并发的机器约束：一个 CP-SAT 模型约 1.5 核，4 核容器 `--procs 2`；成员进程里 `cpsat.PROCS = 1`（不嵌套证明驱动的进程池）；实测与求解不同时跑在同一台机器上。
+- "不退化"的口径（`plan-phase9.md` §7）：产率、不变量、按预设键的解质量不变差；蓝图字节可以变，换了解的行要在本轮或合并前重测补回实测，`measured` 为空的换解行不算达标。

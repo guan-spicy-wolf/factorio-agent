@@ -1,0 +1,11 @@
+{
+  "name": "green-chain",
+  "family": "direct-chain",
+  "base": {"recipe": "logistic-science-pack", "target_rate": 0.5, "backend": "cpsat", "time_limit": 60, "belt_inputs": ["electronic-circuit"], "extra_inserters": ["long-handed-inserter"]},
+  "variants": [
+    {"name": "pinned-4b", "params": {"palette": "given", "intermediates": "lane", "max_lane_consumers": 6}, "note": "阶段 8 手钉的 GREEN_CHAIN：4b 特征化过的那组"}
+  ],
+  "grid": {"palette": ["given", "full"], "intermediates": ["lane", "auto"], "max_lane_consumers": [6, 12]},
+  "rank": "compact",
+  "asked_by": {"who": "scaffold", "date": "2026-10-30", "question": "绿瓶链 0.5/s 的链参数本应由这张表而不是记忆决定：全调色板在 60 s 盒里到底有没有首解；auto 周期类型多付多少；放开到 12 台会不会更好"}
+}

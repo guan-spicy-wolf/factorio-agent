@@ -1,6 +1,6 @@
-# fgen — Factorio 蓝图生成器库（阶段 4c：随时可用求解、目标预设、组件调色板）
+# fgen — Factorio 蓝图生成器库（阶段 9：求解器组合与试错对照）
 
-agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`（第二版；第一版 `docs/design-v1-2026-10-24.md`），任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）、`docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论）与 `docs/plan-phase4a.md`（周期求解器，实验记录在 `docs/experiments/`），数值与约定的核对状态见 `docs/VERIFY.md`。
+agent 的产出是**生成器参数或生成器代码**，不是坐标。总体方案见 `docs/design.md`（第二版；第一版 `docs/design-v1-2026-10-24.md`），任务书见 `docs/plan-phase0.md`（无服务器底座）、`docs/plan-phase1.md`（headless 测试场）、`docs/plan-phase2.md`（采矿锚定单元）、`docs/plan-phase3a.md`（清障、夹具、连接路由；末尾“结果”一节是接口契约够不够用的结论）与 `docs/plan-phase4a.md`（周期求解器，实验记录在 `docs/experiments/`）……直到 `docs/plan-phase9.md`（求解器组合与试错对照，当前阶段），数值与约定的核对状态见 `docs/VERIFY.md`，命令与表的地图见 `docs/scripts.md`。
 
 阶段 1 起可以连 Factorio headless（当前 2.1.23，默认开启 space-age/quality/elevated-rails/recycler）：`fgen.sim` 有 RCON 客户端、服务器管理、蓝图部署与读回、测试夹具（harness）、实测与 VERIFY 检查。没有二进制时 `fgen.sim.protocol` 的 `NotAvailable*` 仍是默认，所有 headless 测试自动 skip。
 
@@ -41,6 +41,8 @@ uv run --extra solver fgen gen direct-chain --rate 2 --exclude substation,big-el
 uv run --extra solver fgen gen direct-chain --rate 2 --simulate           # 生成后在 headless 里实测（默认不起仿真）
 uv run --extra solver fgen sweep palette                  # 写 characterization/palette.{jsonl,md}
 uv run --extra solver fgen sweep solver-time [--only CASE,...] [--procs 1,4]   # 求解器耗时表 characterization/solver_time.{jsonl,md}（不起服务器）
+uv run --extra solver fgen compare config/variants/circuit-smoke.json          # 阶段 9：变体文件的成员并排生成，一张硬指标表 → compare/circuit-smoke.{jsonl,md}（秒级冒烟）
+uv run --extra solver fgen compare config/variants/green-chain.json --procs 2  # 绿瓶链的链参数该由这张表而不是记忆决定；--only a,b 只跑几个成员，--rank cheap 换排序
 uv run fgen decode <蓝图字符串或文件>                      # 美化 JSON
 uv run fgen encode <json 文件>
 uv run fgen render <蓝图字符串或文件> [--rulers]
@@ -110,6 +112,7 @@ bin/publish-save.sh saves/gc-2ps.zip "绿板 2/s 直插链"                     
 | `fgen.solve` | `period`：周期（`Period`）、边界条件 `check_period`、平铺 `tile`、配比与速率 `flows`/`ratio`；`cycle`：周期内穷尽搜索 `solve(spec, gd)`（阶段 4a）；`cpsat`：CP-SAT 后端（阶段 4b，可选依赖）；`cpsat_fluid`：周期内管网的约束（阶段 5a） |
 | `fgen.terrain` | `model`：`Terrain` 快照（可建/资源/水/已占）、4 邻接矿区分块 `patches`、`nearest_patch`、渲染背景；`paint`：矩形/L 形/挖洞/随机 blob 形状 |
 | `fgen.sim` | 服务器相关：协议与 `NotAvailable` 默认值、RCON、部署、实测（见上节） |
+| `fgen.compare` | **阶段 9**：`variants`（变体文件：家族、公共参数、显式成员与网格、排序键、`asked_by`；家族注册表 `direct-chain` / `smelting`）、`runner`（成员各一进程 `fork` 并排生成，行 = 硬指标，按预设词典序项或 `first` 排序）、`table`（`compare/<name>.{jsonl,md}`） |
 | `fgen.site` | `model`：`Site` = `Terrain` + `PlacedUnit` 列表 + `Link`（按 (单元名, 接口序号) 连接），占格合并、世界坐标接口；`place`：链路驱动放置 `candidates` / `place_linked`（候选按估算带长 + 转弯 + 绕回 + 占资源格排序，取第一个放得下的）、螺旋找空位 `find_spot`、按接口落点放置 `place_port`；`build`：`SitePlan`（锚定单元 + 自由单元 + 链路）→ 顺流顺序逐个放置 → 路由，路由失败就把单元移到下一个候选 |
 | `fgen.route` | 纯函数路由：`grid`（可走格、端口保留带、喂入/爪子可达格、液体口、地下段）、`astar`（转向代价 + 跳跃边）、`belt`（直连、侧向汇入桩、地下带、道材料/速率检查）、`pipe`（管 + 地下管、邻接隔离）、`power`（MST + 杆链）、`connect(site) -> Connection`（先带后管再电，失败换序重试，整站 validate + 契约校验） |
 
@@ -181,6 +184,12 @@ bin/publish-save.sh saves/gc-2ps.zip "绿板 2/s 直插链"                     
 - **仿真什么时候跑**：`fgen gen` 默认不起服务器（`--simulate` 显式触发），sweep 的 `--measure` 不变。只有两种情况需要仿真：(1) **新实体类型或新结构词汇**（例如本阶段带行里的地下带对、变电站）——解析预测从没对它们核对过，仿真的价值是发现缺失的不变量；(2) **轮末回归**。其余时候循环是：可行解 → `validate` → 解析预测（六轮实测偏差 ≤ 2%）。
 - 结果（`characterization/palette.md`，17 个单元全部实测）：已有 23 个规格的首个可行解除绿瓶（52.7 s）外全部 ≤ 6.4 s，`prove=True` 结果与 4b/5a 逐项相同；只给全调色板、不提示长臂爪，3:2 绿板证明最小是 **9×11 = 99**（变电站压在带行的地下带对上，1086 s），排除 4a 之后的词汇（中/大杆、变电站、地下带）时自己得出 **9×12 = 108**（92.5 s）；60 s 盒里全调色板只给到首选等级的结果（133）。`cheap` 在平手多的地方最值（硫酸同一个 8×5：92.5 vs 503.5 原料单位），`simple` 把绿瓶从 7 种实体减到 4 种。
 - 实验记录：`docs/experiments/4c-anytime-palette.md`；特征化：`characterization/palette.md`。
+
+## 变体对照（阶段 9）
+
+模型可靠的长处不是想出排法，而是同时开几条路、按硬指标并排看、选一个。`fgen compare FILE` 把这件事做成默认形态：变体文件（`config/variants/*.json`，格式与约定见那里的 README）给出家族、公共参数、显式成员与网格、排序键；每个成员各一进程生成（成员是并行的单位，成员进程里证明驱动自己的进程池关掉），表写到 `compare/<name>.{jsonl,md}`，只含硬指标：状态与原因、墙钟、到首解秒数、求解秒数与是否证明、周期尺寸 / 杆 / 爪 / 管、成本、种类、单元面积、机器数、预测产率、蓝图哈希、渲染与契约。退出码 0 有可行成员、2 一个都不可行。
+
+约定：进仓库的每个选择（钉住的参数、答案文件、任务书里的"取 X"）指向它所依据的那一行，不凭记忆钉。随时可用驱动的时间盒是确定性预算，所以并排与单独跑给同一个周期，只是墙钟不同；一个 CP-SAT 模型约 1.5 核，4 核机器 `--procs 2`。下一步（`docs/plan-phase9.md`）：组合驱动做进求解器（候选并发、先出解者赢）、采矿与站点家族、只给决赛选手的实测、诚实失败与确定性终解。
 
 ## 测试样本
 

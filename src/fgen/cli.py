@@ -353,6 +353,43 @@ def cmd_ask(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compare(args: argparse.Namespace) -> int:
+    """``fgen compare FILE``: every member of a variant file side by side, one table of
+    hard metrics (plan-phase9 task B). Members are the parallelism: ``--procs`` forked
+    processes, each with the member's own budget; the proof driver's own pool is off
+    inside them."""
+    import os
+
+    from fgen.compare import runner, table
+    from fgen.compare.variants import VariantSet
+
+    gd = _gd(args)
+    vset = VariantSet.load(args.file)
+    if args.rank:
+        vset.rank = args.rank
+    procs = args.procs if args.procs is not None else max(1, (os.cpu_count() or 1) // 2)
+    only = set(args.only.split(",")) if args.only else None
+
+    def progress(r: dict[str, Any]) -> None:
+        per = r.get("period") or {}
+        extra = ""
+        if per:
+            ff = per.get("first_feasible_s")
+            extra = (
+                f" first {ff:.1f} s," if ff is not None else ""
+            ) + f" {per.get('width')}x{per.get('height')} {per.get('poles')} poles"
+        if r["status"] != "ok":
+            extra = f" {r.get('reason', '')[:100]}"
+        print(f"{r['variant']}: {r['status']} ({r['wall_s']} s){extra}", file=sys.stderr)
+
+    rows, meta = runner.run(gd, vset, procs=procs, progress=progress, only=only)
+    jsonl, md = table.write(vset, rows, meta, gd, args.out_dir)
+    w = meta.get("winner")
+    print(f"winner by {vset.rank}: {w}" if w else "no feasible member", file=sys.stderr)
+    print(f"wrote {jsonl} and {md}")
+    return 0 if w else 2
+
+
 def cmd_sweep_site(args: argparse.Namespace) -> int:
     from fgen.gen import site_sweep as ss
     from fgen.terrain.model import Terrain, area_tiles
@@ -688,6 +725,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--radius", type=int, default=300, help="snapshot radius for candidates")
     p.add_argument("--out", default="questions.json")
     p.set_defaults(fn=cmd_ask)
+
+    p = sub.add_parser(
+        "compare",
+        help="run every member of a variant file side by side -> compare/<name>.{jsonl,md}",
+    )
+    p.add_argument("file", help="variant file (config/variants/*.json)")
+    p.add_argument(
+        "--procs",
+        type=int,
+        default=None,
+        help="processes (members run side by side; default half the cores: a CP-SAT model "
+        "takes about 1.5 cores)",
+    )
+    p.add_argument("--out-dir", default="compare")
+    p.add_argument("--only", default=None, help="comma list of variant names to run")
+    p.add_argument(
+        "--rank",
+        choices=["compact", "cheap", "simple", "first"],
+        default=None,
+        help="override the file's rank",
+    )
+    p.set_defaults(fn=cmd_compare)
 
     p = sub.add_parser("verify", help="run the in-game VERIFY.md checks (needs headless)")
     p.add_argument("--ids", help="comma separated check ids (default: all)")
